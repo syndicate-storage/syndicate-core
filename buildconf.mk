@@ -51,25 +51,6 @@ BUILD_LIBSYNDICATE_UG          := $(BUILD_LIBDIR)
 BUILD_LIBSYNDICATE_UG_INCLUDEDIR := $(BUILD_INCLUDEDIR)/libsyndicate-ug
 BUILD_LIBSYNDICATE_UG_DIRS     := $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)
 
-# user gateway 
-BUILD_UG          := $(BUILD_BINDIR)
-BUILD_UG_TOOLS    := $(BUILD_BINDIR)
-BUILD_UG_GATEWAYS := $(BUILD_BINDIR)
-BUILD_UG_DIRS     := $(BUILD_UG_TOOLS) \
-                     $(BUILD_UG_GATEWAYS)
-
-# replica gateway 
-BUILD_RG          := $(BUILD_BINDIR)
-BUILD_RG_DIRS     := $(BUILD_RG)
-
-# acquisition gateway
-BUILD_AG          := $(BUILD_BINDIR)
-BUILD_AG_DIRS     := $(BUILD_AG)
-
-# automount daemon 
-BUILD_AMD		  := $(BUILD_BINDIR)
-BUILD_AMD_DIRS    := $(BUILD_AMD)
-
 # python extension
 BUILD_PYTHON_SYNDICATE := $(BUILD)/python/
 BUILD_PYTHON_SYNDICATE_DIRS := $(BUILD_PYTHON_SYNDICATE)
