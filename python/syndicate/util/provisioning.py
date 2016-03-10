@@ -178,7 +178,7 @@ def ensure_gateway_exists( client, gateway_type, user_email, volume_name, gatewa
             else:
                 # update it 
                 try:
-                    rc = client.update_gateway( gateway_name, **inconsistent )
+                    rc = rpc.ms_rpc( client, "update_gateway", gateway_name, **inconsistent )
                 except Exception, e:
                     log.exception(e)
                     raise Exception("Failed to update '%s'" % gateway_name)
