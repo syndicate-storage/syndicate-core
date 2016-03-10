@@ -1081,8 +1081,12 @@ class StubObject( object ):
       # find keyword argument?
       if not replaced and arg_name in kw.keys():
          ret = cls.replace_kw( arg_name, arg_value_func, kw[arg_name], lib )
-         
-         log.debug("keyword argument '%s' is now '%s'" % (arg_name, ret[0]) )
+        
+         printable = ret[0].replace("\n", "\\n")
+         if len(printable) > 50:
+             printable = printable[:50] + "..."
+
+         log.debug("keyword argument '%s' is now '%s'" % (arg_name, printable) )
          
          kw[arg_name], arg_extras = ret[0], ret[1]
          
@@ -1984,36 +1988,47 @@ class Gateway( StubObject ):
       
       elif existing_gateway_cert is None and method_name == "update_gateway":
          raise MissingCertException("No certificate on file for '%s'." % (gateway_name))
-     
-      # see if we own the volume in question.
-      # the volume needs to exist either way.
+    
+      # find volume ID
       volume_id = None 
       volume_name = None 
-      
+      volume_name_or_id = None
       existing_volume_cert = None 
-      if hasattr( lib, "volume_name" ):
-         volume_name = lib.volume_name
-         existing_volume_cert = load_volume_cert( config, volume_name )
-         if existing_volume_cert is not None:
-            volume_id = existing_volume_cert.volume_id
+
+      if hasattr(lib, "volume_id"):
+          volume_id = lib.volume_id
+          volume_name_or_id = str(volume_id)
+
+      elif hasattr(lib, "volume_name"):
+          volume_name = lib.volume_name
+          volume_name_or_id = volume_name
       
+      if volume_name_or_id is not None:
+         existing_volume_cert = load_volume_cert( config, volume_name_or_id )
+
       elif existing_gateway_cert is not None:
          # get volume cert, and then volume name 
-         volume_id = existing_gateway_cert.volume_id 
+         volume_id = existing_gateway_cert.volume_id
+         volume_name_or_id = str(volume_id)
+         existing_volume_cert = load_volume_cert( config, str(volume_id) )
+
+         """
          volume_name = load_volume_name( config, volume_id )
          if volume_name is not None:
             existing_volume_cert = load_volume_cert( config, volume_name )
+         """
       
+      """
       # given volume?
       if existing_volume_cert is None and hasattr( lib, "volume_id" ):
-         volume_id = lib.volume_id
          volume_name = load_volume_name( config, volume_id )
          if volume_name is not None:
             existing_volume_cert = load_volume_cert( config, volume_name )
       
       if existing_volume_cert is None:
          raise MissingCertException("No volume cert on file for '%s (%s)'" % (volume_name, volume_id))
-      
+      """
+
       gateway_name = lib.name
       gateway_type = getattr(lib, "gateway_type", None)
       owner_username = getattr(lib, "email", None)
@@ -2077,6 +2092,11 @@ class Gateway( StubObject ):
          else:
             missing.append("public_key")
       
+      # need either volume ID or volume name
+      if volume_name_or_id is None:
+          missing.append("volume_name_or_id")
+
+      """
       if volume_id is None:
          if existing_gateway_cert is not None:
             volume_id = existing_gateway_cert.volume_id 
@@ -2096,7 +2116,8 @@ class Gateway( StubObject ):
          volume_name = load_volume_name( config, volume_id )
          if volume_name is None:
             missing.append("volume_name_or_id")
-            
+      """
+
       if port is None:
          if existing_gateway_cert is not None:
             port = existing_gateway_cert.port 
@@ -2246,18 +2267,18 @@ class Gateway( StubObject ):
       if need_volume_cert_bundle:
         
          # load volume owner 
-         volume_cert = load_volume_cert( config, volume_name )
+         volume_cert = load_volume_cert( config, volume_name_or_id )
          if volume_cert is None:
-             raise MissingCertException("No volume certificate on file for '%s'" % volume_name)
+             raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
 
          volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
          if volume_owner_cert is None:
              raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.user_id)
 
          # generate a certificate bundle.
-         volume_cert_bundle_str = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, new_gateway_cert=gateway_cert )
+         volume_cert_bundle_str = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, volume_id=volume_id, new_gateway_cert=gateway_cert )
          if volume_cert_bundle_str is None:
-             raise Exception("Failed to generate volume cert bundle for Volume '%s' (Gateway '%s')" % (volume_name, gateway_name))
+             raise Exception("Failed to generate volume cert bundle for Volume '%s' (Gateway '%s')" % (volume_name_or_id, gateway_name))
       
       # generate the actual keyword arguments for the API call
       args = []
@@ -2279,7 +2300,6 @@ class Gateway( StubObject ):
       extras['gateway_cert'] = gateway_cert 
       extras['gateway_id'] = gateway_id
       extras['username'] = owner_username
-      extras['volume_name'] = volume_name
       extras['name'] = gateway_name 
       extras['gateway_private_key'] = private_key
       
