@@ -1,0 +1,206 @@
+/*
+   Copyright 2013 The Trustees of Princeton University
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+package ms;
+
+// filesystem entry message
+message ms_entry {
+   enum FileType {
+      MS_ENTRY_TYPE_NONE = 0;
+      MS_ENTRY_TYPE_FILE = 1;
+      MS_ENTRY_TYPE_DIR = 2;
+   }
+
+   required int32 type = 1;
+   required uint64 file_id = 2;
+   required int64 ctime_sec = 3;
+   required int64 ctime_nsec = 4;
+   required int64 mtime_sec = 5;
+   required int32 mtime_nsec = 6;
+   required int64 manifest_mtime_sec = 7;
+   required int32 manifest_mtime_nsec = 8;
+   required uint64 owner = 9;
+   required uint64 coordinator = 10;
+   required uint64 volume = 11;
+   required int32 mode = 12;
+   required int64 size = 13;
+   required int64 version = 14;
+   required int32 max_read_freshness = 15;
+   required int32 max_write_freshness = 16;
+   required string name = 17;
+   
+   required int64 write_nonce = 18;
+   required int64 xattr_nonce = 19;
+   
+   required int64 generation = 20;      // NOT COVERED BY THE SIGNATURE; covered instead by ms_signature
+
+   required string signature = 21;      // coordinator's signature over most of the data here (but see exceptions)
+   
+   required uint64 parent_id = 22;
+   required int64 num_children = 23;    // actual number of children (set to 0 for files).  NOT COVERED BY THE SIGNATURE; covered instead by ms_signature
+   required int64 capacity = 24;        // range in the children index where the children can be (set to 0 for files).  NOT COVERED BY THE SIGNATURE; covered instead by ms_signature
+   
+   optional bytes xattr_hash = 25;      // sha256 over (volumeID, fileID, sorted(xattr name, xattr value))
+   optional string ms_signature = 26;   // covers the entire record; used only for directories
+}
+
+// file update
+message ms_request {
+   enum RequestType {
+      CREATE = 1;
+      UPDATE = 2;
+      DELETE = 3;
+      CHCOORD = 4;
+      RENAME = 5;
+      PUTXATTR = 6;
+      REMOVEXATTR = 7;
+      VACUUM = 8;
+      VACUUMAPPEND = 9;
+      UPDATE_ASYNC = 10;
+      DELETE_ASYNC = 11;
+      CREATE_ASYNC = 12;
+      
+      NUM_UPDATE_TYPES = 13;
+   }
+
+   required int32 type = 1;
+   required ms_entry entry = 2;
+   optional ms_entry dest = 3;          // used by rename
+   optional string xattr_name = 4;      // used by putxattr and removexattr
+   optional string xattr_value = 5;     // used by putxattr
+   optional bytes xattr_hash = 6;       // used by putxattr, removexattr, and chcoord:  SHA256 over the current set of (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value)) tuples ordered by xattr name.
+
+   repeated uint64 affected_blocks = 7;      // IDs of blocks affected by the write (on UPDATE or VACUUMAPPEND)
+   optional string vacuum_signature = 8;     // signature from the associated vacuum ticket (whose information is embedded in this message)
+}
+
+// collection of file updates
+message ms_request_multi {
+   required string signature = 1;
+   repeated ms_request requests = 2;
+}
+
+// ms directory listing
+message ms_listing {
+   enum ListingType {
+      NEW = 1;
+      NOT_MODIFIED = 2;
+      NONE = 3;
+   }
+
+   required int32 status = 1;           // cached status (one of the above).  Will be NONE on error.
+   required int32 ftype = 2;            // was this a file or directory we accessed?
+   repeated ms_entry entries = 3;       // if this was a directory, then this contains its children.  Otherwise, entries[0] is the entry's data
+}
+
+// vacuum ticket 
+message ms_vacuum_ticket {
+
+   required uint64 volume_id = 1;
+   required uint64 writer_id = 2;
+   required uint64 file_id = 3;
+   required int64 file_version = 4;
+   required int64 manifest_mtime_sec = 5;          
+   required int32 manifest_mtime_nsec = 6;
+   repeated uint64 affected_blocks = 7;
+   required string signature = 8;
+}
+
+// metadata information for the entries of a path
+message ms_reply {
+   required uint64 volume_version = 1;           // version of this volume's metadata
+   required uint64 cert_version = 2;             // Volume certificate bundle version (taken from the cert bundle's mtime_sec field)
+   required string signature = 3;                // Volume signature (from the MS)
+   required int32 error = 4;                     // error code for the overall request
+   optional string errormsg = 5;                 // error message
+   
+   optional ms_listing listing = 6;             // listing of one or more entries generated by the request
+   
+   repeated int32 errors = 7;                   // error codes for multiple requests
+   
+   // TODO: move to ms_xattr_cert?
+   optional int64 xattr_nonce = 8;              // fetchxattrs() only
+   optional string xattr_hash = 9;              // fetchxattrs() only
+   repeated string xattr_names = 10;             // fetchxattrs() only
+   repeated string xattr_values = 11;            // fetchxattrs() only
+
+   optional ms_vacuum_ticket vacuum_ticket = 12;   // vacuum peek 
+}
+
+// gateway certificate
+message ms_gateway_cert {
+   
+   enum Capabilities {
+      CAP_READ_DATA = 1;
+      CAP_WRITE_DATA = 2;
+      CAP_READ_METADATA = 4;
+      CAP_WRITE_METADATA = 8;
+      CAP_COORDINATE = 16;
+   }
+   
+   required uint64 version = 1;           // version of this certificate
+   
+   required uint64 gateway_type = 2;      // type of gateway
+   required uint64 gateway_id = 3;        // ID of this gateway
+   required uint64 owner_id = 4;          // ID of user that owns this gateway
+   required string name = 5;              // name of gateway
+   required string host = 6;              // hostname of this gateway
+   required int32 port = 7;               // port number of this gateway
+   required string public_key = 8;        // public key of this gateway
+   required int64 cert_expires = 9;       // when the certificate expires
+   required uint32 caps = 10;             // capabilities
+
+   required bytes driver_hash = 11;       // hash of the driver information (or hash of the empty string if there is no driver) 
+   required uint64 volume_id = 12;        // which Volume we're bound to
+   
+   required string signature = 13;        // base64-encoded signature of this cert from the gateway user (identified by owner_id)
+}
+
+
+// Volume certificate
+message ms_volume_metadata {
+   required uint64 blocksize = 1;
+   required uint64 owner_id = 2;               // UID of the volume owner
+   required string owner_email = 3;             // username of the volume owner
+   required uint64 volume_id = 4;             // volume ID
+   required uint64 volume_version = 5;          // volume metadata version
+   required string name = 6;
+   required string description = 7;
+   required string volume_public_key = 8;
+   required bool archive = 9;
+   required bool private = 10;
+   required bool allow_anon = 11;
+   required uint64 file_quota = 12;
+
+   required string signature = 13;              // base64-encoded Volume signature of this message
+   
+   optional ms_entry root = 14;                 // initial root directory; used for creating volumes
+}
+
+
+// user certificate 
+message ms_user_cert {
+
+   required uint64 user_id = 1;
+   required string email = 2;
+   required string public_key = 3;
+   required uint64 admin_id = 4;        // ID of the admin that created this cert
+   required int64 max_volumes = 5;
+   required int64 max_gateways = 6;
+   required bool is_admin = 7;
+   required string signature = 8;       // base64-encoded signature by the admin that created this account 
+}
+
