@@ -1,0 +1,53 @@
+#!/usr/bin/python
+
+import syndicate.util.crypto as crypto
+
+from Crypto.Hash import SHA256 as HashAlg
+from Crypto.PublicKey import RSA as CryptoKey
+from Crypto import Random
+from Crypto.Signature import PKCS1_PSS as CryptoSigner
+from Crypto.Protocol.KDF import PBKDF2
+
+cached_random = None
+def random_int(n):
+    global cached_random
+    if cached_random is None:
+        cached_random = Random.new().read( n )
+
+    else:
+        cached_random = hash_data( cached_random )
+
+    if len(cached_random) < n:
+        while len(cached_random) < n:
+            cached_random += hash_data( cached_random )
+
+    cached_random = cached_random[:n]
+    return cached_random
+
+     
+ 
+def hash_data( data ):
+   """
+   Given a string of data, calculate 
+   the SHA256 over it
+   """
+   h = HashAlg.new()
+   h.update( data )
+   return h.digest()
+
+def generate_key_pair( key_size ):
+   """
+   Make a key pair
+   """
+   rng = Random.new().read
+   #rng = random_int
+   key = CryptoKey.generate(key_size, rng)
+
+   private_key_pem = key.exportKey()
+   public_key_pem = key.publickey().exportKey()
+
+   return (public_key_pem, private_key_pem)
+
+for i in xrange(0, 40):
+    pub, priv = crypto.generate_key_pair( 4096 )
+    print i

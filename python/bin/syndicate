@@ -1,0 +1,810 @@
+#!/usr/bin/env python
+
+"""
+   Copyright 2016 The Trustees of Princeton University
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+"""
+
+import os
+import json
+import subprocess
+
+import sys
+import tempfile
+import shutil
+import base64
+import stat
+import copy
+
+import syndicate.ms.jsonrpc as jsonrpc
+import syndicate.ms.msconfig as msconfig
+
+import syndicate.util.config as conf
+import syndicate.util.storage as storage
+import syndicate.util.objects as object_stub
+import syndicate.util.client as client
+import syndicate.util.certs as certs
+import syndicate.util.crypto as crypto
+
+import syndicate.protobufs.ms_pb2 as ms_pb2
+
+import traceback
+
+from Crypto.Hash import SHA256 as HashAlg
+from Crypto.PublicKey import RSA as CryptoKey
+from Crypto import Random
+from Crypto.Signature import PKCS1_PSS as CryptoSigner
+
+import pprint 
+import urlparse
+import requests 
+import getpass
+import logging
+
+log = conf.log
+
+
+def fetch_syndicate_public_key( config ):
+   """
+   Use a helper program to go and fetch the Syndicate public key.
+   Return the key itself on success.
+   Return None on error
+   """
+   try:
+      assert 'syndicate_host' in config
+      assert 'no_tls' in config
+   except:
+      log.error("Incomplete config")
+      return None 
+   
+   port = config.get("syndicate_port", None)
+   if port is None:
+      port = conf.default_syndicate_port( config['syndicate_host'], config['no_tls'] )
+
+   url = client.make_ms_url( config['syndicate_host'], port, config['no_tls'] )
+ 
+   downloader_path = config['helpers'].get('fetch_syndicate_pubkey')
+   if downloader_path is None:
+      log.error("No 'fetch_syndicate_pubkey' defined in the 'helpers' config section")
+      return None
+
+   if not os.path.exists( downloader_path ):
+      log.error("'%s' does not exist" % downloader_path )
+      return None 
+  
+   downloader = subprocess.Popen( [downloader_path, url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+   
+   pubkey_out, pubkey_err = downloader.communicate()
+   
+   downloader.wait()
+   
+   pubkey_pem = pubkey_out.strip()
+   
+   # validate 
+   try:
+      pubkey = CryptoKey.importKey( pubkey_pem )
+   except Exception, e:
+      log.error("Invalid Syndicate public key (from %s)" % url)
+      return None
+   
+   return pubkey.publickey().exportKey()
+
+
+# -------------------
+def prompt_trust_public_key( name, port, pubkey ):
+   """
+   Ask the user if the given public key should be trusted 
+   for the given server hostname and port.
+   Return True if the user trusts it.
+   Return False if not.
+   """
+   print """
+Syndicate at %s:%s accessed for the first time!
+
+To securely access Syndicate at %s:%s automatically, do you wish to remember its 
+public key?  Only say 'yes' if you are sure this is the *right* public key.
+
+The public key is:
+   
+%s
+""" % (name, port, name, port, pubkey)
+
+   prompt = "Trust this key? (Y/n): "
+   while True:
+      trust = raw_input(prompt)
+      if trust not in ['Y', 'y', 'N', 'n']:
+         prompt = "Please enter 'Y' or 'N': "
+         continue
+      
+      break
+   
+   if trust in ['Y', 'y']:
+      return True 
+   else:
+      return False   
+   
+
+# -------------------
+def serialize_positional_arg( value ):
+   # try to cast value to something for a positional argument (not a keyword argument)
+   if "." in value or "e" in value:
+      # float?
+      try:
+         value = float(value)
+         return value
+      except:
+         pass
+
+   if value == "True" or value == "False":
+      # bool?
+      try:
+         value = eval(value)
+         return value 
+      except:
+         pass
+   
+   if value.strip().startswith("{") or value.strip().startswith("["):
+      # dict or list?
+      try:
+         value = eval(value)
+         return value
+      except:
+         pass
+   
+   try:
+      # integer?
+      value = int(value)
+      return value
+   except:
+      pass
+   
+   
+   if value.find("=") == -1:
+      # string?
+      return value
+   
+   raise Exception("Could not parse '%s'" % param)
+   
+
+# -------------------
+def read_params( params ):
+   if len(params) == 0:
+      return (None, None, None)
+   
+   method_name = params[0]
+   params = params[1:]
+   args = []
+   kw = {}
+   for param in params:
+      try:
+         serialized_arg = serialize_positional_arg( param )
+      except:
+         # is this a keyword argument?
+         param_parts = param.split("=")
+         if len(param_parts) > 1:
+            kw[param_parts[0]] = serialize_positional_arg( "=".join( param_parts[1:] ) )
+         else:
+            raise Exception("Malformed parameter '%s'" % param)
+      else:
+         args.append( serialized_arg )
+
+   return (method_name, args, kw)
+   
+   
+# -------------------
+def make_object_directories( config ):
+   """
+   Create directories for each kind of object in the 
+   ~/.syndicate config directory, if they don't exist already.
+   * gateways
+   * users 
+   * volumes 
+   * syndicate instances 
+   """
+   # validate directories
+   for obj_type, obj_dirname in conf.OBJECT_DIR_NAMES.items():
+      obj_dirname = conf.OBJECT_DIR_NAMES.get(obj_type)
+      if obj_dirname is None:
+         # forgot to add an entry in OBJECT_DIR_NAMES for the given key type
+         raise Exception("BUG: unknown object type %s" % obj_type)
+      
+      obj_dir = config.get(obj_dirname, None)
+      if obj_dir is None:
+         # forgot to set the path to this directory in the config
+         raise Exception("BUG: unknown directory %s" % obj_dirname)
+      
+      ret = storage.make_or_check_object_directory( obj_dir )
+      if not ret:
+         raise Exception("Failed to set up key directories")
+   
+   return True
+
+# -------------------
+def find_paired_cert( path ):
+    """
+    Given a path to a .cert file, find the other .cert file
+    that corresponds to it.
+
+    This is possible because each object has both a numeric .cert
+    file and a named .cert file.
+    """
+    object_file_inode = os.stat( path ).st_ino
+    object_dir = os.path.dirname(path)
+    for name in os.listdir(object_dir):
+        if name in [".", ".."]:
+            continue 
+
+        if "." not in name:
+            # no suffi
+            continue 
+
+        inode_no = os.stat( os.path.join(object_dir, name) ).st_ino
+        if inode_no == object_file_inode:
+            # is it *not* the same?
+            if not name.startswith( os.path.basename(path) ):
+                return os.path.join( object_dir, name )
+
+    return None
+
+
+# -------------------
+def export_object_files( config, object_type, object_name_or_id, dest_path ):
+    """
+    Export an object's relevant keys and certificates
+    """
+
+    if os.path.isdir(dest_path):
+        dest_path = os.path.join(dest_path, str(object_name_or_id))
+    
+    # find the relevant .cert and .pkey files 
+    cert_path = conf.object_file_path( config, object_type, str(object_name_or_id) + ".cert" )
+
+    # name or ID?
+    object_name = None 
+    object_id = None
+    try:
+        # ID given
+        object_id = int(object_name_or_id)
+        object_name_path = find_paired_cert( cert_path )
+        if object_name_path is None:
+            log.error("No paired certificate for '%s'" % cert_path)
+            return False
+
+        object_name = os.path.basename( object_name_path ).split(".")[0]
+
+    except:
+        # name given 
+        object_name = object_name_or_id 
+        object_id_path = find_paired_cert( cert_path )
+        if object_id_path is None:
+            log.error("No paired certificate for '%s'" % cert_path)
+            return False
+
+        object_id = int(os.path.basename(object_id_path).split(".")[0])
+
+    pkey_path = conf.object_base_file_path( config, object_type, object_name + ".pkey" )
+    name_cert_path = conf.object_base_file_path( config, object_type, object_name + ".cert" )
+    id_cert_path = conf.object_base_file_path( config, object_type, str(object_id) + ".cert" )
+
+    extant_paths = []
+    tar_args = []
+    for path in [pkey_path, name_cert_path, id_cert_path]:
+        if os.path.exists( os.path.join(config['config_dir'], path) ):
+            extant_paths.append(path)
+
+    cmd = ("cd \"%s\" && tar cf \"%s.tar\" " % (config['config_dir'], dest_path)) + (" ".join( ["\"%s\"" % p for p in extant_paths] )) + \
+          (" && bzip2 \"%s.tar\"" % dest_path) + (" && mv \"%s.tar.bz2\" \"%s\"" % (dest_path,dest_path)) 
+
+    rc = os.system(cmd)
+    if rc != 0:
+        log.error("Failed to export files.  Command: '%s'" % cmd)
+        return False
+
+    print "Exported '%s' (%s) to '%s'" % (object_name, str(object_id), dest_path)
+    return True
+
+# -------------------
+def import_object_files( config, object_type, src_path, force=False ):
+    """
+    Import an exported bundle of object files
+    """
+
+    tmpdir = tempfile.mkdtemp()
+    extract_cmd = "tar xvf \"%s\" -C \"%s\"" % (src_path, tmpdir)
+    rc = os.system( extract_cmd )
+    if rc != 0:
+        log.error("Failed to extract to '%s'" % tmpdir)
+        shutil.rmtree(tmpdir)
+        return False
+
+    srcdir = os.path.join(tmpdir, conf.object_base_file_path( config, object_type, "" ))
+    destdir = conf.object_file_path( config, object_type, "" )
+
+    # sanity check 
+    if not os.path.exists( srcdir ):
+        log.error("Not an exported '%s'" % object_type)
+        shutil.rmtree(tmpdir)
+
+    for name in os.listdir( srcdir ):
+
+        if name in [".", ".."]:
+            continue
+
+        dest_path = conf.object_file_path( config, object_type, name )
+        if os.path.exists(dest_path):
+            if not force:
+                log.error("File would be overwritten: %s" % dest_path)
+                return False 
+            else:
+                log.warn("File would be overwritten, but doing so anyway: %s" % dest_path)
+               
+    # use this command to preserve hard-links
+    cmd = "mkdir -p \"%s\" && cp -a \"%s\"/* \"%s\"" % (os.path.dirname(destdir), srcdir, destdir)
+    rc = os.system( cmd )
+    shutil.rmtree(srcdir)
+
+    if rc == 0:
+        return True 
+    else:
+        log.error("Failed to copy files. Command: '%s'" % cmd)
+        return False
+
+
+# -------------------
+def parse_argv( argv ):
+   """
+   Given argv, extract the options, method name, positional args, and keyword args.
+   """
+    
+   parser = conf.build_parser( argv[0], conf.CONFIG_DESCRIPTION, conf.CONFIG_OPTIONS )
+   opts, _ = parser.parse_known_args( argv[1:] ) 
+   method_name, args, kw = read_params( getattr(opts, 'params', [] ) )
+   
+   return (opts, method_name, args, kw )
+
+
+# -------------------
+def install_syndicate_public_key( config ):
+   """
+   Obtain the syndicate public key and store it.
+   Unless told otherwise, prompt the user to trust it.
+
+   Returns the public key on success
+   Returns None on error
+   """
+
+   # go get it 
+   syndicate_pubkey_pem = fetch_syndicate_public_key( config )
+   
+   try:
+       syndicate_pubkey = CryptoKey.importKey( syndicate_pubkey_pem )
+   except Exception, e:
+       log.error("Failed to parse downloaded public key")
+       return None 
+  
+   if not config.get('trust_public_key', False):
+       trust = prompt_trust_public_key( config["syndicate_host"], config["syndicate_port"], syndicate_pubkey_pem )
+       if not trust:
+           log.error("Will NOT trust public key")
+           return None
+   
+   # store it 
+   storage.store_public_key( config, "syndicate", conf.syndicate_object_name( config ), syndicate_pubkey )
+       
+   return syndicate_pubkey
+
+
+# -------------------
+def init_config( argv, method_name ):
+   """
+   Given parsed options, load the config.
+   Return a dict with our config options set on success.
+   Return None on error
+   """
+    
+   config = conf.get_config_from_argv( argv )
+   if config['syndicate_public_key'] is None:
+      
+       # go get it 
+       syndicate_pubkey = install_syndicate_public_key( config )
+       if syndicate_pubkey is None:
+           return None 
+       
+       config['syndicate_public_key'] = syndicate_pubkey
+       config['syndicate_public_key_pem'] = syndicate_pubkey.exportKey()
+
+   return config
+
+
+# -------------------
+def do_method_help( config, method_name ):
+   """
+   Print a method's documentation and exit, given the  
+   method parameters (including its name).
+   """
+   
+   import syndicate.ms.api as api
+
+   try:
+      method_help = api.method_help_from_method_name( method_name )
+   except Exception, e:
+      log.exception(e)
+      method_help = "FIXME: General HELP goes here..."
+      
+   print "Help for '%s':\n%s" % (method_name, method_help)
+
+
+# -------------------
+def make_admin_cert( username, admin_privkey ):
+    """
+    Make a cert for the admin
+    """
+   
+    public_key = admin_privkey.publickey()
+    public_key_pem = public_key.exportKey()
+
+    admin_cert = ms_pb2.ms_user_cert()
+    admin_cert.user_id = 0
+    admin_cert.email = username
+    admin_cert.public_key = public_key_pem
+    admin_cert.admin_id = 0
+    admin_cert.max_volumes = 0
+    admin_cert.max_gateways = 0
+    admin_cert.is_admin = True
+    admin_cert.signature = ""
+
+    admin_cert_str = admin_cert.SerializeToString()
+    admin_cert_sig = crypto.sign_data( admin_privkey, admin_cert_str )
+
+    admin_cert.signature = base64.b64encode( admin_cert_sig )
+
+    return admin_cert
+
+
+# -------------------
+def do_setup( opts, username, admin_privkey_path, MS_url ):
+   """
+   Do one-time initial setup:
+   * create the config directory 
+   * fill in the configdirectory  with object directories.
+   * generate a config file in config directory
+   * grab the MS's public key and ask to trust it, if it isn't here already.
+   * activate the admin's account on the MS.
+   * store the admin's ID
+   * fill in a default types.conf
+   """ 
+   
+   config_path = None 
+   if hasattr(opts, "config") and opts.config is not None:
+       config_path = opts.config[0]
+   else:
+       config_path = conf.default_config_path() 
+
+   # if the config file already exists, then bail
+   if os.path.exists( config_path ):
+       if os.path.isfile( config_path ):
+          raise Exception("Syndicate is already set up (in %s)" % config_path)
+       else:
+          raise Exception("%s: is a directory" % config_path )
+
+   # get admin private key 
+   admin_privkey_pem = storage.read_file( admin_privkey_path )
+   if admin_privkey_pem is None:
+      raise Exception("Unable to load '%s'" % admin_privkey_path )
+  
+   try:
+      admin_privkey = CryptoKey.importKey( admin_privkey_pem )
+      admin_pubkey = admin_privkey.publickey()
+   except:
+      traceback.print_exc()
+      raise Exception("Unable to parse '%s'" % admin_privkey_path )
+   
+   if not admin_privkey.has_private():
+      raise Exception("Not a private key: '%s'" % admin_privkey_path )
+   
+   key_dirs = {}
+   
+   # generate a default config...
+   config = {}
+   for key_type, key_dirname in conf.OBJECT_DIR_NAMES.items():
+      key_dirs[key_dirname] = key_dirname + "/"
+   
+   conf.extend_key_paths( key_dirs, os.path.dirname(config_path) )
+   
+   conf.fill_defaults( config )
+   config["MS_url"] = MS_url 
+   config["username"] = username
+
+   host, port, no_tls = client.parse_url( MS_url )
+  
+   config['syndicate_host'] = host 
+   config['syndicate_port'] = port
+   config['no_tls'] = no_tls
+ 
+   # trust public key?
+   if opts.trust_public_key:
+       config['trust_public_key'] = True 
+   else:
+       config['trust_public_key'] = False
+
+   config.update( key_dirs )
+   
+   for k in conf.CONFIG_SYNDICATE_KEYS:
+       if k not in config.keys():
+           config[k] = os.path.join( conf.default_config_dir(), k )
+  
+   # store only "syndicate" config values 
+   write_config = copy.deepcopy( config )
+   for k in write_config.keys():
+       if k not in conf.CONFIG_SYNDICATE_KEYS:
+           del write_config[k]
+          
+   # set up the directories
+   make_object_directories( config )
+
+   config_str = conf.serialize_config( write_config )
+   log.debug("Storing config...")
+   
+   # store config
+   try:
+      storage.write_file( config_path, config_str )
+   except Exception, e:
+      log.exception(e)
+      print >> sys.stderr, "Failed to write configuration"
+      sys.exit(1)
+      
+   # store first admin ID (always 0)
+   admin_cert = make_admin_cert( config['username'], admin_privkey )
+   object_stub.store_user_cert( config, admin_cert )
+   storage.store_private_key( config, "user", config['username'], admin_privkey ) 
+
+   # get syndicate public key  
+   syndicate_pubkey = install_syndicate_public_key( config )
+   if syndicate_pubkey is None:
+       log.error("Failed to obtain syndicate public key")
+       sys.exit(1)
+
+   # install type aliases for create_gateway 
+   type_aliases = "UG=1\nRG=2\nAG=3\n"
+   types_path = conf.object_file_path( config, "gateway", "types.conf" )
+   with open(types_path, "w") as f:
+      f.write( type_aliases )
+      f.flush()
+
+   sys.exit(0)
+
+
+# -------------------   
+def main( argv ):
+   """
+   Top-level method for calling RPC methods.
+   * Takes an argument vector from the command line, loads up the 
+   config files and keys from persistent storage, and generates our call options.
+   * Looks up the method, parses the arguments with its designated parser.
+   * Fetch the Syndicate public key if it is not yet local, and prmopt the user to trust it.
+   * Generates the request, and either sign it with the user's private key, or 
+   uses OpenID to authenticate the user with the MS's OpenID provider.
+   * Sends the request, receives the response, and performs any method-specific post-processing.
+   """
+   
+   # get opts, methodname, args 
+   opts, method_name, args, kw = parse_argv( argv )
+   if method_name == "setup":
+       if len(args) != 3:
+           print >> sys.stderr, "Usage: %s setup USERNAME /path/to/private/key MS_URL" % sys.argv[0]
+           sys.exit(1)
+
+       do_setup( opts, args[0], args[1], args[2] )
+       sys.exit(0)
+
+   CONFIG = init_config( argv, method_name )
+   if CONFIG is None:
+       return None
+
+   # called from main 
+   CONFIG["__from_main__"] = True
+ 
+   # special cases
+   if method_name == "setup":
+       do_setup( CONFIG, argv[2] )
+       sys.exit(0)
+   
+   if method_name == "help":
+       
+       if len(args) == 0:
+           conf.usage( argv[0] )
+       
+       else:
+           do_method_help( CONFIG, args[0] )
+           sys.exit(0)
+   
+   if method_name == "reload_certs":
+       if len(args) != 3:
+           print >> sys.stderr, "Usage: %s reload_certs USER_NAME_OR_ID VOLUME_NAME_OR_ID GATEWAY_NAME_OR_ID" % sys.argv[0]
+           sys.exit(1)
+       
+       try:
+           certs.certs_reload( CONFIG, args[0], args[1], args[2] )
+           sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, 'Failed to reload certs'
+           sys.exit(1)
+
+
+   elif method_name == "reload_driver":
+       if len(args) != 2:
+           print >> sys.stderr, "Usage: %s reload_driver VOLUME_NAME GATEWAY_NAME" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           certs.driver_reload( CONFIG, args[0], args[1] )
+           sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to reload driver"
+           sys.exit(1)
+
+   elif method_name == "export_volume":
+       if len(args) != 2:
+           print >> sys.stderr, "Usage: %s export_volume VOLUME_NAME_OR_ID PATH" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = export_object_files( CONFIG, "volume", args[0], args[1] )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to export volume files"
+           sys.exit(1)
+
+
+   elif method_name == "export_gateway":
+       if len(args) != 2:
+           print >> sys.stderr, "Usage: %s export_gateway GATEWAY_NAME_OR_ID PATH" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = export_object_files( CONFIG, "gateway", args[0], args[1] )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to export gateway files"
+           sys.exit(1)
+
+
+   elif method_name == "export_user":
+       if len(args) != 2:
+           print >> sys.stderr, "Usage: %s export_user USER_EMAIL_OR_ID PATH" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = export_object_files( CONFIG, "user", args[0], args[1] )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to export user files"
+           sys.exit(1)
+
+   elif method_name == "import_volume":
+       if len(args) < 1:
+           print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       force = False
+       if len(args) == 2 and args[1] == 'force':
+           force = True
+       else:
+           print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = import_object_files( CONFIG, "volume", args[0], force=force )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to import volume files"
+           sys.exit(1)
+
+
+   elif method_name == "import_gateway":
+       if len(args) < 1:
+           print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       force = False
+       if len(args) == 2 and args[1] == 'force':
+           force = True
+       else:
+           print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = import_object_files( CONFIG, "gateway", args[0], force=force )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to import gateway files"
+           sys.exit(1)
+
+
+   elif method_name == "import_user":
+       if len(args) < 1:
+           print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       force = False
+       if len(args) == 2 and args[1] == 'force':
+           force = True
+       else:
+           print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
+           sys.exit(1)
+
+       try:
+           rc = import_object_files( CONFIG, "user", args[0], force=force )
+           if not rc:
+               sys.exit(1)
+           else:
+               sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to import user files"
+           sys.exit(1)
+
+
+   # debug
+   for opt in CONFIG.keys():
+      log.debug( "%s = %s" % (opt, CONFIG[opt] ) )
+   
+   # sanity check
+   if not CONFIG.has_key("username") or not CONFIG.has_key("params"):
+      print >> sys.stderr, "Missing user ID or method"
+      conf.usage( argv[0] )
+      
+   # do the call
+   rpc_client = client.make_rpc_client( CONFIG )
+   try:
+       result = client.ms_rpc( rpc_client, method_name, *args, **kw )
+       return result
+   except Exception, e:
+       log.exception(e)
+       do_method_help( CONFIG, method_name )
+       sys.exit(1)
+
+
+if __name__ == "__main__":
+   ret = main( sys.argv )
+   if ret is None:
+       sys.exit(1)
+       
+   pp = pprint.PrettyPrinter()
+   pp.pprint( ret )
+   
+   
+   
