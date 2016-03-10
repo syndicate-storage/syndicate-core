@@ -22,20 +22,23 @@ LIBSYNDICATE_UG_HEADERS := $(patsubst %.h,$(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.
 
 LIBSYNDICATE_UG_FILES := $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_SO) $(LIBSYNDICATE_UG_LIB)
 LIBSYNDICATE_UG_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG)/%,$(LIBDIR)/%,$(LIBSYNDICATE_UG_FILES))
-LIBSYNDICATE_UG_HEADERS_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h,$(INCLUDEDIR)/libsyndicate-filesystem/%.h,$(LIBSYNDICATE_UG_HEADERS))
+LIBSYNDICATE_UG_HEADERS_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h,$(INCLUDEDIR)/libsyndicate-ug/%.h,$(LIBSYNDICATE_UG_HEADERS))
 
 all: $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_HEADERS)
 
 $(LIBSYNDICATE_UG_LIB): $(OBJ)
 	@mkdir -p "$(shell dirname "$@")"
+	@rm -f "$@"
 	$(CPP) -shared -Wl,-soname,$(LIBSYNDICATE_UG_SONAME) -o "$@" $(OBJ) $(LIBINC) $(DEFS)
 
 $(LIBSYNDICATE_UG_SO): $(LIBSYNDICATE_UG_LIB)
 	@mkdir -p "$(shell dirname "$@")"
+	@rm -f "$@"
 	@ln -sf "$(shell basename "$(LIBSYNDICATE_UG_LIB)")" "$@"
 
 $(LIBSYNDICATE_UG): $(LIBSYNDICATE_UG_SO)
 	@mkdir -p "$(shell dirname "$@")"
+	@rm -f "$@"
 	@ln -sf "$(shell basename "$(LIBSYNDICATE_UG_SO)")" "$@"
 
 $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h: %.h
@@ -52,13 +55,13 @@ $(BUILD_LIBSYNDICATE_UG)/$(OBJDIR)/%.o : %.cpp
 
 .PHONY: install 
 install: $(LIBSYNDICATE_UG_INSTALL) $(LIBSYNDICATE_UG_HEADERS_INSTALL)
-	ldconfig
 
 $(LIBDIR)/%: $(BUILD_LIBSYNDICATE_UG)/%
 	@mkdir -p "$(shell dirname "$@")"
+	@rm -f "$@"
 	cp -a "$<" "$@"
 
-$(INCLUDEDIR)/libsyndicate-filesystem/%.h: $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h
+$(INCLUDEDIR)/libsyndicate-ug/%.h: $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h
 	@mkdir -p "$(shell dirname "$@")"
 	cat "$<" > "$@"
 

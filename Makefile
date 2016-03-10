@@ -24,6 +24,13 @@ ms: protobufs
 syndicate-python: protobufs ms libsyndicate-ug libsyndicate
 	$(MAKE) -C python
 
+.PHONY: install
+install:
+	$(MAKE) -C protobufs install
+	$(MAKE) -C libsyndicate install
+	$(MAKE) -C libsyndicate-ug install
+	$(MAKE) -C python install
+
 .PHONY: clean
 clean:
 	$(MAKE) -C libsyndicate clean
