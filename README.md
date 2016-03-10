@@ -11,7 +11,10 @@ To build, type:
     $ make
 ```
 
-**NOTE:**  At this time, there are no `install` targets for the executables (this will be added soon).  For now, executables are put into directories within `./build/out/bin`.
+To install, type:
+```
+    $ make install PREFIX=<your prefix> DESTDIR=<your destdir>
+```
 
 To build Syndicate, you will need the following tools, libraries, and header files:
 * [libcurl](http://curl.haxx.se/libcurl/)
