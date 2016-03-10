@@ -263,7 +263,7 @@ class Gateway( storagetypes.Object ):
       "name": (lambda cls, value: len( unicode(value).translate(dict((ord(char), None) for char in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.: ")) ) == 0 \
                                   and not is_int(value) \
                                   and len(value) > 0 ),
-      "gateway_public_key": (lambda cls, value: Gateway.is_valid_key( value, GATEWAY_RSA_KEYSIZE ) )
+      "gateway_public_key": (lambda cls, value: Gateway.is_valid_key( value, GATEWAY_RSA_KEYSIZE ) and Gateway.is_public_key( value ) )
    }
    
    
