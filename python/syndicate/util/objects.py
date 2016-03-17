@@ -1081,8 +1081,9 @@ class StubObject( object ):
       # find keyword argument?
       if not replaced and arg_name in kw.keys():
          ret = cls.replace_kw( arg_name, arg_value_func, kw[arg_name], lib )
-        
-         printable = ret[0].replace("\n", "\\n")
+       
+         printable = str(ret[0])
+         printable = printable.replace("\n", "\\n")
          if len(printable) > 50:
              printable = printable[:50] + "..."
 
@@ -2005,29 +2006,14 @@ class Gateway( StubObject ):
       
       if volume_name_or_id is not None:
          existing_volume_cert = load_volume_cert( config, volume_name_or_id )
+         if existing_volume_cert is not None:
+             volume_id = existing_volume_cert.volume_id
 
       elif existing_gateway_cert is not None:
          # get volume cert, and then volume name 
          volume_id = existing_gateway_cert.volume_id
          volume_name_or_id = str(volume_id)
          existing_volume_cert = load_volume_cert( config, str(volume_id) )
-
-         """
-         volume_name = load_volume_name( config, volume_id )
-         if volume_name is not None:
-            existing_volume_cert = load_volume_cert( config, volume_name )
-         """
-      
-      """
-      # given volume?
-      if existing_volume_cert is None and hasattr( lib, "volume_id" ):
-         volume_name = load_volume_name( config, volume_id )
-         if volume_name is not None:
-            existing_volume_cert = load_volume_cert( config, volume_name )
-      
-      if existing_volume_cert is None:
-         raise MissingCertException("No volume cert on file for '%s (%s)'" % (volume_name, volume_id))
-      """
 
       gateway_name = lib.name
       gateway_type = getattr(lib, "gateway_type", None)
@@ -2039,6 +2025,7 @@ class Gateway( StubObject ):
       public_key = None
       if private_key is not None:
           public_key = CryptoKey.importKey( private_key ).publickey().exportKey()
+
       cert_expires = getattr(lib, "cert_expires", None)
       caps = getattr(lib, "caps", None)
       driver_path = getattr(lib, "driver_path", None )
@@ -2095,28 +2082,6 @@ class Gateway( StubObject ):
       # need either volume ID or volume name
       if volume_name_or_id is None:
           missing.append("volume_name_or_id")
-
-      """
-      if volume_id is None:
-         if existing_gateway_cert is not None:
-            volume_id = existing_gateway_cert.volume_id 
-         
-         elif volume_name is not None:
-            # load from the database, if we can 
-            volume_id = load_volume_id( config, volume_name )
-            if volume_id is None:
-               missing.append("volume_name_or_id")
-               
-         else:
-            missing.append("volume_name_or_id")
-            
-      
-      if volume_name is None:
-         # we have the ID, so look up the name 
-         volume_name = load_volume_name( config, volume_id )
-         if volume_name is None:
-            missing.append("volume_name_or_id")
-      """
 
       if port is None:
          if existing_gateway_cert is not None:
@@ -2214,12 +2179,17 @@ class Gateway( StubObject ):
           if existing_gateway_cert is not None:
              
              # must increment
+             log.debug("cert version: %s --> %s" % (existing_gateway_cert.version, existing_gateway_cert.version + 1))
              cert_version = existing_gateway_cert.version + 1
           else:
              
              # first version of this gateway
+             log.debug("cert version is 1")
              cert_version = 1
-      
+       
+      else:
+          log.debug("Passed cert version %s" % cert_version)
+
       # generate a cert and sign it with the user's private key and the volume owner's private key
       gateway_cert = ms_pb2.ms_gateway_cert()
       
