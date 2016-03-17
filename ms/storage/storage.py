@@ -1008,7 +1008,7 @@ def update_gateway( g_name_or_id, **kw ):
 
    # version must be newer
    if gateway_cert.version < gateway.cert_version:
-       raise Exception("Stale cert version (%s < %s)" % (gateway_cert.cert_version, gateway.cert_version))
+       raise Exception("Stale cert version (%s < %s)" % (gateway_cert.version, gateway.cert_version))
 
    # if given a new cert bundle, put it in place
    if new_cert_bundle:
