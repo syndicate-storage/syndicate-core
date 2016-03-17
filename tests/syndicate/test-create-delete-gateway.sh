@@ -133,12 +133,12 @@ for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_N
 
    GW_NAME="$NAME-01"
 
-   # should fail (no keys present)
+   # should succeed, since we're the volume admin
    $SYNDICATE -c "$CONFIG_PATH" delete_gateway "$GW_NAME"
    RC=$?
 
-   if [ $RC -eq 0 ]; then 
-      test_fail "Deleted gateway $GW_NAME without the key"
+   if [ $RC -ne 0 ]; then 
+      test_fail "Failed to deleted gateway $GW_NAME without the key"
    fi
 done
 
@@ -150,12 +150,12 @@ for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_N
 
    GW_NAME="$NAME-01"
 
-   # should fail (NOT idempotent operation)
+   # should be idempotent
    $SYNDICATE -c "$CONFIG_PATH" delete_gateway "$GW_NAME"
    RC=$?
 
-   if [ $RC -eq 0 ]; then 
-      test_fail "Delete $GW_NAME idempotent"
+   if [ $RC -ne 0 ]; then 
+      test_fail "Delete $GW_NAME not idempotent"
    fi
 done
 
