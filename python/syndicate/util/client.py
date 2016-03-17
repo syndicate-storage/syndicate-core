@@ -264,7 +264,10 @@ def ms_rpc( proxy, method_name, *args, **kw ):
    method_callable = getattr( proxy, method_name )
 
    # NOTE: might cause an exception
-   log.debug("As %s, call %s(%s %s)" % (proxy.caller_username, method_name, ", ".join([str(a) for a in args]), ", ".join( ["%s=%s" % (str(k), str(kw[k])) for k in kw.keys()] )))
+   log.debug("As %s, call %s(%s %s)" % (proxy.caller_username, method_name, 
+       ", ".join(map(lambda x: x[:50] + "..." if len(x) > 50 else x, [str(a) for a in args])),
+       ", ".join(map(lambda x: x[:50] + "..." if len(x) > 50 else x, ["%s=%s" % (str(k), str(kw[k])) for k in kw.keys()]) )))
+
    ret = method_callable( *args, **kw )
    
    # process object-specific extra information, based on the returned value of this method.
