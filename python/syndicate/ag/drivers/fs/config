@@ -1,7 +1,7 @@
 {
    "DATASET_DIR": "/tmp/syndicate-AG-dataset",
    "EXEC_FMT":    "/usr/bin/python -m syndicate.ag.gateway",
-   "DRIVER":      "syndicate.ag.drivers.disk",
+   "DRIVER":      "syndicate.ag.drivers.fs",
    "DRIVER_FS_PLUGIN": "local",
    "DRIVER_FS_PLUGIN_CONFIG": {}
 }
