@@ -16,8 +16,7 @@
    limitations under the License.
 """
 
-from distutils.core import setup
-from distutils.extension import Extension
+from setuptools import setup, Extension
 from Cython.Distutils import build_ext
 
 import os
@@ -88,9 +87,6 @@ setup(name='syndicate',
                   'syndicate.ag',
                   'syndicate.ag.curation',
                   'syndicate.ag.datasets',
-                  'syndicate.ag.fs_driver_common',
-                  'syndicate.ag.fs_driver_common.fs_backends',
-                  'syndicate.ag.fs_driver_common.fs_backends.iplant_datastore',
                   'syndicate.rg',
                   'syndicate.rg.drivers',
                   'syndicate.rg.drivers.s3',
@@ -107,10 +103,7 @@ setup(name='syndicate',
                   'syndicate.rg.drivers.disk': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/disk'),
                   'syndicate.ag': os.path.join(ext_source_root, build_dir, 'syndicate/ag'),
                   'syndicate.ag.datasets': os.path.join(ext_source_root, build_dir, 'syndicate/ag/datasets'),
-                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation'),
-                  'syndicate.ag.fs_driver_common': os.path.join(ext_source_root, build_dir, 'syndicate/ag/fs_driver_common'),
-                  'syndicate.ag.fs_driver_common.fs_backends': os.path.join(ext_source_root, build_dir, 'syndicate/ag/fs_driver_common/fs_backends'),
-                  'syndicate.ag.fs_driver_common.fs_backends.iplant_datastore': os.path.join(ext_source_root, build_dir, 'syndicate/ag/fs_driver_common/fs_backends/iplant_datastore')
+                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation')
       },
       cmdclass = {"build_ext": build_ext},
       zip_safe=False)
