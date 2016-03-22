@@ -20,9 +20,9 @@
 #include "libsyndicate/gateway.h"
 
 struct SG_driver {
-   
-   SG_driver_conf_t* driver_conf;     // driver config params
-   SG_driver_secrets_t* driver_secrets;       // driver secrets
+  
+   struct SG_chunk driver_conf;     // serialized driver config
+   struct SG_chunk driver_secrets;  // serialized driver secrets
    struct SG_chunk driver_text;        // driver code
    
    void* cls;           // supplied by the driver on initialization
@@ -152,108 +152,11 @@ static int SG_parse_json_object( struct json_object** jobj_ret, char const* obj_
 }
 
 
-// load a base64-encoded string into a JSON object.
-// return 0 on success, and set *jobj_ret
-// return -ENOMEM on OOM 
-// return -EINVAL on failure to parse the string (either from base64 to binary, or from binary to json)
-static int SG_parse_b64_object( struct json_object** jobj_ret, char const* obj_b64, size_t obj_b64_len ) {
-
-   // deserialize...
-   char* obj_json = NULL;
-   size_t obj_json_len = 0;
-   
-   int rc = 0;
-   
-   rc = md_base64_decode( obj_b64, obj_b64_len, &obj_json, &obj_json_len );
-   if( rc != 0 ) {
-      
-      SG_error("md_base64_decode rc = %d\n", rc );
-      
-      if( rc != -ENOMEM ) {
-         return -EINVAL;
-      }
-      else {
-         return rc;
-      }
-   }
-   
-   rc = SG_parse_json_object( jobj_ret, obj_json, obj_json_len );
-   if( rc != 0 ) {
-      
-      SG_error("SG_parse_json_object rc = %d\n", rc );
-   }
-   
-   SG_safe_free( obj_json );
-   
-   return rc;
-}
-
-
-// parse the config 
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL on parse error
-static int SG_parse_driver_config( SG_driver_conf_t* driver_conf, char const* driver_conf_b64, size_t driver_conf_b64_len ) {
-   
-   struct json_object* jobj = NULL;
-   
-   int rc = SG_parse_b64_object( &jobj, driver_conf_b64, driver_conf_b64_len );
-   if( rc != 0 ) {
-      
-      SG_error("Failed to parse JSON object, rc = %d\n", rc );
-      return rc;
-   }
-   
-   // iterate through the fields 
-   json_object_object_foreach( jobj, key, val ) {
-      
-      // each field needs to be a string...
-      enum json_type jtype = json_object_get_type( val );
-      if( jtype != json_type_string ) {
-         
-         SG_error("%s is not a JSON string\n", key );
-         rc = -EINVAL;
-         break;
-      }
-      
-      // get the value 
-      char const* value = json_object_get_string( val );
-      if( value == NULL ) {
-         
-         // OOM 
-         rc = -ENOMEM;
-         break;
-      }
-      
-      size_t value_len = strlen(value);         // json_object_get_string_len( val );
-      
-      try {
-         // put it into the config 
-         string key_s( key );
-         string value_s( value, value_len );
-         
-         (*driver_conf)[ key_s ] = value_s;
-      }
-      catch( bad_alloc& ba ) {
-         
-         // OOM 
-         rc = -ENOMEM;
-         break;
-      }
-   }
-   
-   // done with this 
-   json_object_put( jobj );
-   
-   return rc;
-}
-
-
 // decode and decrypt secrets and put the plaintext into an mlock'ed buffer 
 // return 0 on success
 // return -ENOMEM on OOM 
 // return -EINVAL on failure to parse
-int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, char** ret_obj_json, size_t* ret_obj_json_len, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
+int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, char** ret_buf, size_t* ret_buflen, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
    
    // deserialize...
    char* obj_ctext = NULL;
@@ -269,10 +172,10 @@ int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey,
    }
    
    // decrypt...
-   char* obj_json = NULL;
-   size_t obj_json_len = 0;
+   char* obj_buf = NULL;
+   size_t obj_buflen = 0;
    
-   rc = md_decrypt( gateway_pubkey, gateway_pkey, obj_ctext, obj_ctext_len, &obj_json, &obj_json_len );
+   rc = md_decrypt( gateway_pubkey, gateway_pkey, obj_ctext, obj_ctext_len, &obj_buf, &obj_buflen );
    
    SG_safe_free( obj_ctext );
    
@@ -282,10 +185,33 @@ int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey,
       return -EINVAL;
    }
    
-   *ret_obj_json = obj_json;
-   *ret_obj_json_len = obj_json_len;
+   *ret_buf = obj_buf;
+   *ret_buflen = obj_buflen;
    
    return rc;
+}
+
+
+// parse the config
+// return 0 on success
+// return -ENOMEM on OOM 
+// return -EINVAL on failure to parse
+static int SG_parse_driver_config( struct SG_chunk* config, char const* driver_config_b64, size_t driver_config_b64_len ) {
+   
+   char* obj_buf = NULL;
+   size_t obj_buflen = 0;
+   int rc = 0;
+  
+   // deserialize 
+   rc = md_base64_decode( driver_config_b64, driver_config_b64_len, &obj_buf, &obj_buflen );
+   if( rc != 0 ) {
+      
+      SG_error("md_base64_decode rc = %d\n", rc );
+      return rc; 
+   }
+
+   SG_chunk_init( config, obj_buf, obj_buflen );
+   return 0;
 }
 
 
@@ -293,69 +219,22 @@ int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey,
 // return 0 on success
 // return -ENOMEM on OOM 
 // return -EINVAL on failure to parse
-static int SG_parse_driver_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, SG_driver_secrets_t* driver_secrets, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
+static int SG_parse_driver_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, struct SG_chunk* secrets, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
    
-   char* obj_json = NULL;
-   size_t obj_json_len = 0;
-   struct json_object* jobj = NULL;
+   char* obj_buf = NULL;
+   size_t obj_buflen = 0;
    int rc = 0;
    
    // decrypt json
-   rc = SG_driver_decrypt_secrets( gateway_pubkey, gateway_pkey, &obj_json, &obj_json_len, driver_secrets_b64, driver_secrets_b64_len );
+   rc = SG_driver_decrypt_secrets( gateway_pubkey, gateway_pkey, &obj_buf, &obj_buflen, driver_secrets_b64, driver_secrets_b64_len );
    if( rc != 0 ) {
       
       SG_error("Failed to decrypt, rc = %d\n", rc );
       return rc;
    }
-   
-   // parse json
-   rc = SG_parse_json_object( &jobj, obj_json, obj_json_len );
-   SG_safe_free( obj_json );
-   
-   if( rc != 0 ) {
-      SG_error("SG_parse_json_object rc = %d\n", rc );
-      return rc;
-   }
-   
-   // iterate through the fields 
-   json_object_object_foreach( jobj, key, val ) {
-      
-      // each field needs to be a string...
-      enum json_type jtype = json_object_get_type( val );
-      if( jtype != json_type_string ) {
-         SG_error("%s is not a JSON string\n", key );
-         rc = -EINVAL;
-         break;
-      }
-      
-      // get the value 
-      char const* encrypted_value = json_object_get_string( val );
-      if( encrypted_value == NULL ) {
-         
-         rc = -ENOMEM;
-         break;
-      }
-      
-      size_t encrypted_value_len = strlen(encrypted_value);
-      
-      try {
-         // put it into the secrets
-         string key_s( key );
-         string value_s( encrypted_value, encrypted_value_len );
-         
-         (*driver_secrets)[ key_s ] = value_s;
-      }
-      catch( bad_alloc& ba ) {
-         
-         rc = -ENOMEM;
-         break;
-      }
-   }
-   
-   // done with this 
-   json_object_put( jobj );
-   
-   return rc;
+
+   SG_chunk_init( secrets, obj_buf, obj_buflen );
+   return 0;
 }
 
 
@@ -445,23 +324,23 @@ static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, s
       
    // driver_text should be a JSON object...
    struct json_object* toplevel_obj = NULL;
-   
+   struct SG_chunk driver_conf;
+   struct SG_chunk driver_secrets;
+
+   memset( &driver_conf, 0, sizeof(struct SG_chunk) );
+   memset( &driver_secrets, 0, sizeof(struct SG_chunk) );
+
    char* driver_text = NULL;
    size_t driver_text_len = 0;
+   int rc = 0;
 
-   char const* json_b64 = NULL;
-   size_t json_b64_len = 0;
-
-   SG_driver_conf_t* driver_conf = SG_safe_new( SG_driver_conf_t() );
-   SG_driver_secrets_t* driver_secrets = SG_safe_new( SG_driver_secrets_t() );
-
-   if( driver_conf == NULL || driver_secrets == NULL ) {
-      SG_safe_delete( driver_conf );
-      SG_safe_delete( driver_secrets );
-      return -ENOMEM;
-   }
+   const char* config_b64 = NULL;
+   size_t config_b64_len = 0;
    
-   int rc = SG_parse_json_object( &toplevel_obj, driver_full, driver_full_len );
+   const char* secrets_b64 = NULL;
+   size_t secrets_b64_len = 0;
+
+   rc = SG_parse_json_object( &toplevel_obj, driver_full, driver_full_len );
    if( rc != 0 ) {
       
       SG_error("SG_parse_json_object rc = %d\n", rc );
@@ -469,31 +348,28 @@ static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, s
    }
    
    // get the driver conf JSON 
-   json_b64 = SG_load_json_string_by_key( toplevel_obj, "config", &json_b64_len );
-   if( json_b64 != NULL && json_b64_len != 0 ) {
+   config_b64 = SG_load_json_string_by_key( toplevel_obj, "config", &config_b64_len );
+   if( config_b64 != NULL && config_b64_len != 0 ) {
       
       // load it
-      rc = SG_parse_driver_config( driver_conf, json_b64, json_b64_len );
+      rc = SG_parse_driver_config( &driver_conf, config_b64, config_b64_len );
       if( rc != 0 ) {
          
          SG_error("SG_parse_driver_config rc = %d\n", rc );
-         SG_safe_delete( driver_conf );
-         SG_safe_delete( driver_secrets );
          json_object_put( toplevel_obj );
          return rc;
       }
    }
    
    // get the driver secrets JSON 
-   json_b64 = SG_load_json_string_by_key( toplevel_obj, "secrets", &json_b64_len );
-   if( json_b64 != NULL || json_b64_len != 0 ) {
+   secrets_b64 = SG_load_json_string_by_key( toplevel_obj, "secrets", &secrets_b64_len );
+   if( secrets_b64 != NULL || secrets_b64_len != 0 ) {
       
       // load it 
-      rc = SG_parse_driver_secrets( pubkey, privkey, driver_secrets, json_b64, json_b64_len );
+      rc = SG_parse_driver_secrets( pubkey, privkey, &driver_secrets, secrets_b64, secrets_b64_len );
       if( rc != 0 ) {
-         SG_error("SG_parse_driver_config rc = %d\n", rc );
-         SG_safe_delete( driver_conf );
-         SG_safe_delete( driver_secrets );
+         SG_error("SG_parse_driver_secrets rc = %d\n", rc );
+         SG_chunk_free( &driver_conf );
          json_object_put( toplevel_obj );
          return rc;
       }
@@ -508,57 +384,27 @@ static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, s
    }
    else if( rc != 0 ) {
       SG_error("SG_parse_json_b64_string('driver') rc = %d\n", rc );
-      SG_safe_delete( driver_conf );
-      SG_safe_delete( driver_secrets );
+      SG_chunk_free( &driver_conf );
+      SG_chunk_free( &driver_secrets );
       json_object_put( toplevel_obj );
       return rc;
    }
    
    // instantiate driver
-   if( driver->driver_conf != NULL ) {
-      SG_safe_delete( driver->driver_conf );
-   } 
+   SG_chunk_free( &driver->driver_conf );
    driver->driver_conf = driver_conf;
 
-   if( driver->driver_secrets != NULL ) {
-      SG_safe_delete( driver->driver_secrets );
-   }
+   SG_chunk_free( &driver->driver_secrets );
    driver->driver_secrets = driver_secrets;
-   
-   if( driver->driver_text.data != NULL ) {
-      SG_chunk_free( &driver->driver_text );
-   }
-   driver->driver_text.data = driver_text;
-   driver->driver_text.len = driver_text_len;
+
+   SG_chunk_free( &driver->driver_text );
+   SG_chunk_init( &driver->driver_text, driver_text, driver_text_len );
    
    // free memory
    json_object_put( toplevel_obj );
    return rc;
 }
 
-
-// given a JSON object, decode and load a base64-encoded binary field into a stream of bytes (decoded)
-// return 0 on success 
-// return -EINVAL if we could not load the JSON for some reason
-int SG_driver_load_binary_field( char* specfile_json, size_t specfile_json_len, char const* field_name, char** field_value, size_t* field_value_len ) {
-   
-   struct json_object* toplevel_obj = NULL;
-   
-   int rc = SG_parse_json_object( &toplevel_obj, specfile_json, specfile_json_len );
-   if( rc != 0 ) {
-      SG_error("SG_parse_json_object rc = %d\n", rc );
-      return -EINVAL;
-   }
-   
-   rc = SG_parse_json_b64_string( toplevel_obj, field_name, field_value, field_value_len );
-   if( rc != 0 ) {
-      SG_error("SG_parse_json_b64_string rc = %d\n", rc );
-   }
-   
-   json_object_put( toplevel_obj );
-   
-   return rc;
-}
 
 // read-lock a driver
 int SG_driver_rlock( struct SG_driver* driver ) {
@@ -667,47 +513,6 @@ int SG_driver_init( struct SG_driver* driver, struct md_syndicate_conf* conf,
 }
 
 
-// convert config/secrets into a JSON object string
-// return 0 on success, and populate *chunk
-// return -ENOMEM on OOM 
-// return -EOVERFLOW if there are too many bytes to serialize
-static int SG_driver_conf_serialize( SG_driver_conf_t* conf, struct SG_chunk* chunk ) {
-    
-   char* data = NULL;
-
-   // build up a JSON object and serialize it
-   struct json_object* conf_json = json_object_new_object();
-   if( conf_json == NULL ) {
-      return -ENOMEM;
-   }
-
-   for( SG_driver_conf_t::iterator itr = conf->begin(); itr != conf->end(); itr++ ) {
-
-      // serialize
-      struct json_object* strobj = json_object_new_string( itr->second.c_str() );
-      if( strobj == NULL ) {
-
-         json_object_put( conf_json );
-         return -ENOMEM;
-      }
-
-      // put 
-      json_object_object_add( conf_json, itr->first.c_str(), strobj );
-   }
-
-   // serialize...
-   data = SG_strdup_or_null( json_object_to_json_string( conf_json ) );
-   json_object_put( conf_json );
-
-   if( data == NULL ) {
-      return -ENOMEM;
-   }
-
-   SG_chunk_init( chunk, data, strlen(data) );
-   return 0;
-} 
-
-
 // spawn a driver's process groups
 // return 0 on success
 // return -ENOMEM on OOM
@@ -736,35 +541,6 @@ int SG_driver_procs_start( struct SG_driver* driver ) {
       return -ENOMEM;
    }
 
-   struct SG_chunk config;
-   struct SG_chunk secrets;
-   
-   memset( &config, 0, sizeof(struct SG_chunk) );
-   memset( &secrets, 0, sizeof(struct SG_chunk) );
-   
-   // config from driver 
-   rc = SG_driver_conf_serialize( driver->driver_conf, &config );
-   if( rc != 0 ) {
-      
-      SG_error("SG_driver_conf_serialize rc = %d\n", rc );
-      
-      SG_safe_free( groups );
-      SG_safe_free( initial_procs );
-      return rc;
-   }
-   
-   // secrets from driver
-   rc = SG_driver_conf_serialize( driver->driver_secrets, &secrets ); 
-   if( rc != 0 ) {
-      
-      SG_error("SG_driver_conf_serialize rc = %d\n", rc );
-      
-      SG_safe_free( groups );
-      SG_safe_free( initial_procs );
-      SG_chunk_free( &config );
-      return rc;
-   }
-   
    for( size_t i = 0; i < driver->num_roles; i++ ) {
       
       // each role gets its own group
@@ -807,7 +583,7 @@ int SG_driver_procs_start( struct SG_driver* driver ) {
           SG_debug("Start: %s %s (instance %d)\n", driver->exec_str, driver->roles[i], j );
 
           // start this process 
-          rc = SG_proc_start( initial_procs[proc_idx], driver->exec_str, driver->roles[i], driver->conf->helper_env, &config, &secrets, &driver->driver_text );
+          rc = SG_proc_start( initial_procs[proc_idx], driver->exec_str, driver->roles[i], driver->conf->helper_env, &driver->driver_conf, &driver->driver_secrets, &driver->driver_text );
           if( rc != 0 ) {
 
              SG_debug("Wait for instance '%s' (%d) to die\n", driver->roles[i], SG_proc_pid( initial_procs[proc_idx] ) );
@@ -885,10 +661,6 @@ SG_driver_procs_start_finish:
    }
    
    // free memory 
-   SG_chunk_free( &config );
-   munlock( secrets.data, secrets.len );
-   SG_chunk_free( &secrets );
-
    SG_safe_free( initial_procs );
    return rc;
 }
@@ -974,8 +746,6 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
    SG_driver_wlock( driver );
    
    int reload_rc = 0;
-   struct SG_chunk serialized_conf;
-   struct SG_chunk serialized_secrets;
    int rc = 0;
   
    rc = SG_parse_driver( driver, driver_text, driver_text_len, pubkey, privkey );
@@ -987,23 +757,6 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
       return -EPERM;
    }
 
-   rc = SG_driver_conf_serialize( driver->driver_conf, &serialized_conf );
-   if( rc != 0 ) {
-
-      SG_error("SG_driver_conf_serialize rc = %d\n", rc );
-      SG_driver_unlock( driver );
-      return -EPERM;
-   }
-
-   rc = SG_driver_conf_serialize( driver->driver_secrets, &serialized_secrets );
-   if( rc != 0 ) {
-
-      SG_error("SG_driver_conf_serialize rc = %d\n", rc );
-      SG_driver_unlock( driver );
-      SG_chunk_free( &serialized_conf );
-      return -EPERM;
-   }
-   
    // restart the workers, if they're running
    if( driver->groups != NULL ) {
     
@@ -1015,7 +768,7 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
       
          // do not allow any subsequent requests for this group
          SG_proc_group_wlock( group );
-         rc = SG_proc_group_reload( group, driver->exec_str, &serialized_conf, &serialized_secrets, &driver->driver_text );
+         rc = SG_proc_group_reload( group, driver->exec_str, &driver->driver_conf, &driver->driver_secrets, &driver->driver_text );
          SG_proc_group_unlock( group );
          
          if( rc != 0 ) {
@@ -1031,8 +784,6 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
       rc = reload_rc;
    }
    
-   SG_chunk_free( &serialized_conf );
-   SG_chunk_free( &serialized_secrets );
    SG_driver_unlock( driver );
    return rc;
 }
@@ -1047,9 +798,8 @@ int SG_driver_shutdown( struct SG_driver* driver ) {
    int rc = 0;
    
    SG_driver_wlock( driver );
-   
-   SG_safe_delete( driver->driver_conf );
-   SG_safe_delete( driver->driver_secrets );
+   SG_chunk_free( &driver->driver_conf );
+   SG_chunk_free( &driver->driver_secrets );
 
    if( driver->groups != NULL ) {
 
@@ -1066,102 +816,6 @@ int SG_driver_shutdown( struct SG_driver* driver ) {
    pthread_rwlock_destroy( &driver->reload_lock );
    
    memset( driver, 0, sizeof(struct SG_driver) );
-   return rc;
-}
-
-
-// get a config value
-// return 0 on success, and put the value and length into *value and *len (*value will be malloc'ed)
-// return -ENONET if no such config key exists 
-// return -ENOMEM if OOM
-int SG_driver_get_config( struct SG_driver* driver, char const* key, char** value, size_t* len ) {
-   
-   SG_driver_rlock( driver );
-   
-   if( driver->driver_conf == NULL ) {
-      
-      SG_driver_unlock( driver );
-      return -ENOENT;
-   }
-   
-   int rc = 0;
-   
-   try {
-      SG_driver_conf_t::iterator itr = driver->driver_conf->find( string(key) );
-      
-      if( itr != driver->driver_conf->end() ) {
-         
-         size_t ret_len = itr->second.size() + 1;
-         
-         char* ret = SG_CALLOC( char, ret_len );
-         if( ret == NULL ) {
-            
-            rc = -ENOMEM;
-         }
-         else {
-            memcpy( ret, itr->second.data(), ret_len );
-            
-            *value = ret;
-            *len = ret_len;
-         }
-      }
-      else {
-         rc = -ENOENT;
-      }
-   }
-   catch( bad_alloc& ba ) {
-      
-      rc = -ENOMEM;
-   }
-   
-   SG_driver_unlock( driver );
-   return rc;
-}
-
-
-// get a secret value 
-// return 0 on success, and put the value and length in *value and *len (*value will be malloc'ed)
-// return -ENOENT if there is no such secret
-// return -ENOMEM if OOM
-int SG_driver_get_secret( struct SG_driver* driver, char const* key, char** value, size_t* len ) {
-   
-   SG_driver_rlock( driver );
-   
-   if( driver->driver_secrets == NULL ) {
-      SG_driver_unlock( driver );
-      return -ENOENT;
-   }
-   
-   int rc = 0;
-   
-   try {
-      SG_driver_conf_t::iterator itr = driver->driver_secrets->find( string(key) );
-      
-      if( itr != driver->driver_secrets->end() ) {
-         
-         size_t ret_len = itr->second.size() + 1;
-         char* ret = SG_CALLOC( char, ret_len );
-         
-         if( ret == NULL ) { 
-            
-            rc = -ENOMEM;
-         }
-         else {
-            memcpy( ret, itr->second.data(), ret_len );
-            
-            *value = ret;
-            *len = ret_len;
-         }
-      }
-      else {
-         rc = -ENOENT;
-      }
-   }
-   catch( bad_alloc& ba ) {
-      rc = -ENOMEM;
-   }
-   
-   SG_driver_unlock( driver );
    return rc;
 }
 

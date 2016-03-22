@@ -48,15 +48,10 @@ int SG_driver_procs_stop( struct SG_driver* driver );
 int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* privkey, char const* driver_text, size_t driver_text_len );
 int SG_driver_shutdown( struct SG_driver* driver );
 
-// get fields
-int SG_driver_load_binary_field( char* json_str, size_t json_str_len, char const* field_name, char** field_value, size_t* field_value_len );
-
 // driver config API 
-int SG_driver_get_config( struct SG_driver* driver, char const* key, char** value, size_t* len );
-int SG_driver_get_secret( struct SG_driver* driver, char const* key, char** value, size_t* len );
 int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char const* key, char** value, size_t* value_len );
 int SG_driver_get_chunk( char const* driver_text, size_t driver_text_len, char const* key, struct SG_chunk* chunk ); 
-int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, char** ret_obj_json, size_t* ret_obj_json_len, char const* driver_secrets_b64, size_t driver_secrets_b64_len );
+int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, char** ret_buf, size_t* ret_buflen, char const* driver_secrets_b64, size_t driver_secrets_b64_len );
 
 // communication 
 char* SG_driver_reqdat_to_path( struct SG_request_data* reqdat );
