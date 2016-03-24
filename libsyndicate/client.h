@@ -38,6 +38,7 @@ int SG_client_WRITE_data_init( struct SG_client_WRITE_data* dat );
 int SG_client_WRITE_data_set_write_delta( struct SG_client_WRITE_data* dat, struct SG_manifest* write_delta );
 int SG_client_WRITE_data_set_mtime( struct SG_client_WRITE_data* dat, struct timespec* mtime );
 int SG_client_WRITE_data_set_mode( struct SG_client_WRITE_data* dat, mode_t mode );
+int SG_client_WRITE_data_set_size( struct SG_client_WRITE_data* dat, uint64_t mode );
 int SG_client_WRITE_data_set_owner_id( struct SG_client_WRITE_data* dat, uint64_t owner_id );
 int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uint64_t volume_id, uint64_t coordinator_id, uint64_t file_id, int64_t file_version );
 int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entry* ent );
