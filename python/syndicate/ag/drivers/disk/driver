@@ -123,6 +123,8 @@ def next_dataset( driver_config, driver_secrets ):
         if next_path is None:
             # no more data
             # stop calling this method
+            while True:
+                time.sleep(1.0)
             return False
 
         full_path = os.path.join( dataset_dir, next_path )
@@ -133,11 +135,11 @@ def next_dataset( driver_config, driver_secrets ):
 
         if stat.S_ISDIR( sb.st_mode ):
             # directory 
-            cmd = gateway.make_metadata_command( "create", "directory", 0555, None, next_path )
+            cmd = gateway.make_metadata_command( "put", "directory", 0555, None, next_path )
 
         elif stat.S_ISREG( sb.st_mode ):
             # file 
-            cmd = gateway.make_metadata_command( "create", "file", 0555, sb.st_size, next_path )
+            cmd = gateway.make_metadata_command( "put", "file", 0555, sb.st_size, next_path )
 
         if cmd is not None:
             # have a command!
@@ -148,6 +150,7 @@ def next_dataset( driver_config, driver_secrets ):
             continue
 
     # send the command to the AG and get back the result
+    gateway.log_error("Crawl %s" % next_path)
     rc = gateway.crawl( cmd )
     if rc != 0:
         gateway.log_error( "Failed to crawl %s" % cmd['path'] )
