@@ -27,6 +27,8 @@
 
 #include "ini.h"
 
+static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyvalue );
+
 // stacktrace for uncaught C++ exceptions 
 void md_uncaught_exception_handler(void) {
    
@@ -460,10 +462,15 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    int rc = 0;
    struct mlock_buf gateway_pkey;
    
+   char envar_user_id[100];
+   char envar_volume_id[100];
+   char envar_gateway_id[100];
+   char envar_config_path[PATH_MAX+100];
+
    ms::ms_user_cert user_cert;
    ms::ms_user_cert volume_owner_cert;
    struct ms_gateway_cert* gateway_cert = NULL;         // our cert
-   
+
    GOOGLE_PROTOBUF_VERIFY_VERSION;
    rc = curl_global_init( CURL_GLOBAL_ALL );
    
@@ -525,6 +532,51 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    if( rc != 0 && rc != -ENOENT ) {
       
       SG_error("md_driver_reload rc = %d\n", rc );
+      return rc;
+   }
+
+   // update our environment with the volume name, username, and gateway name 
+   rc = snprintf( envar_user_id, 100, "SYNDICATE_USER_ID=%" PRIu64, user_cert.user_id() );
+   if( rc >= 100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = snprintf( envar_volume_id, 100, "SYNICATE_VOLUME_ID=%" PRIu64, volume_cert->volume_id() );
+   if( rc >= 100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = snprintf( envar_gateway_id, 100, "SYNDICATE_GATEWAY_ID=%" PRIu64, c->gateway );
+   if( rc >= 100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = snprintf( envar_config_path, PATH_MAX+100, "SYNDICATE_CONFIG_PATH=%s", c->config_file_path );
+   if( rc >= PATH_MAX+100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = md_conf_add_envar( c, envar_user_id );
+   if( rc != 0 ) {
+      return rc;
+   }
+
+   rc = md_conf_add_envar( c, envar_volume_id );
+   if( rc != 0 ) { 
+      return rc;
+   }
+
+   rc = md_conf_add_envar( c, envar_gateway_id );
+   if( rc != 0 ) {
+      return rc;
+   }
+
+   rc = md_conf_add_envar( c, envar_config_path );
+   if( rc != 0 ) {
       return rc;
    }
    
@@ -659,6 +711,44 @@ long md_conf_parse_long( char const* value, long* ret ) {
    }
    return 0;
 }
+
+
+// add an environment variable.
+// keyvalue will be cloned, so the caller can free it 
+// return 0 on success
+// return -ENOMEM on OOM
+static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyvalue ) {
+
+    char* value_dup = strdup( keyvalue );
+    if( value_dup == NULL ) {
+       return -ENOMEM;
+    }
+
+    if( conf->num_helper_envs >= conf->max_helper_envs ) {
+        if( conf->max_helper_envs == 0 ) {
+           conf->max_helper_envs = 2;
+        }
+        else {
+           conf->max_helper_envs *= 2;
+        }
+         
+        char** new_helper_env = SG_CALLOC( char*, conf->max_helper_envs+1 );
+        if( new_helper_env == NULL ) {
+            SG_safe_free( value_dup );
+            return -ENOMEM;
+        }
+        memcpy( new_helper_env, conf->helper_env, sizeof(char*) * conf->num_helper_envs );
+
+        SG_safe_free( conf->helper_env );           
+        conf->helper_env = new_helper_env;
+    }
+      
+    conf->helper_env[ conf->num_helper_envs ] = value_dup;
+    conf->helper_env[ conf->num_helper_envs+1 ] = NULL;
+    conf->num_helper_envs++;
+    return 0;
+}
+
 
 // ini parser callback 
 // return 1 on success
@@ -825,44 +915,10 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
        
       // helpers section 
       if( strcmp( key, SG_CONFIG_ENVAR ) == 0 ) {
-         
-         // environment variable to feed into the helpers 
-         if( conf->helper_env == NULL ) {
-             
-             conf->helper_env = SG_CALLOC( char*, 2 );
-             if( conf->helper_env == NULL ) {
-                 return -ENOMEM;
-             }
-             
-             char* value_dup = strdup( value );
-             if( value_dup == NULL ) {
-                 return -ENOMEM;
-             }
-             
-             conf->helper_env[0] = value_dup;
-             conf->num_helper_envs = 1;
-             conf->max_helper_envs = 1;
-         }
-         else {
-             
-             if( conf->num_helper_envs >= conf->max_helper_envs ) {
-                 
-                 conf->max_helper_envs *= 2;
-                 char** new_helper_env = (char**)realloc( conf->helper_env, sizeof(char*) * conf->max_helper_envs );
-                 if( new_helper_env == NULL ) {
-                     return -ENOMEM;
-                 }
-                 
-                 conf->helper_env = new_helper_env;
-             }
-        
-             char* value_dup = strdup( value );
-             if( value_dup == NULL ) {
-                 return -ENOMEM;
-             }
-             
-             conf->helper_env[ conf->num_helper_envs ] = value_dup;
-             conf->num_helper_envs++;
+
+         rc = md_conf_add_envar( conf, value );
+         if( rc != 0 ) {
+            return rc;
          }
       }
 
