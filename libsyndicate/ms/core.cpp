@@ -646,6 +646,16 @@ uint64_t ms_client_get_volume_id( struct ms_client* client ) {
 }
 
 
+// get the volume owner ID 
+uint64_t ms_client_get_volume_owner_id( struct ms_client* client ) {
+   ms_client_config_rlock( client );
+
+   uint64_t ret = client->volume->volume_owner_id;
+
+   ms_client_config_unlock( client );
+   return ret;
+}
+
 // get the owner ID 
 uint64_t ms_client_get_owner_id( struct ms_client* client ) {
    ms_client_config_rlock( client );
