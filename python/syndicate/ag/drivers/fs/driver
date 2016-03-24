@@ -89,6 +89,7 @@ def _initFS( driver_config, driver_secrets, scan_dataset=False ):
         gateway.log_error(str(e))
         traceback.print_exc()
         return False
+    return True
 
 def _shutdownFS():
     global fs
@@ -167,16 +168,16 @@ def next_dataset( driver_config, driver_secrets ):
 
     # find the next file or directory 
     while True:
-
         next_stat = None
         if len(path_queue) > 0:
             next_stat = path_queue[0]
             path_queue.pop(0)
 
         if next_stat is None:
-            # no more data
-            # stop calling this method
-            return False
+            # no more data at this moment.
+            # sleep for 1-sec
+            time.sleep(1)
+            continue;
 
         flag = next_stat["flag"]
         stat = next_stat["stat"]
@@ -204,21 +205,19 @@ def next_dataset( driver_config, driver_secrets ):
                 cmd = gateway.make_metadata_command( "delete", "file", 0555, stat.size, publish_path )
 
         if cmd is not None:
-            # have a command!
-            break
+            # send the command to the AG and get back the result
+            rc = gateway.crawl( cmd )
+            if rc != 0:
+                gateway.log_error( "Failed to crawl %s" % cmd['path'] )
 
+            # have more data
+            return True
         else:
             # try next path 
+            gateway.log_error( "unhandled changes - could not create the command" )
             continue
 
-    # send the command to the AG and get back the result
-    rc = gateway.crawl( cmd )
-    if rc != 0:
-        gateway.log_error( "Failed to crawl %s" % cmd['path'] )
-
-    # have more data
-    return True
-
+    return False
 
 def read( request, chunk_fd, driver_config, driver_secrets ):
     """
