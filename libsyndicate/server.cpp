@@ -1091,14 +1091,24 @@ static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Re
       
       ms_client_config_rlock( ms );
       
-      // from the admin tool.  verify that it's from the volume owner  
-      rc = md_verify< SG_messages::Request >( ms->volume->volume_public_key, msg );
-      
+      // from the admin tool.  verify that it's from the volume owner or the gateway owner 
+      // (i.e. signed by the volume owner's private key, or the gateway's own private key)
+      if( ms_client_get_volume_owner_id( ms ) == msg->user_id() ) {
+          rc = md_verify< SG_messages::Request >( ms->volume->volume_public_key, msg );
+      }
+      else if( SG_gateway_user_id( gateway ) == msg->user_id() ) { 
+          rc = md_verify< SG_messages::Request >( ms->gateway_pubkey, msg );
+      }
+      else {
+          SG_error("%s", "Message did not come from either the volume owner or gateway owner\n");
+          rc = -EINVAL;
+      }
+
       ms_client_config_unlock( ms );
       
       if( rc != 0 ) {
          
-         SG_error("Invalid admin message from %" PRIu64 "\n", msg->user_id() );
+         SG_error("Invalid message from unauthorized recipient %" PRIu64 "\n", msg->user_id() );
          return -EPERM;
       }
    }
@@ -1211,7 +1221,7 @@ uint64_t SG_server_request_capabilities( uint64_t request_type ) {
       
       case SG_messages::Request::RELOAD: {
          
-         // we only need a signature from the volume owner
+         // we only need a signature from the volume owner or gateway owner
          caps_required = 0;
          break;
       }
@@ -2175,21 +2185,23 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
    }
    
    // request is legitimate and allowed
-   // look for the hint to reload the config
-   rc = ms_client_need_reload( ms, volume_id, request_msg->volume_version(), request_msg->cert_version() );
-   if( rc < 0 ) {
+   // look for the hint to reload the config, if this is not an outright demand for a refresh 
+   if( request_msg->request_type() != SG_messages::Request::RELOAD ) {
+       rc = ms_client_need_reload( ms, volume_id, request_msg->volume_version(), request_msg->cert_version() );
+       if( rc < 0 ) {
       
-      // log, but mask 
-      SG_warn( "ms_client_need_reload( %" PRIu64 ", %" PRIu64 ", %" PRIu64 " ) rc = %d\n", volume_id, request_msg->volume_version(), request_msg->cert_version(), rc );
-      rc = 0;
-   }
-   else if( rc > 0 ) {
+          // log, but mask 
+          SG_warn( "ms_client_need_reload( %" PRIu64 ", %" PRIu64 ", %" PRIu64 " ) rc = %d\n", volume_id, request_msg->volume_version(), request_msg->cert_version(), rc );
+          rc = 0;
+       }
+       else if( rc > 0 ) {
       
-      SG_safe_delete( request_msg );
+          SG_safe_delete( request_msg );
       
-      // yup, need a reload 
-      SG_gateway_start_reload( gateway );
-      return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
+          // yup, need a reload 
+          SG_gateway_start_reload( gateway );
+          return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
+       }
    }
    
    // request information
@@ -2498,7 +2510,22 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
       
       case SG_messages::Request::RELOAD: {
          
-         // TODO 
+         // only the volume owner or gateway owner can send this request
+         if( SG_gateway_user_id( gateway ) != reqdat->user_id && ms_client_get_volume_owner_id( ms ) != reqdat->user_id ) {
+             rc = md_HTTP_create_response_builtin( resp, 403 );
+         }
+         else {
+             // synchronously reload 
+             SG_debug("Reloadig config at the request of user %" PRIu64 "\n", reqdat->user_id );
+             SG_gateway_start_reload( gateway );
+             SG_gateway_wait_reload( gateway );
+             rc = 0;
+         }
+
+         SG_safe_delete( request_msg );
+         SG_request_data_free( reqdat );
+         SG_safe_free( reqdat );
+
          break;
       }
       
