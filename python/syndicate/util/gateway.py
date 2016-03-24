@@ -303,7 +303,7 @@ def check_metadata_command( cmd_dict ):
        if not cmd_dict.has_key(key):
            return False 
 
-   if cmd_dict['cmd'] not in ['C', 'U', 'D', 'F']:
+   if cmd_dict['cmd'] not in ['C', 'P', 'U', 'D', 'F']:
        return False 
 
    if cmd_dict['ftype'] not in ['F', 'D']:
