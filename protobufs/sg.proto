@@ -103,7 +103,7 @@ message Request {
 
    repeated ManifestBlock blocks = 9;    // for WRITE, indicates new block versions and hashes; for PUTCHUNKS, indicates the accompanying chunk information
    optional string new_fs_path = 10;     // for RENAME, indicates the new path 
-   optional uint64 new_size = 11;        // for TRUNCATE, indicates the new size
+   optional uint64 new_size = 11;        // for WRITE/TRUNCATE, indicates the new size
    optional int64 new_manifest_mtime_sec = 12;    // for WRITE, indicates the new manifest modification time (seconds)
    optional int32 new_manifest_mtime_nsec = 13;   // for WRITE, indicates the new manifest modification time (nanoseconds)
    
