@@ -165,6 +165,7 @@ int ms_client_get_portnum( struct ms_client* client );
 uint64_t ms_client_volume_version( struct ms_client* client );
 uint64_t ms_client_cert_version( struct ms_client* client );
 uint64_t ms_client_get_volume_id( struct ms_client* client );
+uint64_t ms_client_get_volume_owner_id( struct ms_client* client );
 uint64_t ms_client_get_owner_id( struct ms_client* client );
 uint64_t ms_client_get_gateway_id( struct ms_client* client );
 char* ms_client_get_volume_name( struct ms_client* client );
