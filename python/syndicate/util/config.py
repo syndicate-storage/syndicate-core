@@ -397,6 +397,21 @@ def syndicate_object_name( config ):
    return config["syndicate_host"] + ":" + str(config["syndicate_port"])
 
 
+def get_config_from_file( config_path ):
+    """
+    Load our configuration dict,
+    using only a filename.  sys.argv will be ignored.
+    This is useful for e.g. gateway drivers, which do not
+    have any extra config options in their sys.argv anyway.
+
+    Return a dict on success
+    Return None on error
+    """
+
+    fake_argv = [sys.argv[0], '-c', config_path]
+    return get_config_from_argv( fake_argv )
+
+
 def get_config_from_argv( argv ):
     """
     Load up our configuration dict, using
