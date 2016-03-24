@@ -778,6 +778,8 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    struct md_wq* iowqs = NULL;
    
    sem_t config_sem;
+   sem_t config_finished_sem;
+   pthread_mutex_t num_config_reload_waiters_lock;
    
    bool md_inited = false;
    bool ms_inited = false;
@@ -887,6 +889,8 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    
    // initialize config reload 
    sem_init( &config_sem, 0, 0 );
+   sem_init( &config_finished_sem, 0, 0 );
+   pthread_mutex_init( &num_config_reload_waiters_lock, NULL );
    
    // advance!
    config_inited = true;
@@ -1022,6 +1026,9 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    gateway->driver = driver;
    gateway->dl = dl;
    gateway->config_sem = config_sem;
+   gateway->config_finished_sem = config_finished_sem;
+   gateway->num_config_reload_waiters_lock = num_config_reload_waiters_lock;
+   gateway->num_config_reload_waiters = 0;
    gateway->iowqs = iowqs;
    gateway->num_iowqs = max_num_iowqs;
    gateway->first_arg_optind = first_arg_optind;
@@ -1103,6 +1110,8 @@ SG_gateway_init_error:
    
    if( config_inited ) {
       sem_destroy( &config_sem );
+      sem_destroy( &config_finished_sem );
+      pthread_mutex_destroy( &num_config_reload_waiters_lock );
    }
    
    if( ms_inited ) {
@@ -1268,6 +1277,8 @@ int SG_gateway_shutdown( struct SG_gateway* gateway ) {
    }
 
    sem_destroy( &gateway->config_sem );
+   sem_destroy( &gateway->config_finished_sem );
+   pthread_mutex_destroy( &gateway->num_config_reload_waiters_lock );
    
    memset( gateway, 0, sizeof(struct SG_gateway) );
    
@@ -1337,6 +1348,8 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       struct ms_gateway_cert* new_gateway_cert = NULL;
       char* new_driver_text = NULL;
       size_t new_driver_text_len = 0;
+
+      uint64_t num_waiters = 0;
       
       clock_gettime( CLOCK_REALTIME, &now );
       
@@ -1531,6 +1544,17 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       }
      
       rc = 0;
+      SG_debug("Reloaded at %ld.%ld\n", reload_deadline.tv_sec, reload_deadline.tv_nsec );
+
+      // signal anyone waiting that we're done 
+      pthread_mutex_lock( &gateway->num_config_reload_waiters_lock );
+      num_waiters = gateway->num_config_reload_waiters;
+      gateway->num_config_reload_waiters = 0;
+      pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
+
+      for( uint64_t i = 0; i < num_waiters; i++ ) {
+         sem_post( &gateway->config_finished_sem );
+      }
    }
 
    SG_debug("%s", "Leaving main loop\n");
@@ -1544,6 +1568,17 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
 int SG_gateway_start_reload( struct SG_gateway* gateway ) {
    
    sem_post( &gateway->config_sem );
+   return 0;
+}
+
+// wait for the reload to be done 
+int SG_gateway_wait_reload( struct SG_gateway* gateway ) {
+   
+   pthread_mutex_lock( &gateway->num_config_reload_waiters_lock );
+   gateway->num_config_reload_waiters++;
+   pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
+
+   sem_wait( &gateway->config_finished_sem );
    return 0;
 }
 
