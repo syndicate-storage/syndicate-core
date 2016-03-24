@@ -244,13 +244,23 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
        
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, path, fent );
+      md_entry_free( &inode_data );
       return rc;
    }
    
    fskit_entry_unlock( fent );
    
    // apply changes to the inode we'll send
-   SG_client_WRITE_data_merge( write_data, &inode_data );
+   rc = SG_client_WRITE_data_merge( write_data, &inode_data );
+   if( rc != 0 ) {
+
+      // invalid write data 
+      SG_error("SG_client_WRITE_data_merge('%s') rc = %d\n", path, rc );
+      fskit_entry_unref( fs, path, fent );
+      md_entry_free( &inode_data );
+      return -EINVAL;
+   }
+
    inode_data.xattr_hash = xattr_hash;
    
    // send the update along
@@ -1487,7 +1497,7 @@ UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_ent
       *ret_rc = -ENOMEM;
       return NULL;
    }
-  
+ 
    fh = fskit_create_ex( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ), ent_data->mode, (void*)ent_data, ret_rc );
    
    if( fh == NULL ) {
@@ -1495,7 +1505,7 @@ UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_ent
       SG_safe_free( sh );
       return NULL;
    }
-   
+  
    sh->fh = fh;
    sh->type = UG_TYPE_FILE;
    
