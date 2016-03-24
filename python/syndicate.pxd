@@ -98,6 +98,9 @@ cdef extern from "libsyndicate/libsyndicate.h":
    cdef int SG_CAP_READ_METADATA
    cdef int SG_CAP_WRITE_METADATA
    cdef int SG_CAP_COORDINATE
+
+   cdef uint64_t SG_GATEWAY_ANON
+   cdef uint64_t SG_GATEWAY_TOOL
    
    # ------------------------------------------
    # init and shutdown
