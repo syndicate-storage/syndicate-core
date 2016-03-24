@@ -35,7 +35,10 @@ struct SG_client_WRITE_data {
     
     bool has_mode;
     mode_t mode;
-    
+   
+    bool has_new_size;
+    uint64_t new_size;
+     
     bool has_owner_id;
     uint64_t owner_id;
     
@@ -1515,6 +1518,13 @@ int SG_client_WRITE_data_set_write_delta( struct SG_client_WRITE_data* dat, stru
     return 0;
 }
 
+// set the size
+int SG_client_WRITE_data_set_size( struct SG_client_WRITE_data* dat, uint64_t size ) {
+    dat->has_new_size = true;
+    dat->new_size = size;
+    return 0; 
+}
+
 // set write data mtime 
 int SG_client_WRITE_data_set_mtime( struct SG_client_WRITE_data* dat, struct timespec* mtime ) {
     dat->mtime = *mtime;
@@ -1548,8 +1558,17 @@ int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uin
 }
 
 // merge data into an md_entry from a WRITE data struct 
+// return -EINVAL on conflicting information
 int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entry* ent ) {
     
+    if( dat->has_write_delta && dat->has_new_size ) {
+       // sanity check
+       if( dat->new_size != SG_manifest_get_file_size( dat->write_delta ) ) {
+          SG_error("Size mismatch: %" PRIu64 " != %" PRIu64 "\n", dat->new_size, SG_manifest_get_file_size( dat->write_delta ));
+          return -EINVAL;
+       }
+    }
+
     if( dat->has_owner_id ) {
         ent->owner = dat->owner_id;
     }
@@ -1560,7 +1579,13 @@ int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entr
     if( dat->has_mode ) {
         ent->mode = dat->mode;
     }
-    
+    if( dat->has_write_delta ) {
+        ent->size = SG_manifest_get_file_size( dat->write_delta );
+    }
+    if( dat->has_new_size ) {
+        ent->size = dat->new_size;
+    }
+
     return 0;
 }
 
@@ -1613,6 +1638,7 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
    
        request->set_new_manifest_mtime_sec( dat->write_delta->mtime_sec );
        request->set_new_manifest_mtime_nsec( dat->write_delta->mtime_nsec );
+       request->set_new_size( dat->write_delta->size );
    }
    
    if( dat->has_owner_id ) {
