@@ -102,7 +102,10 @@ struct SG_gateway {
    
    volatile bool running;               // set to true once brought up
    
-   sem_t config_sem;                    // for signaling volume/cert reloads
+   sem_t config_sem;                    // for starting volume/cert reloads
+   sem_t config_finished_sem;           // for unblocking reload-waiters
+   pthread_mutex_t num_config_reload_waiters_lock;  // for atomic increment/decrement of num_config_reload_waiters
+   uint64_t num_config_reload_waiters;  // how many threads are waiting on reload?
    
    int first_arg_optind;                // index into argv of the first non-argument option
    bool foreground;                     // whether or not we'll run in the foreground
@@ -183,6 +186,7 @@ int SG_gateway_main( struct SG_gateway* gateway );
 int SG_gateway_signal_main( struct SG_gateway* gateway );
 int SG_gateway_shutdown( struct SG_gateway* gateway );
 int SG_gateway_start_reload( struct SG_gateway* gateway );
+int SG_gateway_wait_reload( struct SG_gateway* gateway );
 
 // programming a more specific gateway
 void SG_impl_setup( struct SG_gateway* gateway, int (*impl_setup)( struct SG_gateway*, void** ) );
