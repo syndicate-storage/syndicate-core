@@ -29,18 +29,20 @@ import time
 import threading
 import json
 import syndicate.util.gateway as gateway
+import sagfsdriver.lib.abstractfs as abstractfs
 
 from sagfsdriver.lib.pluginloader import pluginloader
 
 dataset_dir = None
 path_queue = []
 fs = None
+lock = None
 
 ENTRY_UPDATED = 0
 ENTRY_ADDED = 1
 ENTRY_REMOVED = 2
 
-def _initFS( driver_config, driver_secrets, scan_dataset=False ):
+def _initFS( driver_config, driver_secrets, role ):
     global fs
     global dataset_dir
 
@@ -76,14 +78,14 @@ def _initFS( driver_config, driver_secrets, scan_dataset=False ):
 
     try:
         loader = pluginloader()
-        fs = loader.load(plugin, plugin_config)
+        fs = loader.load(plugin, plugin_config, role)
 
         if not fs:
             gateway.log_error("No such driver plugin found: %s" % plugin )
             return False
 
         fs.set_notification_cb(datasets_update_cb)
-        fs.connect(scan_dataset)
+        fs.connect()
     except Exception as e:
         gateway.log_error("Unable to initialize a driver")
         gateway.log_error(str(e))
@@ -102,7 +104,9 @@ def _shutdownFS():
 
 def datasets_update_cb(updated_entries, added_entries, removed_entries):
     global path_queue
+    global lock
 
+    _lock()
     for u in updated_entries:
         entry = {}
         entry["flag"] = ENTRY_UPDATED
@@ -120,7 +124,15 @@ def datasets_update_cb(updated_entries, added_entries, removed_entries):
         entry["flag"] = ENTRY_REMOVED
         entry["stat"] = r
         path_queue.append(entry)
+    _unlock()
 
+def _lock():
+    global lock
+    lock.acquire()
+
+def _unlock():
+    global lock
+    lock.release()
 
 def driver_init( driver_config, driver_secrets ):
     """
@@ -129,8 +141,17 @@ def driver_init( driver_config, driver_secrets ):
 
     global fs
     global dataset_dir
+    global lock
 
-    if not _initFS( driver_config, driver_secrets, True ):
+    lock = threading.RLock()
+
+    role = abstractfs.afsrole.DISCOVER
+    if sys.argv[1] == "read":
+        role = abstractfs.afsrole.READ
+    elif sys.argv[1] == "crawl":
+        role = abstractfs.afsrole.DISCOVER
+
+    if not _initFS( driver_config, driver_secrets, role ):
         gateway.log_error("Unable to init filesystem")
         return False
 
@@ -169,9 +190,11 @@ def next_dataset( driver_config, driver_secrets ):
     # find the next file or directory 
     while True:
         next_stat = None
+        _lock()
         if len(path_queue) > 0:
             next_stat = path_queue[0]
             path_queue.pop(0)
+        _unlock()
 
         if next_stat is None:
             # no more data at this moment.
@@ -230,10 +253,6 @@ def read( request, chunk_fd, driver_config, driver_secrets ):
 
     global fs
     global dataset_dir
-
-    if not _initFS( driver_config, driver_secrets, False ):
-        gateway.log_error("Unable to init filesystem")
-        sys.exit(1) 
 
     path = gateway.request_path( request )
     file_path = gateway.path_join( dataset_dir, path )
