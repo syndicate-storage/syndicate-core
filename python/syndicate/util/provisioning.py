@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 """
    Copyright 2016 The Trustees of Princeton University
@@ -37,7 +37,9 @@ import syndicate.util.crypto as crypto
 import syndicate.util.objects as object_stub
 import syndicate.util.client as rpc
 import syndicate.util.storage as storage
+import syndicate.util.gateway as gateway
 import syndicate.protobufs.ms_pb2 as ms_pb2
+import syndicate.protobufs.sg_pb2 as sg_pb2
 
 from syndicate.util.objects import MissingKeyException, MissingCertException, CertExistsException 
 
@@ -525,14 +527,22 @@ def default_gateway_pkey_generator( config, volume_name ):
     """
     Default gateway private key generator.
     """
-    _, privkey_pem = api.generate_key_pair( crypto.OBJECT_KEY_SIZE )
+    _, privkey_pem = crypto.generate_key_pair( crypto.OBJECT_KEY_SIZE )
     return privkey_pem
 
 
 #-------------------------------
-def make_host_provision_plan( config, sender_privkey_pem, host_pubkey_pem, hostname, instance, volumes, gateway_pkey_generator=default_gateway_pkey_generator ):
+def make_host_provision_plan( config, sender_privkey_pem, host_pubkey_pem, hostname, volumes, gateway_pkey_generator=default_gateway_pkey_generator ):
     """
     Generate a signed host-specific volume and gateway listing.
+
+    @config: client configuration
+    @sender_privkey_pem:  sender's private key, to sign the listing
+    @host_pubkey_pem:  recipient's public key, to encrypt initial gateway keys and user private keys
+    @hostname:  name of host on which the gateways run
+    @volumes: list of volume names
+    @gateway_pkey_generator: a callback that takes (config, volume name) and returns the gateway's initial public key
+
     Return a dict with the structure:
     {
         "volume_name": {
@@ -634,6 +644,133 @@ def make_host_provision_plan( config, sender_privkey_pem, host_pubkey_pem, hostn
         }
 
     return ret
+
+
+#-------------------------------
+def list_volume_writers( config, volume_id ):
+    """
+    Find all the gateways for a given volume that can write data or metadata
+    """
+    gateway_cert_paths = certs.list_gateway_cert_paths( config )
+    ret = []
+
+    for path in gateway_cert_paths:
+       
+        gateway_cert = None 
+
+        try:
+            with open(path, "r") as f:
+                cert_bin = f.read()
+
+            gateway_cert = ms_pb2.ms_gateway_cert()
+            gateway_cert.ParseFromString( cert_bin )
+
+        except Exception, e:
+            log.exception(e)
+            log.error("Failed to load '%s'" % path)
+            return None
+
+        if gateway_cert.volume_id != volume_id:
+            continue
+
+        if (gateway_cert.caps & (ms_pb2.ms_gateway_cert.CAP_WRITE_DATA | ms_pb2.ms_gateway_cert.CAP_WRITE_METADATA)) == 0:
+            continue 
+
+        log.debug("%s can write" % gateway_cert.name)
+        ret.append( gateway_cert )
+
+    return ret
+
+
+#-------------------------------
+def list_volume_coordinators( config, volume_id ):
+    """
+    Find all the gateways for a given volume that can coordinate writes
+    """
+    gateway_cert_paths = certs.list_gateway_cert_paths( config )
+    ret = []
+
+    for path in gateway_cert_paths:
+       
+        gateway_cert = None 
+
+        try:
+            with open(path, "r") as f:
+                cert_bin = f.read()
+
+            gateway_cert = ms_pb2.ms_gateway_cert()
+            gateway_cert.ParseFromString( cert_bin )
+
+        except Exception, e:
+            log.exception(e)
+            log.error("Failed to load '%s'" % path)
+            return None
+
+        if gateway_cert.volume_id != volume_id:
+            continue
+
+        if (gateway_cert.caps & (ms_pb2.ms_gateway_cert.CAP_COORDINATE)) == 0:
+            continue 
+
+        log.debug("%s can coordinate" % gateway_cert.name)
+        ret.append( gateway_cert )
+
+    return ret
+
+
+#-------------------------------
+def make_reload_request( config, volume_id, user_id, gateway_id ):
+    """
+    Make a signed gateway-reload request.
+    Return (request, key_id), where key_id is either volume_id (if the volume owner key was used),
+        or gateway_id (if the gateway owner key was used)
+    Raise on error.
+    """
+
+    signing_key = None
+    key_id = None
+
+    # need either volume key or gateway key
+    gateway_name = objects.load_gateway_name( config, gateway_id )
+    if gateway_name is not None:
+        gateway_pkey = storage.load_private_key( config, "gateway", gateway_name )
+        if gateway_pkey is not None:
+            signing_key = gateway_pkey
+            key_id = gateway_id
+
+    else:
+        volume_name = objects.load_volume_name( config, volume_id )
+        if volume_name is None:
+            raise MissingCertException("Missing both gateway and volume certs")
+
+        volume_pkey = storage.load_private_key( config, "volume", volume_name )
+        if volume_pkey is None:
+            raise MissingKeyException("Missing both gateway and volume private keys")
+
+        signing_key = volume_pkey 
+        key_id = volume_id
+
+    req = sg_pb2.SG_messages.Request()
+    
+    req.request_type = sg_pb2.SG_messages.RELOAD
+    req.user_id = user_id
+    req.volume_id = volume_id
+    req.coordinator_id = gateway_id
+    req.src_gateway_id = libsyndicate.SG_GATEWAY_TOOL
+    req.message_nonce = random.randint(0, 2**64-1)
+
+    req.volume_version = 0      # ignored
+    req.cert_version = 0        # ignored
+    req.file_id = 0             # ignored
+    req.file_version = 0        # ignored
+    req.fs_path = ""            # ignored
+
+    # sign 
+    req.signature = ""
+    reqstr = req.SerializeToString()
+    sig = crypto.sign_data( signing_key, reqstr )
+    req.signature = base64.b64encode( sig )
+    return req
 
 
 #-------------------------------
