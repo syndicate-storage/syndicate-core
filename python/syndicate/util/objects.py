@@ -645,7 +645,9 @@ def make_volume_cert_bundle( config, volume_owner, volume_name, volume_id=None, 
    now_sec, now_nsec = clock_gettime()
    
    if new_volume_cert is None:
-      volume_cert = load_volume_cert( config, volume_name )
+      volume_cert = load_volume_cert( config, str(volume_id) )
+      if volume_cert is None:
+          raise MissingCertException("No volume cert for (name=%s, id=%s)" % (volume_name, volume_id))
    else:
       volume_cert = new_volume_cert
    
