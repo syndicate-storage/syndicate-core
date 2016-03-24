@@ -922,7 +922,6 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 
 
 // patch an inode's manifest.  Evict affected dirty blocks, cached blocks, and garbage blocks (the latter if the dirty block that got evicted was responsible for its creation).
-// Does not affect other metadata, like modtime or size
 // return 0 on success 
 // return -ENOMEM on OOM 
 // return -EPERM if we're not the coordinator
@@ -935,14 +934,14 @@ int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data*
    uint64_t file_id = UG_inode_file_id( inode );
    int64_t file_version = UG_inode_file_version( inode );
    struct timespec ts;
+   
+   // clone manifest--we'll patch it and then move it into place as an atomic operation 
+   struct SG_manifest new_manifest;
 
    // basic sanity check: we must be the coordinator 
    if( SG_manifest_get_coordinator( write_delta ) != SG_gateway_id( gateway ) ) {
        return -EPERM;
    }
-   
-   // clone manifest--we'll patch it and then move it into place as an atomic operation 
-   struct SG_manifest new_manifest;
    
    rc = SG_manifest_dup( &new_manifest, UG_inode_manifest( inode ) );
    if( rc != 0 ) {
@@ -967,9 +966,10 @@ int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data*
    UG_write_timestamp_update( inode, &ts );
    UG_inode_preserve_old_manifest_modtime( inode );
 
-   // we're the coordinator--advance the manifest's modtime and write nonce
+   // we're the coordinator--advance the manifest's size, modtime, and write nonce
    SG_manifest_set_modtime( UG_inode_manifest( inode ), ts.tv_sec, ts.tv_nsec );
    SG_manifest_set_modtime( &new_manifest, ts.tv_sec, ts.tv_nsec );
+   SG_manifest_set_size( &new_manifest, MAX( UG_inode_size(inode), SG_manifest_get_file_size( write_delta ) ));
    UG_write_nonce_update( inode );
 
    // prepare to replicate the patched manifest 
@@ -1024,6 +1024,11 @@ int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data*
 
       SG_error("UG_inode_manifest_merge_blocks(%" PRIX64 ".%" PRId64 ") rc = %d\n", file_id, file_version, rc );
    }
-   
+   else {
+
+      // success! put new size 
+      UG_inode_set_size( inode, MAX(UG_inode_size( inode ), SG_manifest_get_file_size(write_delta)));
+   }
+
    return rc;
 }
