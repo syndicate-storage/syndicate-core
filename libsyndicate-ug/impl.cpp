@@ -44,7 +44,8 @@ static int UG_impl_connect_cache( struct SG_gateway* gateway, CURL* curl, char c
 }
 
 
-// update a file's manifest, in response to a remote call 
+// update a file's manifest, in response to a remote call
+// write_delta must contain the new file size 
 // return 0 on success
 // return -ENOENT if not found
 // return -ESTALE if not local
