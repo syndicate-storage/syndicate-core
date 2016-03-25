@@ -1477,7 +1477,7 @@ class MSEntry( storagetypes.Object ):
          
          if getattr( ent, write_attr, None ) != write_attrs[write_attr]:
             write_base = True
-            ent.populate_base( **write_attrs )
+            # ent.populate_base( **write_attrs )
             break
          
       
@@ -1488,6 +1488,7 @@ class MSEntry( storagetypes.Object ):
       if 'volume_id' in write_attrs:
           del write_attrs['volume_id']
           
+      ent.populate_base( **write_attrs )
       ent.populate_shard( num_shards, volume_id=ent.volume_id, file_id=ent.file_id, **write_attrs )
 
       if write_base:
@@ -1495,9 +1496,8 @@ class MSEntry( storagetypes.Object ):
       else:
          yield ent.put_shard_async()
       
-      cache_ent_key = MSEntry.make_key_name( ent.volume_id, ent.file_id )
-      
       # invalidate cached items
+      cache_ent_key = MSEntry.make_key_name( ent.volume_id, ent.file_id )
       storagetypes.memcache.delete( cache_ent_key )
       
       storagetypes.concurrent_return( ent )
