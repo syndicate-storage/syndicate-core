@@ -26,6 +26,7 @@ import json
 import threading
 import cPickle as pickle
 import imp
+import grequests
 from syndicate.protobufs.sg_pb2 import DriverRequest, Manifest
 
 driver_shutdown = None 
@@ -247,7 +248,7 @@ def path_join( a, *b ):
     return os.path.join( a, *parts )
 
 
-def make_metadata_command( cmd, ftype, mode, size, path ):
+def make_metadata_command( cmd, ftype, mode, size, path, read_ttl=5000, write_ttl=0 ):
    """
    Generate a metadata command structure (useful for crawling datasets).
    @cmd must be any of 'create', 'update', 'delete', or 'finish'
@@ -280,7 +281,9 @@ def make_metadata_command( cmd, ftype, mode, size, path ):
       "ftype": ftype_table.get(ftype),
       "mode": mode,
       "size": size,
-      "path": path 
+      "path": path,
+      "read_ttl": read_ttl,
+      "write_ttl": write_ttl
    }
 
    if not check_metadata_command( ret ):
@@ -299,7 +302,7 @@ def check_metadata_command( cmd_dict ):
    if type(cmd_dict) != dict:
        return False 
 
-   for key in ["cmd", "ftype", "mode", "size", "path"]:
+   for key in ["cmd", "ftype", "mode", "size", "path", "read_ttl", "write_ttl"]:
        if not cmd_dict.has_key(key):
            return False 
 
@@ -331,7 +334,7 @@ def write_metadata_command( f, cmd_dict ):
        raise Exception("Malformed command: %s" % cmd_dict)
 
    # see the AG documentation for the description of this stanza 
-   f.write("%s\n%s 0%o %s\n%s\n\0\n" % (cmd_dict['cmd'], cmd_dict['ftype'], cmd_dict['mode'], cmd_dict['size'], cmd_dict['path']) )
+   f.write("%s\n%s 0%o %s %s %s\n%s\n\0\n" % (cmd_dict['cmd'], cmd_dict['ftype'], cmd_dict['mode'], cmd_dict['size'], cmd_dict['read_ttl'], cmd_dict['write_ttl'], cmd_dict['path']) )
 
 
 def crawl( cmd_dict ):
@@ -349,6 +352,96 @@ def crawl( cmd_dict ):
 
    rc = read_int( sys.stdin )
    return rc
+
+
+def get_gateway_id():
+    """
+    What's our gateway ID? Should be passed from the environment.
+    """
+    gwid = os.environ.get("SYNDICATE_GATEWAY_ID")
+    if gwid is None:
+        raise Exception("BUG: SYNDICATE_GATEWAY_ID is not set")
+
+    try:
+        gwid = int(gwid)
+    except:
+        raise Exception("BUG: SYNDICATE_GATEWAY_ID is '%s', expected int" % gwid)
+
+    return gwid
+
+
+def get_volume_id():
+    """
+    What's our volume ID? Should be passed from the environment.
+    """
+    vid = os.environ.get("SYNDICATE_VOLUME_ID")
+    if vid is None:
+        raise Exception("BUG: SYNDICATE_VOLUME_ID is not set")
+
+    try:
+        vid = int(vid)
+    except:
+        raise Exception("BUG: SYNDICATE_VOLUME_ID is '%s', expected int" % vid)
+
+    return vid
+
+
+def get_user_id():
+    """
+    What's our user ID? Should be passed from the environment.
+    """
+    uid = os.environ.get("SYNDICATE_USER_ID")
+    if uid is None:
+        raise Exception("BUG: SYNDICATE_USER_ID is not set")
+
+    try:
+        uid = int(uid)
+    except:
+        raise Exception("BUG: SYNDICATE_USER_ID is '%s', expected int" % uid)
+
+    return uid
+
+
+def get_config_path():
+    """
+    What's our gateway's config path?  Should be passed from the environment.
+    """
+    config_path = os.environ.get("SYNDICATE_CONFIG_PATH")
+    if config_path is None:
+        raise Exception("BUG: SYNDICATE_CONFIG_PATH is not set")
+
+    return config_path
+
+
+def gossip_reload():
+    """
+    Generate a gossip request to all write-capable and coordinate-capable gateways.
+    Send it off and wait for their acknowledgements (or timeouts)
+    """
+
+    user_id = get_user_id()
+    volume_id = get_volume_id()
+    gateway_id = get_gateway_id()
+    config_path = get_config_path()
+
+    if not os.path.exists( config_path ):
+        raise Exception("BUG: no such file or directory: %s" % config_path )
+
+    config = get_config_from_file( config_path )
+
+    writer_certs = list_volume_writers( config, volume_id )
+    coord_certs = list_volume_coordinators( config, volume_id )
+
+    urls = ['http://%s:%s' % (cert.hostname, cert.port) for cert in writer_certs + coord_certs]
+    msg = provisioning.make_reload_request( config, volume_id, user_id, gateway_id )
+    if msg is None:
+        raise Exception("BUG: failed to generate config-reload request")
+
+    #reqs = [grequests.post(url, data={"control-plane": 
+    #for cert in writer_certs + coord_certs:
+    # TODO: use greenlets
+
+
 
 
 def log_error( msg ):
