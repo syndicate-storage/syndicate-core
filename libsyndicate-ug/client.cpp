@@ -187,6 +187,9 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
       mtime.tv_nsec = inode_ms->mtime_nsec;
       
       fskit_entry_set_mtime( UG_inode_fskit_entry( inode ), &mtime );
+
+      UG_inode_set_max_read_freshness( inode, inode_ms->max_read_freshness );
+      UG_inode_set_max_write_freshness( inode, inode_ms->max_write_freshness );
    }
    
    return 0;
