@@ -195,7 +195,10 @@ int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_requ
    }
 
    for( size_t i = 0; i < num_gateway_ids; i++ ) {
-      
+     
+      SG_debug("GET manifest %" PRIX64 ".%" PRId64 "/manifest.%ld.%ld from %" PRIu64 "\n", 
+            reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, gateway_ids[i] );
+
       rc = SG_client_get_manifest( gateway, reqdat, gateway_ids[i], manifest );
       if( rc != 0 ) {
          
@@ -205,7 +208,10 @@ int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_requ
          
          rc = -ENODATA;
          continue;
-      }      
+      }
+      else {
+         break;
+      } 
    }
    
    return rc;
@@ -328,6 +334,12 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, fs_path, fent );
       return -ENODATA;
+   }
+   else {
+      SG_debug("Try downloading %" PRIX64 ".%" PRId64 "/manifest.%ld.%d from:\n", file_id, file_version, manifest_mtime_sec, manifest_mtime_nsec );
+      for( uint64_t i = 0; i < num_gateway_ids; i++ ) {
+         SG_debug("   %" PRIu64 "\n", gateway_ids_buf[i] );
+      }
    }
    
    // set up a request 
