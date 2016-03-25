@@ -41,6 +41,10 @@ struct SG_client_WRITE_data {
      
     bool has_owner_id;
     uint64_t owner_id;
+
+    bool has_consistency;
+    uint64_t max_read_freshness;
+    uint64_t max_write_freshness;
     
     // routing information--can be set separately, but will be imported from write_delta if not given 
     bool has_routing_information;
@@ -1546,6 +1550,14 @@ int SG_client_WRITE_data_set_owner_id( struct SG_client_WRITE_data* dat, uint64_
     return 0;
 }
 
+// set refresh info 
+int SG_client_WRITE_data_set_refresh( struct SG_client_WRITE_data* dat, uint64_t read_freshness, uint64_t write_freshness ) {
+   dat->has_consistency = true;
+   dat->max_read_freshness = read_freshness;
+   dat->max_write_freshness = write_freshness;
+   return 0;
+}
+
 // set routing info
 int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uint64_t volume_id, uint64_t coordinator_id, uint64_t file_id, int64_t file_version ) {
     
@@ -1585,6 +1597,10 @@ int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entr
     if( dat->has_new_size ) {
         ent->size = dat->new_size;
     }
+    if( dat->has_consistency ) {
+        ent->max_read_freshness = dat->max_read_freshness;
+        ent->max_write_freshness = dat->max_write_freshness;
+    }
 
     return 0;
 }
@@ -1595,7 +1611,7 @@ int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entr
 // if new_owner and/or new_mode are non-NULL, they will be filled in as well
 // return 0 on success 
 // return -ENOMEM on OOM 
-// return -EINVAL if we don't have any routing information set in dat
+// return -EINVAL if we don't have any routing information set in dat, or if dat has conflicting size informaiton
 int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Request* request, char const* fs_path, struct SG_client_WRITE_data* dat ) {
    
    int rc = 0;
@@ -1638,6 +1654,13 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
    
        request->set_new_manifest_mtime_sec( dat->write_delta->mtime_sec );
        request->set_new_manifest_mtime_nsec( dat->write_delta->mtime_nsec );
+
+       if( dat->has_new_size && dat->new_size != dat->write_delta->size ) {
+          
+          SG_error("Conflicting sizes (%" PRIu64 " != %" PRIu64 ")\n", dat->new_size, dat->write_delta->size);
+          return -EINVAL;
+       }
+
        request->set_new_size( dat->write_delta->size );
    }
    
@@ -1653,6 +1676,11 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
       
       request->set_new_mtime_sec( dat->mtime.tv_sec );
       request->set_new_mtime_nsec( dat->mtime.tv_nsec );
+   }
+
+   if( dat->has_new_size ) {
+      
+      request->set_new_size( dat->new_size );
    }
    
    rc = md_sign< SG_messages::Request >( gateway_pkey, request );
