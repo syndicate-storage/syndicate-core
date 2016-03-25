@@ -629,22 +629,28 @@ int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char 
 }
 
 
-// evict a file from the cache
+// evict a file from the cache, optionally overriding internal cache state
 // return 0 on success
 // return -ENOMEM on OOM
 // return negative if unlink(2) fails due to something besides -ENOENT
-int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version ) {
+static int md_cache_evict_file_ex( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, bool update_cache_state ) {
    
    char* local_file_path = NULL;
    char* local_file_url = NULL;
    int rc = 0;
    
    struct local {
+
+      struct md_syndicate_cache* c;
+      bool update_cache;
+
       // lambda function for deleting a block and evicting it 
       static int cache_evict_block( char const* block_path, void* cls ) {
          
-         struct md_syndicate_cache* c = (struct md_syndicate_cache*)cls;
-         
+         struct local* l = (struct local*)cls;
+         struct md_syndicate_cache* c = l->c;
+         bool update_cache = l->update_cache;
+
          int rc = unlink( block_path );
          if( rc != 0 ) {
             rc = -errno;
@@ -652,11 +658,13 @@ int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int
          
          if( rc == 0 || rc == -ENOENT ) {
             
-            // evicted!
-            __sync_fetch_and_sub( &c->num_blocks_written, 1 );
+            if( update_cache ) {
+                // evicted!
+                __sync_fetch_and_sub( &c->num_blocks_written, 1 );
             
-            // let another block get queued
-            sem_post( &c->sem_write_hard_limit );
+                // let another block get queued
+                sem_post( &c->sem_write_hard_limit );
+            }
          }
          else {
             // not evicted!
@@ -670,6 +678,10 @@ int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int
       }
    };
    
+   struct local l;
+   l.c = cache;
+   l.update_cache = update_cache_state;
+
    // path to the file...
    local_file_url = md_url_local_file_url( cache->conf->data_root, cache->conf->volume, file_id, file_version );
    if( local_file_url == NULL ) {
@@ -678,7 +690,7 @@ int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int
    
    local_file_path = SG_URL_LOCAL_PATH( local_file_url );
    
-   rc = md_cache_file_blocks_apply( local_file_path, local::cache_evict_block, cache );
+   rc = md_cache_file_blocks_apply( local_file_path, local::cache_evict_block, &l );
    
    if( rc == 0 ) {
       
@@ -690,6 +702,15 @@ int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int
    return rc;
 }
 
+// public version of md_cache_evict_file_ex
+int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version ) {
+   return md_cache_evict_file_ex( cache, file_id, file_version, true );
+}
+
+// public version of md_cache_evict_file_ex
+int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version ) {
+   return md_cache_evict_file_ex( cache, file_id, file_version, false );
+}
 
 // reversion a file.
 // move it into place, and then insert the new cache_entry_key records for it to the cache_lru list.
