@@ -89,12 +89,13 @@ setup(name='syndicate',
                   'syndicate.protobufs',
                   'syndicate.rg',
                   'syndicate.rg.drivers',
-                  'syndicate.rg.drivers.disk'],
+                  'syndicate.rg.drivers.disk',
                   'syndicate.rg.drivers.s3',
                   'syndicate.util',
+                  ]
       package_dir = {
                   'syndicate.ag': os.path.join(ext_source_root, build_dir, 'syndicate/ag'),
-                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation')
+                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation'),
                   'syndicate.ag.datasets': os.path.join(ext_source_root, build_dir, 'syndicate/ag/datasets'),
                   'syndicate.ms': os.path.join(ext_source_root, build_dir, 'syndicate/ms'),
                   'syndicate.observer': os.path.join(ext_source_root, build_dir, 'syndicate/observer'),
