@@ -9,7 +9,7 @@ Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, 
 Package: syndicate-core
 Architecture: any
 Pre-Depends: ${misc:PreDepends}
-Depends:  ${shlibs:Depends}, ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libsyndicate-ug1 (= ${binary:Version})
+Depends:  ${shlibs:Depends}, ${misc:Depends}, python, libsyndicate1 (= ${binary:Version}), libsyndicate-ug1 (= ${binary:Version})
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
