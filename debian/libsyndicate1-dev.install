@@ -1,0 +1,4 @@
+usr/lib/libsyndicate.so
+usr/include/libsyndicate/*.h
+usr/include/libsyndicate/ms/*.h
+

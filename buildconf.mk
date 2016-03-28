@@ -8,8 +8,8 @@ BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
 
 # install environment
-PREFIX         ?= /usr/local
-DESTDIR			?= /
+DESTDIR			   ?= ""
+PREFIX         ?= $(DESTDIR)/usr
 BINDIR         ?= $(PREFIX)/bin
 LIBDIR         ?= $(PREFIX)/lib
 LIBEXECDIR     ?= $(PREFIX)/lib/syndicate
