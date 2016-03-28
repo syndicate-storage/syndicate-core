@@ -92,7 +92,7 @@ setup(name='syndicate',
                   'syndicate.rg.drivers.disk',
                   'syndicate.rg.drivers.s3',
                   'syndicate.util',
-                  ]
+                  ],
       package_dir = {
                   'syndicate.ag': os.path.join(ext_source_root, build_dir, 'syndicate/ag'),
                   'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation'),
@@ -108,4 +108,5 @@ setup(name='syndicate',
                   'syndicate.util': os.path.join(ext_source_root, build_dir, 'syndicate/util'),
       },
       cmdclass = {"build_ext": build_ext},
-      zip_safe=False)
+      zip_safe=False,
+      )
