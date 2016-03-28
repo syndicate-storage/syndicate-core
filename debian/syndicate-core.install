@@ -5,11 +5,9 @@ usr/lib/python2.7/site-packages/syndicate/*.so
 usr/lib/python2.7/site-packages/syndicate/ag/*.py
 usr/lib/python2.7/site-packages/syndicate/ag/curation/*.py
 usr/lib/python2.7/site-packages/syndicate/ag/datasets/*.py
-usr/lib/python2.7/site-packages/syndicate/ag/drivers/*.py
-usr/lib/python2.7/site-packages/syndicate/ag/drivers/disk/*
-usr/lib/python2.7/site-packages/syndicate/ag/drivers/fs/*
 usr/lib/python2.7/site-packages/syndicate/ms/*.py
 usr/lib/python2.7/site-packages/syndicate/observer/*.py
+usr/lib/python2.7/site-packages/syndicate/observer/storage/*.py
 usr/lib/python2.7/site-packages/syndicate/protobufs/*.py
 usr/lib/python2.7/site-packages/syndicate/rg/*.py
 usr/lib/python2.7/site-packages/syndicate/rg/drivers/*.py
