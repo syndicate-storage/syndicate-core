@@ -102,9 +102,15 @@ $(INSTALL_PYTHON_LIBEXEC)/%: $(BUILD_PYTHON_LIBEXEC)/%
 	mkdir -p "$(shell dirname "$@")"
 	cp -a "$<" "$@"
 
+ifeq ($(DEBIAN_INSTALL),1)
+	SETUP_INSTALL_ARGS := --prefix=$(DESTDIR)$(PREFIX)
+else
+  SETUP_INSTALL_ARGS := --prefix=$(DESTDIR)$(PREFIX) --install-lib=$(DESTDIR)$(PREFIX)/lib/python2.7/dist-packages
+endif
+
 .PHONY: install 
 install: $(BUILD_PYTHON_SYNDICATE)/setup.py $(PYTHON_BUILD) $(CYTHON_BUILD) $(PYTHON_BIN_INSTALL) $(PYTHON_LIBEXEC_INSTALL)
-	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install --prefix=$(PREFIX) --install-lib=$(PREFIX)/lib/python2.7/dist-packages
+	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install $(SETUP_INSTALL_ARGS)
 
 .PHONY: clean 
 clean:

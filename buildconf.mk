@@ -8,13 +8,13 @@ BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
 
 # install environment
-DESTDIR			   ?= ""
-PREFIX         ?= $(DESTDIR)/usr
-BINDIR         ?= $(PREFIX)/bin
-LIBDIR         ?= $(PREFIX)/lib
-LIBEXECDIR     ?= $(PREFIX)/lib/syndicate
-INCLUDEDIR     ?= $(PREFIX)/include
-PKGCONFIGDIR   ?= $(PREFIX)/lib/pkgconfig
+DESTDIR        ?= ""
+PREFIX         ?= /usr/local
+BINDIR         ?= $(DESTDIR)$(PREFIX)/bin
+LIBDIR         ?= $(DESTDIR)$(PREFIX)/lib
+LIBEXECDIR     ?= $(DESTDIR)$(PREFIX)/lib/syndicate
+INCLUDEDIR     ?= $(DESTDIR)$(PREFIX)/include
+PKGCONFIGDIR   ?= $(DESTDIR)$(PREFIX)/lib/pkgconfig
 
 # protobufs 
 BUILD_PROTOBUFS_CPP     := $(BUILD)/protobufs/cpp/
