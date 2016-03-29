@@ -44,7 +44,7 @@ while i < len(sys.argv):
    if sys.argv[i].startswith("--distro="):
       distro = sys.argv[i].split("=", 1)[1]
       sys.argv.remove( sys.argv[i] )
-      continue 
+      continue
 
    i += 1
 
@@ -60,7 +60,7 @@ ext_modules=[
               include_dirs=[os.path.join(source_root, build_dir, "../include")],
               extra_compile_args=["-D__STDC_FORMAT_MACROS", "-D_FORTIFY_SOUCRE", "-D_BUILD_PYTHON", "-fstack-protector", "-fstack-protector-all", distro_switch],
               language="c++"),
-    
+
     Extension("volume",
               sources=["volume.pyx"],
               libraries=["syndicate", "syndicate-ug"],
@@ -108,5 +108,4 @@ setup(name='syndicate',
                   'syndicate.util': os.path.join(ext_source_root, build_dir, 'syndicate/util'),
       },
       cmdclass = {"build_ext": build_ext},
-      zip_safe=False,
       )
