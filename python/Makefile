@@ -104,7 +104,7 @@ $(INSTALL_PYTHON_LIBEXEC)/%: $(BUILD_PYTHON_LIBEXEC)/%
 
 .PHONY: install 
 install: $(BUILD_PYTHON_SYNDICATE)/setup.py $(PYTHON_BUILD) $(CYTHON_BUILD) $(PYTHON_BIN_INSTALL) $(PYTHON_LIBEXEC_INSTALL)
-	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install --prefix=$(PREFIX) --install-lib=lib/python2.7/dist-packages
+	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install --prefix=$(PREFIX) --install-lib=$(PREFIX)/lib/python2.7/dist-packages
 
 .PHONY: clean 
 clean:
