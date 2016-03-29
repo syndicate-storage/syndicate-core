@@ -103,9 +103,9 @@ $(INSTALL_PYTHON_LIBEXEC)/%: $(BUILD_PYTHON_LIBEXEC)/%
 	cp -a "$<" "$@"
 
 ifeq ($(DEBIAN_INSTALL),1)
-	SETUP_INSTALL_ARGS := --prefix=$(DESTDIR)$(PREFIX)
+	SETUP_INSTALL_ARGS ?= --prefix=$(DESTDIR)$(PREFIX)
 else
-  SETUP_INSTALL_ARGS := --prefix=$(DESTDIR)$(PREFIX) --install-lib=$(DESTDIR)$(PREFIX)/lib/python2.7/dist-packages
+  SETUP_INSTALL_ARGS ?= --prefix=$(DESTDIR)$(PREFIX) --install-lib=$(DESTDIR)$(PREFIX)/lib/python2.7/dist-packages
 endif
 
 .PHONY: install 
