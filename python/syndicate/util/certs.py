@@ -970,7 +970,7 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     assert volume_owner_cert.email == volume_cert.owner_email, "Volume cert email mismatch"
 
     # get gateway cert 
-    gateway_cert = get_gateway_cert( config, gateway_name_or_id )
+    gateway_cert = get_gateway_cert( config, gateway_name_or_id, check_cache=False )
     assert gateway_cert is not None, "Failed to get gateway certificate"
 
     # verify this user signed it, if not anonymous
