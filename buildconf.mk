@@ -8,7 +8,7 @@ BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
 
 # install environment
-DESTDIR        ?= ""
+DESTDIR        ?= 
 PREFIX         ?= /usr/local
 BINDIR         ?= $(DESTDIR)$(PREFIX)/bin
 LIBDIR         ?= $(DESTDIR)$(PREFIX)/lib
@@ -66,7 +66,7 @@ CPPFLAGS := -std=c++11 -Wall -g -fPIC -fstack-protector -fstack-protector-all -p
 CPP      := c++ $(CPPFLAGS)
 INC      := -I. -I$(BUILD_INCLUDEDIR) -I$(ROOT_DIR)
 DEFS     := -D_THREAD_SAFE -D__STDC_FORMAT_MACROS -D_DISTRO_$(DISTRO)
-LIBINC   := -L$(BUILD_LIBDIR)
+LIBINC   := -L. -L$(BUILD_LIBDIR)
 
 # build setup
 BUILD_DIRS   := $(sort $(BUILD_PROTOBUFS_DIRS) \

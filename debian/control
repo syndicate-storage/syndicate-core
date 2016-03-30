@@ -8,42 +8,37 @@ Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, 
 
 Package: syndicate-core
 Architecture: any
-Pre-Depends: ${misc:PreDepends}
-Depends:  ${shlibs:Depends}, ${misc:Depends}, python, libsyndicate1 (= ${binary:Version}), libsyndicate-ug1 (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, python, libsyndicate1 (= ${binary:Version}), libsyndicate-ug1 (= ${binary:Version})
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
 
 Package: libsyndicate1
 Architecture: any
-Pre-Depends: ${misc:PreDepends}
-Depends:  ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
 
 Package: libsyndicate-ug1
 Architecture: any
-Pre-Depends: ${misc:PreDepends}
-Depends:  ${shlibs:Depends}, ${misc:Depends}, libsyndicate1 (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, libsyndicate1 (= ${binary:Version})
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
 
 Package: libsyndicate1-dev
 Architecture: any
-Pre-Depends: ${misc:PreDepends}
 Section: libdevel
-Depends:  ${shlibs:Depends}, ${misc:Depends}, libsyndicate1 (= ${binary:Version})
+Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version})
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
 
 Package: libsyndicate-ug1-dev
 Architecture: any
-Pre-Depends: ${misc:PreDepends}
 Section: libdevel
-Depends:  ${shlibs:Depends}, ${misc:Depends}, libsyndicate1-dev (= ${binary:Version})
+Depends: ${misc:Depends}, libsyndicate-ug1 (= ${binary:Version})
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
