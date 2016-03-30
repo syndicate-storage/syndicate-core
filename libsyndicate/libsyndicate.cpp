@@ -35,13 +35,30 @@ void md_uncaught_exception_handler(void) {
    SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows");
    
    void *trace_elems[32];
+   char addr2line_cmd[1024];
+   size_t p = 0;
+   int rc = 0;
    int trace_elem_count(backtrace( trace_elems, 32 ));
    
    char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
    
    for( int i = 0 ; i < trace_elem_count ; i++ ) {
-      
-      SG_error("        %s\n", stack_syms[i] );
+       
+       // use addr2line to convert addresses to line numbers.
+       // find address.
+       p = 0;
+       while( stack_syms[i][p] != '(' && stack_syms[i][p] != ' ' && stack_syms[i][p] != '\0' ) {
+          p++;
+       }
+
+       SG_error("        %s\n", stack_syms[i] );
+       rc = snprintf(addr2line_cmd, 1024, "addr2line %p -e %.*s", trace_elems[i], (int)p, stack_syms[i] );
+       if( rc == 1024 ) {
+          printf("Symbol too long\n");
+          exit(1);
+       }
+
+       system(addr2line_cmd);
    }
    
    SG_safe_free( stack_syms );
@@ -389,7 +406,7 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
    conf->blocksize = volume_cert->blocksize();
    conf->portnum = gateway_cert.port();
 
-   // load each gateway certificate
+   // load each gateway certificate, as well as the cert bundle version
    rc = md_gateway_certs_load( conf, gateway_certs );
    if( rc != 0 ) {
       SG_error("md_gateway_certs_load rc = %d\n", rc);
@@ -1793,8 +1810,9 @@ int md_parse_hostname_portnum( char const* url, char** hostname, int* portnum ) 
    if( host_ptr == NULL ) {
        host_ptr = url;
    }
-   
-   host_ptr += 3;
+   else { 
+       host_ptr += 3;
+   }
    
    // advance to :
    port_ptr = strstr( host_ptr, ":" );
@@ -1802,6 +1820,13 @@ int md_parse_hostname_portnum( char const* url, char** hostname, int* portnum ) 
        
        // no port 
        *portnum = -1;
+       *hostname = strdup(host_ptr);
+       if( *hostname == NULL ) {
+          return -ENOMEM;
+       }
+       else {
+           return 0;
+       }
    }
    else {
        
