@@ -45,7 +45,9 @@ handlers = [
     (r'[/]+GATEWAY[/]+([^/]+)[/]*', MSGatewayCertRequestHandler),
     (r'[/]+DRIVER[/]+([0123456789ABCDEFabcdef]+)[/]*', MSDriverRequestHandler),
     (r'[/]+API[/]*', MSJSONRPCHandler),
-    (r'[/]+PUBKEY[/]*', MSPubkeyHandler)
+    (r'[/]+PUBKEY[/]*', MSPubkeyHandler),
+    (r'[/]+PING[/]*', MSPingHandler),
+    (r'[/]+BASELINE[/]*', MSBaselinePerformanceHandler)
 ]
 
 app = webapp2.WSGIApplication( handlers )
