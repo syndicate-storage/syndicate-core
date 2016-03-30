@@ -57,9 +57,10 @@ extern "C" {
 // initialization
 struct UG_inode* UG_inode_alloc( int count );
 int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry* entry, uint64_t volume_id, uint64_t coordinator_id, int64_t file_version );
-int UG_inode_init_from_protobuf( struct UG_inode* inode, struct fskit_entry* entry, ms::ms_entry* msent, SG_messages::Manifest* mmsg );
+// int UG_inode_init_from_protobuf( struct UG_inode* inode, struct fskit_entry* entry, ms::ms_entry* msent, SG_messages::Manifest* mmsg );
 int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_data, struct fskit_entry* fent );
 int UG_inode_fskit_entry_init( struct fskit_core* fs, struct fskit_entry* fent, struct fskit_entry* parent, struct md_entry* inode_data );
+int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data );
 
 // free 
 int UG_inode_free( struct UG_inode* inode );
@@ -169,6 +170,9 @@ void UG_inode_set_dirty( struct UG_inode* inode, bool val );
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent );
 void UG_inode_set_creating( struct UG_inode* inode, bool creating );
 void UG_inode_set_size( struct UG_inode* inode, uint64_t size );
+void UG_inode_set_ms_capacity( struct UG_inode* inode, uint64_t cap );
+void UG_inode_set_ms_num_children( struct UG_inode* inode, uint64_t num_children );
+void UG_inode_set_generation( struct UG_inode* inode, uint64_t generation );
 void UG_inode_bind_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent );
 void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode );
 
