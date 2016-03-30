@@ -117,11 +117,8 @@ int64_t md_timespec_diff_ms( struct timespec* t1, struct timespec* t2 ) {
       sec--;
       nsec += 1000000000L;
    }
-   
-   sec -= t2->tv_sec;
-   nsec -= t2->tv_nsec;
-   
-   return (sec * 1000) + (nsec / 1000000);
+
+   return ((sec - t2->tv_sec) * 1000) + ((nsec - t2->tv_nsec)/1000000);
 }
 
 // difference in time
