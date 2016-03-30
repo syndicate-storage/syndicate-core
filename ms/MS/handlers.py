@@ -48,7 +48,44 @@ import time
 import cgi
 import datetime
 import common.jsonrpc as jsonrpc
-       
+      
+
+# ----------------------------------
+class MSPingHandler( webapp2.RequestHandler ):
+    """
+    Handler to measure RTTs
+    """
+    def get( self ):
+       response_end( self, 200, "alive", "text/plain" )
+       return
+
+
+# ----------------------------------
+class MSBaselinePerformanceType( storagetypes.Object ):
+    """
+    Record to get and put once per baseline performance test.
+    """
+    rec_txt = storagetypes.String(default="")
+
+
+# ----------------------------------
+class MSBaselinePerformanceHandler(webapp2.RequestHandler):
+    """
+    Handler to measure the baseline performance of the MS:
+    How long does it take to get and put a 4k record?
+    """
+
+    test_record = "abcde" * 100
+
+    def get( self ):
+        test_key = storagetypes.make_key( MSBaselinePerformanceType, "test_record" )
+        rec = MSBaselinePerformanceType( key=test_key, rec_txt=self.test_record )
+
+        rec.put( use_memcache=False, use_cache=False, use_datastore=True )
+        out_rec = test_key.get( use_memcache=False, use_cache=False, use_datastore=True )
+        response_end( self, 200, "OK", "text/plain" )
+        return
+
 
 # ----------------------------------
 class MSVolumeCertRequestHandler(webapp2.RequestHandler):
