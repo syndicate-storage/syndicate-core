@@ -39,12 +39,6 @@ extern "C" {
 int ms_client_volume_init( struct ms_volume* vol, ms::ms_volume_metadata* volume_md );
 void ms_client_volume_free( struct ms_volume* vol );
 
-// download 
-// int ms_client_download_volume_by_name( struct ms_client* client, char const* volume_name, struct ms_volume* vol, char const* volume_pubkey_pem );
-
-// consistency 
-// int ms_client_reload_volume( struct ms_client* client, uint64_t* ret_new_cert_version );
-
 }
 
 #endif
