@@ -99,6 +99,7 @@ CONFIG_OPTIONS = {
    "config":            ("-c", 1, "Path to your config file (default is %s)." % CONFIG_FILENAME),
    "debug":             ("-d", 0, "Verbose debugging output"),
    "trust_public_key":  ("-t", 0, "If set, automatically trust the Syndicate public key if it is not yet trusted."),
+   "no_reload":         ("-n", 0, "If set, do not send or broadcast reload requests to gateways on volume or gateway update."),
    "params":            (None, "*", "Method name, followed by parameters (positional and keyword supported)."),
 }
 
