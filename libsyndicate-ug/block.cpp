@@ -232,8 +232,10 @@ int UG_dirty_block_load_from_cache( struct SG_gateway* gateway, char const* fs_p
    
    if( rc != 0 ) {
 
-      SG_error("SG_gateway_cached_block_get_raw( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
-                   file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), rc );
+      if( rc != -ENOENT ) {
+          SG_error("SG_gateway_cached_block_get_raw( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
+                       file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), rc );
+      }
 
       SG_request_data_free( &reqdat );
 

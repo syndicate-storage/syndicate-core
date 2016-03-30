@@ -436,7 +436,9 @@ int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int
    fd = open( block_path, flags, 0600 );
    if( fd < 0 ) {
       fd = -errno;
-      SG_error("open(%s) rc = %d\n", block_path, fd );
+      if( fd != -ENOENT ) {
+          SG_error("open(%s) rc = %d\n", block_path, fd );
+      }
    }
    
    SG_safe_free( block_url );
@@ -1469,6 +1471,7 @@ void* md_cache_main_loop( void* arg ) {
    struct md_syndicate_cache_thread_args* args = (struct md_syndicate_cache_thread_args*)arg;
    
    struct md_syndicate_cache* cache = args->cache;
+   size_t ongoing_size = 0;
    
    // cancel whenever by default
    pthread_setcanceltype( PTHREAD_CANCEL_ASYNCHRONOUS, NULL );
@@ -1478,7 +1481,11 @@ void* md_cache_main_loop( void* arg ) {
    while( cache->running ) {
       
       // wait for there to be blocks, if there are none
-      if( cache->ongoing_writes->size() == 0 ) {
+      md_cache_ongoing_writes_rlock( cache );
+      ongoing_size = cache->ongoing_writes->size();
+      md_cache_ongoing_writes_unlock( cache );
+
+      if( ongoing_size == 0 ) {
          sem_wait( &cache->sem_blocks_writing );
       }
       
@@ -1507,8 +1514,18 @@ void* md_cache_main_loop( void* arg ) {
    
    // wait for remaining writes to finish 
    // TODO: aio cancellations
-   while( cache->ongoing_writes->size() > 0 ) {
-      SG_debug("Waiting for %zu blocks to sync...\n", cache->ongoing_writes->size() );
+   while( 1 ) {
+
+      md_cache_ongoing_writes_rlock( cache );
+      ongoing_size = cache->ongoing_writes->size();
+      md_cache_ongoing_writes_unlock( cache );
+
+      if( ongoing_size == 0 ) {
+         // done!
+         break;
+      }
+
+      SG_debug("Waiting for %zu blocks to sync...\n", ongoing_size );
       
       md_cache_lru_t new_writes;
       

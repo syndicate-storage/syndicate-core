@@ -600,7 +600,140 @@ def remove_user_cert( config, email ):
       os.unlink( user_cert_path )
    except:
       pass 
-   
+  
+
+def load_object_file( config, object_type, file_relpath ):
+    """
+    Load a generic object file
+    Return the data on success
+    Return None on error
+    """
+    path = conf.object_file_path( config, object_type, file_relpath )
+    try:
+        with open(path, "r") as f:
+            dat = f.read()
+            return dat
+
+    except (OSError, IOError):
+        return None 
+
+    except Exception, e:
+        log.exception(e)
+        return None
+
+
+def store_object_file( config, object_type, file_relpath, data ):
+    """
+    Store data to a relative path for this type of object
+    Return True on success
+    Return False on error
+    """
+    path = conf.object_file_path( config, object_type, file_relpath )
+    dirpath = os.path.dirname( path )
+    if not os.path.exists( dirpath ):
+        try:
+            os.makedirs( dirpath, 0700 )
+        except (OSError, IOError):
+            log.error("Failed to create directories '%s'" % dirpath)
+            return False
+        except Exception, e:
+            log.exception(e)
+            return False
+
+    try:
+        with open(path, "w") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+
+        return True
+
+    except (OSError, IOError):
+        return False
+
+    except Exception, e:
+        log.exception(e)
+        return None 
+
+
+def remove_object_file( config, object_type, file_relpath, data ):
+    """
+    Remove a file and its empty parent directories, up to the object directory.
+    Return True on success, or if the object doesn't exist
+    Return False on error
+    """
+    path = conf.object_file_path( config, object_type, file_relpath )
+    if not os.path.exists( path ):
+        return True 
+    
+    try:
+        os.unlink( path )
+    except (IOError, OSError):
+        return False 
+    except Exception, e:
+        log.exception(e)
+        return False 
+
+    # try to remove directories too
+    if '/' in file_relpath:
+        dirpath = conf.object_file_path( config, object_type, os.path.dirname(file_relpath) )
+        try:
+            os.removedirs( dirpath )
+        except (IOError, OSError):
+            return False
+        except Exception, e:
+            log.exception(e)
+            return False 
+
+    return True
+
+
+def parse_volume_cert_bundle( cert_bundle_str ):
+    """
+    Load a volume cert bundle from a string
+    Return the parsed bundle on success
+    Return None on error
+    """
+    bundle = sg_pb2.Manifest()
+    try:
+        bundle.ParseFromString( cert_bundle_str )
+    except:
+        return None 
+
+    return bundle
+
+
+def get_volume_cert_bundle_version_vector( cert_bundle, gateway_id=None ):
+    """
+    Get the cert bundle's version information.
+    Return {"bundle_version": bundle_version, "volume_version": volume_version, "gateway_version": gateway_version}
+        where gateway_version will be the gateway's version if gateway_id is not None 
+        (otherwise it will be absent)
+    Return None if the gateway_id is given, but not found
+    """
+    
+    # look up gateway ID, if given 
+    gateway_version = None
+    if gateway_id is not None:
+        for i in xrange(1, len(cert_bundle.blocks)):
+            if cert_bundle.blocks[i].block_id == gateway_id:
+                gateway_version = cert_bundle[i].block_version
+                break
+
+        if gateway_version is None:
+            # queried but not found
+            return None
+
+    ret = {
+        "bundle_version": cert_bundle.mtime_sec,
+        "volume_version": cert_bundle.file_version
+    }
+
+    if gateway_version is not None:
+        ret['gateway_version'] = gateway_version
+
+    return ret
+
 
 def make_volume_cert_bundle( config, volume_owner, volume_name, volume_id=None, new_volume_cert=None, new_gateway_cert=None ):
    """
@@ -621,6 +754,12 @@ def make_volume_cert_bundle( config, volume_owner, volume_name, volume_id=None, 
    if we're in the process of creating or updating a gateway,
    and we need to include this new gateway certificate in the 
    cert bundle.
+
+   The resulting protobuf is a serialized manifest, where:
+   * .file_version is the volume version
+   * .mtime_sec is the cert bundle version
+   * .blocks[0].block_version is the volume version (and blocks[0] encodes volume consistency information)
+   * .blocks[i].block_version is the gateway cert version 
    
    Return the serialized protobuf on success 
    Return None on error
@@ -800,7 +939,35 @@ def load_gateway_type_aliases( config ):
     
     else:
         return {}
-            
+           
+
+def do_volume_reload( config, user_id, volume_id ):
+    """
+    Reload a volume's writers and coordinators
+    Return True on success
+    Return False if at least one gateway failed
+    """
+
+    import syndicate.util.reload as reloader
+
+    print >> sys.stderr, "Reloading volume %s" % volume_id
+
+    statuses = reloader.broadcast_reload( config, user_id, volume_id )
+    failed = []
+    for gateway_name, rc in statuses.items():
+        if not rc:
+            log.error("Failed to reload gateway '%s'" % gateway_name )
+            failed.append(gateway_name)
+
+    if len(failed) > 0:
+        print >> sys.stderr, "Some gateways failed to reload."
+        print >> sys.stderr, "You can manually reload them individually with '%s reload_gateway', or" % sys.argv[0]
+        print >> sys.stderr, "you can reload the entire volume with '%s reload_volume'." % sys.argv[0]
+        return False
+
+    return True
+
+
             
 class StubObject( object ):
    """
@@ -1533,7 +1700,7 @@ class Volume( StubObject ):
          return args, kw, extras
 
 
-      # otherwise, we're creating/updating/deleting.
+      # otherwise, we're creating/updating.
       # we'll need the volume name
       if not hasattr(lib, "volume_name"):
          raise Exception("Missing volume name")
@@ -1666,6 +1833,14 @@ class Volume( StubObject ):
       volume_cert.signature = base64.b64encode( volume_cert_sig )
       
       volume_cert_bundle_str = make_volume_cert_bundle( config, owner_username, volume_name, new_volume_cert=volume_cert, volume_id=volume_id )
+
+      # put cert bundle version, so we can load it later
+      volume_cert_bundle = parse_volume_cert_bundle( volume_cert_bundle_str )
+      assert volume_cert_bundle is not None, "Failed to parse volume cert bundle"
+
+      volume_cert_versions = get_volume_cert_bundle_version_vector( volume_cert_bundle )
+      volume_cert_versions_txt = json.dumps( volume_cert_versions )
+      store_object_file( config, "volume", str(volume_id) + ".bundle.version", volume_cert_versions_txt )
       
       # add and sign the (initial) root separately, if we're creating the volume
       if method_name == "create_volume":
@@ -1692,7 +1867,8 @@ class Volume( StubObject ):
       extras = {
          "volume_cert": volume_cert,
          "volume_name": volume_name,
-         "volume_id": volume_id
+         "volume_id": volume_id,
+         "bundle_version": volume_cert_versions
       }
       
       if method_name == 'update_volume':
@@ -1738,6 +1914,12 @@ class Volume( StubObject ):
                
                remove_volume_cert( config, volume_name )
                
+         volume_cert = extras['volume_cert']
+
+         # propagate to all write and coordinate gateways
+         if not config.has_key('no_reload') or not config['no_reload']:
+             do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
+          
             
 
 class Gateway( StubObject ):
@@ -2274,6 +2456,7 @@ class Gateway( StubObject ):
       extras['username'] = owner_username
       extras['name'] = gateway_name 
       extras['gateway_private_key'] = private_key
+      extras['changed_caps'] = need_volume_cert_bundle
       
       return args, kw, extras
       
@@ -2285,6 +2468,8 @@ class Gateway( StubObject ):
       Called after the RPC completes (result is the returned data)
       """
       
+      import syndicate.util.reload as reloader
+
       # process keys
       super( Gateway, cls ).PostProcessResult( extras, config, method_name, args, kw, result )
       
@@ -2328,6 +2513,24 @@ class Gateway( StubObject ):
             else:
                remove_gateway_cert( config, gateway_name )
                storagelib.erase_private_key( config, "gateway", gateway_name )
+
+         # reload either the gateway or the volume, if we added/deleted or changed capabilities 
+         if method_name in ['create_gateway', 'update_gateway', 'delete_gateway'] or extras['changed_caps']:
+
+            if not config.has_key('no_reload') or not config['no_reload']:
+                gateway_cert = extras['gateway_cert']
+
+                if method_name == 'update_gateway':
+
+                    # just updating the gateway
+                    print >> sys.stderr, "Reloading gateway '%s'" % gateway_cert.name
+                    gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
+                    if not gateway_status:
+                        print >> sys.stderr, "Failed to reload gateway '%s'" % gateway_cert.name
+                        print >> sys.stderr, "Recommend reloading manually with the 'gateway_reload' command"
+
+                else:
+                    do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]

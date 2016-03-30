@@ -418,6 +418,7 @@ def file_create( reply, gateway, volume, update, async=False ):
          if ent is not None:
             ent_pb = reply.listing.entries.add()
             MSEntry.protobuf( ent, ent_pb )
+            logging.info("new ent:\n%s" % ent_pb)
             
          return rc
       
@@ -482,7 +483,6 @@ def file_update( reply, gateway, volume, update, async=False ):
       logging.info("update /%s/%s (%s)" % (attrs['volume_id'], attrs['file_id'], attrs['name'] ) )
       
       rc, ent = MSEntry.Update( gateway.owner_id, volume, gateway, **attrs )
-      
       logging.info("update /%s/%s (%s) rc = %s" % (attrs['volume_id'], attrs['file_id'], attrs['name'], rc ) )
       
       if not async:
@@ -491,6 +491,7 @@ def file_update( reply, gateway, volume, update, async=False ):
          if ent is not None:
             ent_pb = reply.listing.entries.add()
             MSEntry.protobuf( ent, ent_pb )
+            logging.info("new ent:\n%s" % ent_pb)
          
          return rc
       

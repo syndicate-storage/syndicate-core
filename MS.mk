@@ -4,7 +4,7 @@ MS_APP_ADMIN_EMAIL				?= jcnelson@cs.princeton.edu
 MS_APP_ADMIN_PUBLIC_KEY			?= $(BUILD_MS)/admin.pub
 MS_APP_ADMIN_PRIVATE_KEY		?= $(BUILD_MS)/admin.pem
 
-MS_APP_NAME					?= syndicate-metadata
+MS_APP_NAME					?= syndicate-ms
 MS_APP_PUBLIC_KEY			?= $(BUILD_MS)/syndicate.pub
 MS_APP_PRIVATE_KEY		?= $(BUILD_MS)/syndicate.pem
 

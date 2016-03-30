@@ -257,8 +257,8 @@ int UG_read_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, of
 
       if( block_id * block_size >= UG_inode_size( inode ) ) {
          // EOF 
-         SG_debug("Skip block %" PRIu64 ", it is beyond EOF\n", block_id);
-         continue;
+         SG_debug("Skip block %" PRIu64 " and beyond, since beyond EOF\n", block_id);
+         break;
       }
 
       // skip partials 
@@ -1101,7 +1101,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       rc = UG_read_blocks_remote( gateway, fs_path, &blocks_to_download, &read_blocks );
       if( rc != 0 ) {
          
-         SG_error("UG_read_blocks_remote( %" PRIX64 ".%" PRId64 "[%" PRIu64 " - %" PRIu64 "] ) rc = %d\n", 
+         SG_error("UG_read_blocks_remote( %" PRIX64 ".%" PRId64 "[%" PRIu64 "-%" PRIu64 "] ) rc = %d\n", 
                   file_id, file_version, (offset / block_size), ((offset + buf_len) / block_size), rc );
 
          num_read = rc;

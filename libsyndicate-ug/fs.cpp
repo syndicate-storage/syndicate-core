@@ -144,6 +144,9 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
 
       inode_data_ptr = caller_inode_data;
       inode_data_ptr->parent_id = fskit_entry_get_file_id( parent );
+
+      // make sure fskit_entry matches timestamps and size 
+      UG_inode_fskit_common_init( fent, caller_inode_data );
    }
 
    rc = UG_inode_publish( gateway, fent, inode_data_ptr, ret_inode_data );

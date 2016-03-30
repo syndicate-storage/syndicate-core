@@ -143,6 +143,7 @@ int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry*
 }
 
 
+/*
 // initialize an inode from an fskit_entry, and protobof'ed msent and mmsg
 // return 0 on success 
 // return -ENOMEM on OOM 
@@ -184,6 +185,7 @@ int UG_inode_init_from_protobuf( struct UG_inode* inode, struct fskit_entry* ent
    
    return 0;
 }
+*/
 
 
 // initialize an inode from an exported inode data and an fskit_entry 
@@ -215,7 +217,18 @@ int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_da
       SG_error("inode_data->type == %d, fent->type == %d\n", inode_data->type, type );
       return -EINVAL;
    }
+    
+   /////////////////////////////////////
    
+   char* tmp = NULL;
+   rc = md_entry_to_string( inode_data, &tmp );
+   if( rc == 0 && tmp != NULL ) {
+      SG_debug("Init '%s' from export with:\n%s\n", inode_data->name, tmp );
+      SG_safe_free( tmp );
+   }
+   
+   /////////////////////////////////////
+
    rc = UG_inode_init( inode, inode_data->name, fent, inode_data->volume, inode_data->coordinator, inode_data->version );
    if( rc != 0 ) {
       
@@ -242,7 +255,7 @@ int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_da
 
 // common fskit entry initialization from an exported inode
 // return 0 on success (always succeeds)
-static int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data ) {
+int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data ) {
    
    struct timespec ts;
    
@@ -308,7 +321,6 @@ static int UG_inode_fskit_file_init( struct fskit_entry* fent, struct md_entry* 
    }
    
    UG_inode_fskit_common_init( fent, inode_data );
-   
    return 0;
 }
 
@@ -651,7 +663,17 @@ int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t paren
    dest->xattr_hash = NULL;
    dest->ent_sig = NULL;
    dest->ent_sig_len = 0;
+  
+   /////////////////////////////////////
    
+   char* tmp = NULL;
+   int rc = md_entry_to_string( dest, &tmp );
+   if( rc == 0 && tmp != NULL ) {
+      SG_debug("Exported '%s' with:\n%s\n", dest->name, tmp );
+      SG_safe_free( tmp );
+   }
+   
+   /////////////////////////////////////
    return 0;
 }
 
@@ -819,7 +841,18 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
       SG_error("%" PRIX64 ": src->version = %" PRId64 ", dest->version = %" PRId64 "\n", src->version, src->version, UG_inode_file_version( dest ) );
       return -EINVAL;
    }
+    
+   /////////////////////////////////////
    
+   char* tmp = NULL;
+   int rc = md_entry_to_string( src, &tmp );
+   if( rc == 0 && tmp != NULL ) {
+      SG_debug("Import '%s' with:\n%s\n", src->name, tmp );
+      SG_safe_free( tmp );
+   }
+   
+   /////////////////////////////////////
+
    struct timespec ts;
    
    // looks good!
@@ -909,6 +942,17 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
       return -ENOMEM;
    }
    
+   /////////////////////////////////////
+   
+   char* tmp = NULL;
+   rc = md_entry_to_string( &inode_data_out, &tmp );
+   if( rc == 0 && tmp != NULL ) {
+      SG_debug("Initialize inode '%s' with:\n%s\n", inode_data_out.name, tmp );
+      SG_safe_free( tmp );
+   }
+   
+   /////////////////////////////////////
+
    rc = UG_inode_init( inode, ent_data->name, fent, ms_client_get_volume_id( ms ), SG_gateway_id( gateway ), inode_data_out.version );
    if( rc != 0 ) {
       
@@ -923,6 +967,9 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
    UG_inode_set_max_read_freshness( inode, inode_data_out.max_read_freshness );
    UG_inode_set_max_write_freshness( inode, inode_data_out.max_write_freshness );
    SG_manifest_set_coordinator_id( UG_inode_manifest( inode ), inode_data_out.coordinator );
+   UG_inode_set_generation( inode, inode_data_out.generation );
+   UG_inode_set_ms_capacity( inode, inode_data_out.capacity );
+   UG_inode_set_ms_num_children( inode, inode_data_out.num_children );
 
    // NOTE: should be equal to file's modtime
    SG_manifest_set_modtime( UG_inode_manifest( inode ), ent_data->manifest_mtime_sec, ent_data->manifest_mtime_nsec );
@@ -1831,6 +1878,18 @@ void UG_inode_set_max_read_freshness( struct UG_inode* inode, uint32_t rf ) {
 
 void UG_inode_set_max_write_freshness( struct UG_inode* inode, uint32_t wf ) {
    inode->max_write_freshness = wf;
+}
+
+void UG_inode_set_generation( struct UG_inode* inode, uint64_t gen ) {
+   inode->generation = gen;
+}
+
+void UG_inode_set_ms_capacity( struct UG_inode* inode, uint64_t cap ) {
+   inode->ms_capacity = cap;
+}
+
+void UG_inode_set_ms_num_children( struct UG_inode* inode, uint64_t num_children ) {
+   inode->ms_num_children = num_children;
 }
 
 void UG_inode_set_read_stale( struct UG_inode* inode, bool val ) {

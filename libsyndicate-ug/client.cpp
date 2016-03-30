@@ -1525,6 +1525,7 @@ UG_handle_t* UG_create( struct UG_state* state, char const* fs_path, mode_t mode
    UG_handle_t* sh = NULL;
    struct SG_gateway* gateway = UG_state_gateway( state );
    struct ms_client* ms = SG_gateway_ms( gateway );
+   struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
    char* name = NULL;
 
    memset( &ent_data, 0, sizeof(struct md_entry) );
@@ -1552,6 +1553,8 @@ UG_handle_t* UG_create( struct UG_state* state, char const* fs_path, mode_t mode
    ent_data.manifest_mtime_nsec = ts.tv_nsec;
    ent_data.ctime_sec = ts.tv_sec;
    ent_data.ctime_nsec = ts.tv_nsec;
+   ent_data.max_read_freshness = conf->default_read_freshness;
+   ent_data.max_write_freshness = conf->default_write_freshness;
    
    sh = UG_publish( state, fs_path, &ent_data, ret_rc );
    md_entry_free( &ent_data );

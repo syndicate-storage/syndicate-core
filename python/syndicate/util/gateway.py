@@ -26,6 +26,7 @@ import json
 import threading
 import cPickle as pickle
 import imp
+import requests
 import grequests
 from syndicate.protobufs.sg_pb2 import DriverRequest, Manifest
 
@@ -411,37 +412,6 @@ def get_config_path():
         raise Exception("BUG: SYNDICATE_CONFIG_PATH is not set")
 
     return config_path
-
-
-def gossip_reload():
-    """
-    Generate a gossip request to all write-capable and coordinate-capable gateways.
-    Send it off and wait for their acknowledgements (or timeouts)
-    """
-
-    user_id = get_user_id()
-    volume_id = get_volume_id()
-    gateway_id = get_gateway_id()
-    config_path = get_config_path()
-
-    if not os.path.exists( config_path ):
-        raise Exception("BUG: no such file or directory: %s" % config_path )
-
-    config = get_config_from_file( config_path )
-
-    writer_certs = list_volume_writers( config, volume_id )
-    coord_certs = list_volume_coordinators( config, volume_id )
-
-    urls = ['http://%s:%s' % (cert.hostname, cert.port) for cert in writer_certs + coord_certs]
-    msg = provisioning.make_reload_request( config, volume_id, user_id, gateway_id )
-    if msg is None:
-        raise Exception("BUG: failed to generate config-reload request")
-
-    #reqs = [grequests.post(url, data={"control-plane": 
-    #for cert in writer_certs + coord_certs:
-    # TODO: use greenlets
-
-
 
 
 def log_error( msg ):

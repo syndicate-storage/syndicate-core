@@ -2514,11 +2514,50 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
          if( SG_gateway_user_id( gateway ) != reqdat->user_id && ms_client_get_volume_owner_id( ms ) != reqdat->user_id ) {
              rc = md_HTTP_create_response_builtin( resp, 403 );
          }
+
+         rc = ms_client_need_reload( ms, volume_id, request_msg->volume_version(), request_msg->cert_version() );
+         if( rc < 0 ) {
+      
+             // log, but mask 
+             SG_warn( "ms_client_need_reload( %" PRIu64 ", %" PRIu64 ", %" PRIu64 " ) rc = %d\n", volume_id, request_msg->volume_version(), request_msg->cert_version(), rc );
+             rc = 0;
+         }
+         else if( rc == 0 ) {
+
+             // cert bundle didn't change, but did the gateway certificate itself change?
+             uint64_t current_cert_version = ms_client_get_gateway_cert_version( ms, SG_gateway_id( gateway ) );
+             if( current_cert_version == 0 ) {
+                SG_error("%s", "BUG: we have no certificate\n");
+                exit(1);
+             }
+
+             if( request_msg->has_gateway_cert_version() && request_msg->gateway_cert_version() > ms_client_get_gateway_cert_version( ms, SG_gateway_id( gateway ) ) ) {
+
+                // newer version information 
+                // synchronously reload 
+                SG_debug("Reloading my certificate and driver (version %" PRIu64 ")\n", request_msg->gateway_cert_version());
+                SG_gateway_start_reload( gateway );
+                SG_gateway_wait_reload( gateway );
+                SG_debug("Finished reloading my certificate and driver (version %" PRIu64 ")\n", request_msg->gateway_cert_version());
+                rc = 0;
+             }
+             else if( request_msg->has_gateway_cert_version() ) {
+
+                SG_warn("Stale cert version %" PRIu64 " (expected > %" PRIu64 ")\n", current_cert_version, request_msg->gateway_cert_version() );
+             }
+         }
          else {
+             
+             // newer version information 
              // synchronously reload 
-             SG_debug("Reloadig config at the request of user %" PRIu64 "\n", reqdat->user_id );
+             SG_debug("Reloadig cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
+                   request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
+
              SG_gateway_start_reload( gateway );
              SG_gateway_wait_reload( gateway );
+             SG_debug("Finished reloading cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
+                   request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
+
              rc = 0;
          }
 

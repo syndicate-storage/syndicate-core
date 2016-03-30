@@ -207,9 +207,9 @@ struct md_syndicate_conf {
    uint64_t gateway;                                  // what is our gateway ID?
    uint64_t volume;                                   // what is our volume ID?
    uint64_t gateway_type;                             // type of gateway 
-   int64_t cert_bundle_version;                       // the version of the cert bundle (obtained during initialization)
-   int64_t gateway_version;                           // the version of this gateway's cert (obtained during initialization)
-   int64_t volume_version;                            // the version of the volume (obtained during initialization)
+   int64_t cert_bundle_version;                       // the version of the cert bundle (obtained during initialization and kept in sync through config reloads)
+   int64_t gateway_version;                           // the version of this gateway's cert (obtained during initialization and kept in sync through config reloads)
+   int64_t volume_version;                            // the version of the volume (obtained during initialization and kept in sync through config reloads)
    uint64_t blocksize;                                // the size in blocks for this volume.  Loaded at runtime.
    char* content_url;                                 // what is the URL under which local data can be accessed publicly?.  Must end in /
 
