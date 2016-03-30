@@ -123,6 +123,9 @@ message Request {
    optional string xattr_name = 22;             // xattr name 
    optional string xattr_value = 23;            // xattr value
    optional int32 xattr_flags = 24;             // xattr flags (create/replace) (SETXATTR only)
+
+   // for RELOAD 
+   optional uint64 gateway_cert_version = 25;   // version of the gateway's certificate, if the RELOAD is meant for a specific gateway
 }
 
 // control-plane reply 
