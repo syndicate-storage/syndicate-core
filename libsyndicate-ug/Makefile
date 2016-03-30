@@ -1,6 +1,6 @@
 include ../buildconf.mk
 
-LIB   	:= -lsyndicate -lprotobuf -lfskit
+LIB   	:= -lsyndicate -lprotobuf -lfskit -lcrypto
 C_SRCS	:= $(wildcard *.c)
 CXSRCS	:= $(wildcard *.cpp)
 HEADERS := $(wildcard *.h)
@@ -29,7 +29,7 @@ all: $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_HEADERS)
 $(LIBSYNDICATE_UG_LIB): $(OBJ)
 	@mkdir -p "$(shell dirname "$@")"
 	@rm -f "$@"
-	$(CPP) -shared -Wl,-soname,$(LIBSYNDICATE_UG_SONAME) -o "$@" $(OBJ) $(LIBINC) $(DEFS)
+	$(CPP) -shared -Wl,-soname,$(LIBSYNDICATE_UG_SONAME) -o "$@" $(OBJ) $(LIBINC) $(LIB) $(DEFS)
 
 $(LIBSYNDICATE_UG_SO): $(LIBSYNDICATE_UG_LIB)
 	@mkdir -p "$(shell dirname "$@")"
