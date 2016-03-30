@@ -1,6 +1,6 @@
 include ../buildconf.mk
 
-LIB   	:= -lsyndicate -lprotobuf -lfskit -lcrypto
+LIB   	:= -lsyndicate -lprotobuf -lfskit -lcrypto -lcurl
 C_SRCS	:= $(wildcard *.c)
 CXSRCS	:= $(wildcard *.cpp)
 HEADERS := $(wildcard *.h)
