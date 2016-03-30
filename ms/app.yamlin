@@ -19,7 +19,7 @@ handlers:
 
 - url: /CERT.*
   script: msapp.app
-  secure: optional
+  secure: always
 
 - url: /USER.*
   script: msapp.app
