@@ -36,6 +36,8 @@ import syndicate.util.objects as object_stub
 import syndicate.util.client as client
 import syndicate.util.certs as certs
 import syndicate.util.crypto as crypto
+import syndicate.util.reload as reloader
+from syndicate.util.objects import MissingKeyException, MissingCertException, CertExistsException 
 
 import syndicate.protobufs.ms_pb2 as ms_pb2
 
@@ -55,6 +57,7 @@ import logging
 log = conf.log
 
 
+# -------------------
 def fetch_syndicate_public_key( config ):
    """
    Use a helper program to go and fetch the Syndicate public key.
@@ -84,11 +87,13 @@ def fetch_syndicate_public_key( config ):
       return None 
   
    downloader = subprocess.Popen( [downloader_path, url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
-   
    pubkey_out, pubkey_err = downloader.communicate()
-   
    downloader.wait()
-   
+  
+   if downloader.returncode != 0:
+       log.error("Downloader helper exited %s" % downloader.returncode)
+       return None 
+
    pubkey_pem = pubkey_out.strip()
    
    # validate 
@@ -175,7 +180,59 @@ def serialize_positional_arg( value ):
       return value
    
    raise Exception("Could not parse '%s'" % param)
-   
+
+
+# -------------------
+def reload_gateway( config, gateway_name ):
+    """
+    Send a reload-request to a gateway, synchronously
+    Return True on success
+    Return False on error
+    """
+    user_id = object_stub.load_user_id( config, config['username'] )
+    if user_id is None:
+        raise MissingCertException("Cannot determine ID of user '%s'" % config['username'] )
+
+    gateway_cert = object_stub.load_gateway_cert( config, gateway_name )
+    if gateway_cert is None:
+        raise MissingCertException("Cannot load cert for gateway '%s'" % config['username'] )
+
+    gateway_id = gateway_cert.gateway_id
+    volume_id = gateway_cert.volume_id
+
+    log.debug("Sending reload to gateway '%s'" % gateway_cert.name )
+    rc = reloader.send_reload( config, user_id, volume_id, gateway_id )
+    if rc == 0:
+        return True
+
+    else:
+        log.error("Failed to send reload to gateway '%s'" % gateway_cert.name )
+        return False
+
+
+# -------------------
+def reload_volume( config, volume_name, gateway_names=None ):
+    """
+    Broadcast a reload-request to all relevant gateways in a volume, synchronously.
+    Return the list of failed gateway names (will be empty on complete reload success)
+    """
+    user_id = object_stub.load_user_id( config, config['username'] )
+    if user_id is None:
+        raise MissingCertException("Cannot determine ID of user '%s'" % config['username'] )
+
+    volume_id = object_stub.load_volume_id( config, volume_name )
+    if volume_id is None:
+        raise MissingCertException("Cannot determine ID of volume '%s'" % config['volume_name'] )
+
+    failed = []
+    statuses = reloader.broadcast_reload( config, user_id, volume_id, gateway_names=gateway_names )
+    for gateway_name, rc in statuses.items():
+        if not rc:
+            log.error("Failed to send reload to gateway '%s'" % gateway_name)
+            failed.append( gateway_name )
+
+    return failed
+
 
 # -------------------
 def read_params( params ):
@@ -229,6 +286,7 @@ def make_object_directories( config ):
          raise Exception("Failed to set up key directories")
    
    return True
+
 
 # -------------------
 def find_paired_cert( path ):
@@ -313,6 +371,7 @@ def export_object_files( config, object_type, object_name_or_id, dest_path ):
 
     print "Exported '%s' (%s) to '%s'" % (object_name, str(object_id), dest_path)
     return True
+
 
 # -------------------
 def import_object_files( config, object_type, src_path, force=False ):
@@ -628,7 +687,8 @@ def main( argv ):
        else:
            do_method_help( CONFIG, args[0] )
            sys.exit(0)
-   
+  
+
    if method_name == "reload_certs":
        if len(args) != 3:
            print >> sys.stderr, "Usage: %s reload_certs USER_NAME_OR_ID VOLUME_NAME_OR_ID GATEWAY_NAME_OR_ID" % sys.argv[0]
@@ -706,6 +766,7 @@ def main( argv ):
            print >> sys.stderr, "Failed to export user files"
            sys.exit(1)
 
+
    elif method_name == "import_volume":
        if len(args) < 1:
            print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
@@ -777,6 +838,43 @@ def main( argv ):
            print >> sys.stderr, "Failed to import user files"
            sys.exit(1)
 
+
+   elif method_name == "reload_gateway":
+       # directly send a reload to a gateway 
+       if len(args) != 1:
+           print >> sys.stderr, "Usage: %s reload_gateway GATEWAY_NAME_OR_ID" % sys.argv[0]
+           sys.exit(1)
+
+       rc = reload_gateway( CONFIG, args[0] )
+       if not rc:
+           print >> sys.stderr, "Failed to reload gateway '%s'" % sys.argv[1]
+           sys.exit(1)
+       else:
+           sys.exit(0)
+
+
+   elif method_name == "reload_volume":
+       # directly reload all volume writers/coordinators 
+       if len(args) < 1:
+           print >> sys.stderr, "Usage: %s reload_volume [gateway_name gateway_name...]" % sys.argv[0]
+           sys.exit(1)
+
+       gateway_names = None 
+       if len(args) > 1:
+           gateway_names = args[1:]
+
+       failed = reload_volume( CONFIG, args[0], gateway_names=gateway_names )
+       if len(failed) > 0:
+           for failed_gateway_name in failed:
+               print >> sys.stderr, "Failed to reload gateway '%s'" % failed_gateway_name
+
+           if CONFIG['debug']:
+               print >> sys.stderr, "Try again with:\n\t$ %s reload_volume %s %s" % (sys.argv[0], args[0], " ".join(failed) )
+
+           sys.exit(1)
+
+       else:
+           sys.exit(0)
 
    # debug
    for opt in CONFIG.keys():
