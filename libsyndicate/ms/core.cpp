@@ -646,6 +646,16 @@ uint64_t ms_client_get_volume_id( struct ms_client* client ) {
 }
 
 
+// get the volume version 
+uint64_t ms_client_get_volume_version( struct ms_client* client ) {
+
+   ms_client_config_rlock( client );
+   uint64_t ret = client->volume->volume_version;
+   ms_client_config_unlock( client );
+   return ret;
+}
+
+
 // get the volume owner ID 
 uint64_t ms_client_get_volume_owner_id( struct ms_client* client ) {
    ms_client_config_rlock( client );
@@ -772,10 +782,9 @@ int ms_client_is_async_operation( int oper ) {
    return (oper == ms::ms_request::UPDATE_ASYNC || oper == ms::ms_request::CREATE_ASYNC || oper == ms::ms_request::DELETE_ASYNC );
 }
 
-// process a gateway message's header, in order to detect when we have stale metadata.
-// if we have stale metadata, then wake up the reloader thread and synchronize our volume metadata
+// process a gateway message's header, in order to detect when we have a stale cert graph.
 // return 0 if no reload is needed
-// return 1 if the configuration must be reloaded 
+// return 1 if the cert graph must be reloaded 
 // return -EINVAL if the volumes do not match
 int ms_client_need_reload( struct ms_client* client, uint64_t volume_id, uint64_t volume_version, uint64_t cert_bundle_version ) {
    
@@ -789,7 +798,7 @@ int ms_client_need_reload( struct ms_client* client, uint64_t volume_id, uint64_
       return -EINVAL;
    }
    
-   // wake up volume reload thread, if there is new configuration information for us
+   // wake up volume reload thread, if there is new cert graph information for us
    if( client->volume->volume_version < volume_version ) {
       rc = 1;
    }
@@ -887,6 +896,27 @@ uint64_t ms_client_get_gateway_caps( struct ms_client* client, uint64_t gateway_
    ms_client_config_unlock( client );
    
    return bits;
+}
+
+
+// get a gateway's cert version
+// return >0 with the version
+// return 0 if not found
+uint64_t ms_client_get_gateway_cert_version( struct ms_client* client, uint64_t gateway_id ) {
+
+   ms_client_config_rlock( client );
+
+   struct ms_gateway_cert* cert = ms_client_get_gateway_cert( client, gateway_id );
+   if( cert == NULL ) {
+
+      ms_client_config_unlock( client );
+      return 0;
+   }
+
+   uint64_t ver = cert->version;
+   ms_client_config_unlock( client );
+
+   return ver;
 }
 
 
