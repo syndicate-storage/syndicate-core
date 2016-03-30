@@ -723,6 +723,10 @@ static int ms_client_create_or_mkdir( struct ms_client* client, struct md_entry*
          else {
             
             rc = md_entry_dup2( &result.ent[0], ent_out );
+            if( rc != 0 ) {
+               // OOM 
+               goto ms_client_create_or_mkdir_out;
+            }
          }
       }
    }
@@ -737,6 +741,7 @@ static int ms_client_create_or_mkdir( struct ms_client* client, struct md_entry*
    ent->capacity = capacity;
    ent->xattr_nonce = xattr_nonce;
    
+ms_client_create_or_mkdir_out:
    SG_safe_free( sig );
    
    ms_client_request_result_free( &result );
@@ -913,7 +918,7 @@ int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct
    
    ms_client_request_result_free( &result );
    
-   return 0;
+   return rc;
 }
 
 
