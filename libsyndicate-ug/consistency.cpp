@@ -511,7 +511,7 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
    
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
-   
+
    // types don't match?
    if( !UG_inode_export_match_type( inode, inode_data ) ) {
       
@@ -591,6 +591,7 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       if( SG_gateway_id( gateway ) == UG_inode_coordinator_id( inode ) ) {
 
          // nothing to do; our copy is fresh
+         SG_debug("%" PRIX64 " is coordinated locally\n", inode_data->file_id );
          return 0;
       }
    }
@@ -660,9 +661,9 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       fskit_fremovexattr_all( fs, fent );
    }
    
-   // reload everything else 
+   // reload everything else
+   SG_debug("Import '%s' (%" PRIX64 ")\n", inode_data->name, inode_data->file_id );
    rc = UG_inode_import( inode, inode_data );
-   
    if( rc == 0 ) {
       
       // reloaded!
@@ -979,7 +980,7 @@ static int UG_consistency_path_find_local_stale( struct SG_gateway* gateway, cha
       struct ms_path_ent path_ent;
       struct UG_path_ent_ctx* path_ctx = NULL;  // remember the entries we reference
       
-      // is this inode stale?  skip if not
+      // is this inode stale?
       if( !UG_inode_is_read_stale( inode, refresh_begin ) ) {
          
          char* name = fskit_path_iterator_name( itr );
@@ -1071,6 +1072,7 @@ static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char co
    uint64_t file_id = 0;        // inode ID
    size_t inode_i = 0;          // indexes inode_data
    struct UG_inode* inode = NULL;
+   char* cur_path = NULL;
    bool skip = false;
    
    if( num_inodes == 0 ) {
@@ -1145,33 +1147,18 @@ static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char co
          UG_inode_set_refresh_time_now( inode );
          
          /////////////////////////////////////
-         SG_debug("nochange: '%s' (%" PRIX64 ")\n", cur_name, file_id );
+         SG_debug("No Change: '%s' (%" PRIX64 ")\n", cur_name, file_id );
          /////////////////////////////////////
          
          SG_safe_free( cur_name );
          continue;
       }
       
-      
-      /////////////////////////////////////
-      
-      char* tmp = NULL;
-      char* tmppath = NULL;
-      rc = md_entry_to_string( inode_datum, &tmp );
-      if( rc == 0 && tmp != NULL ) {
-         tmppath = fskit_path_iterator_path( itr );
-         if( tmppath != NULL ) {
-            SG_debug("Reloading '%s' with:\n%s\n", tmppath, tmp );
-            SG_safe_free( tmppath );
-         }
-         SG_safe_free( tmp );
-      }
-      
-      /////////////////////////////////////
-         
+              
       // does this inode exist on the MS?
       if( inode_datum->error == MS_LISTING_NONE ) {
          
+         SG_debug("Remove: '%s' (%" PRIu64 ")\n", inode_datum->name, inode_datum->file_id );
          SG_safe_free( cur_name );
           
          // nope--this inode and everything beneath it got unlinked remotely
@@ -1206,17 +1193,28 @@ static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char co
       }
          
       // reload 
-      rc = UG_consistency_inode_reload( gateway, fs_path, parent, cur, cur_name, inode_datum );
+      cur_path = fskit_path_iterator_path( itr );
+      if( cur_path == NULL ) {
+         rc = -ENOMEM;
+         SG_safe_free( cur_name );
+         break;
+      }
+
+      SG_debug("Reload: '%s' (%" PRIu64 ")\n", cur_path, inode_datum->file_id );
+      rc = UG_consistency_inode_reload( gateway, cur_path, parent, cur, cur_name, inode_datum );
       SG_safe_free( cur_name );
    
       if( rc < 0 ) {
          
-         SG_error("UG_consistency_inode_reload( '%s' (at %" PRIX64 " (%s))) rc = %d\n", fs_path, fskit_entry_get_file_id( cur ), name, rc );
+         SG_error("UG_consistency_inode_reload( '%s' (at %" PRIX64 " (%s))) rc = %d\n", cur_path, fskit_entry_get_file_id( cur ), name, rc );
          
          SG_safe_free( name );
+         SG_safe_free( cur_path );
          
          break;
       }
+      
+      SG_safe_free( cur_path );
       
       if( rc > 0 ) {
       
@@ -1500,7 +1498,7 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
          rc = md_entry_to_string( &remote_inodes_stale.ents[i], &inode_str );
          if( rc == 0 ) {
             
-            SG_debug("REFRESHED entry %d:\n%s\n", i, inode_str );
+            SG_debug("NEW entry %d:\n%s\n", i, inode_str );
             SG_safe_free( inode_str );
          }
       }
@@ -1846,7 +1844,8 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
             rc = -ENOMEM;
             break;
          }
-         
+        
+         SG_debug("Merge '%s' into '%s'\n", ent->name, fs_path_dir ); 
          rc = UG_inode_fskit_entry_init( fs, fent, dent, ent );
          if( rc != 0 ) {
             
