@@ -30,7 +30,7 @@ Description: scalable software-defined storage system for wide-area networks
 Package: libsyndicate1-dev
 Architecture: any
 Section: libdevel
-Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev
+Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev, libattr1-dev, libmicrohttpd-dev, libfskit1-dev, libjson0-dev
 Description: scalable software-defined storage system for wide-area networks
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
