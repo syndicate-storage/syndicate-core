@@ -682,7 +682,7 @@ class Gateway( storagetypes.Object ):
       old_driver_hash = None
       
       # sanity check...
-      if new_driver is not None:
+      if new_driver is not None and len(new_driver) > 0:
          new_driver_hash = GatewayDriver.hash_driver( new_driver )
          if binascii.hexlify( gateway_cert.driver_hash ) != new_driver_hash:
             raise Exception("Certificate driver hash mismatch: expected %s, got %s" % (binascii.hexlify( gateway_cert.driver_hash ), new_driver_hash))
@@ -727,7 +727,7 @@ class Gateway( storagetypes.Object ):
          
          gw_key = gateway.put()
          
-         if old_driver_hash is not None:
+         if old_driver_hash is not None and new_driver_hash is not None and old_driver_hash != new_driver_hash:
              # unref the old one 
              GatewayDriver.unref( old_driver_hash )
              cls.FlushCacheDriver( old_driver_hash )
@@ -747,7 +747,7 @@ class Gateway( storagetypes.Object ):
          raise e
       
       # update the driver as well 
-      if new_driver is not None:
+      if new_driver is not None and len(new_driver) > 0:
           GatewayDriver.create_or_ref( new_driver )
           
       return gateway_key
