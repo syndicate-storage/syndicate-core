@@ -1297,6 +1297,32 @@ static void SG_gateway_term( int signum, siginfo_t* siginfo, void* context ) {
 }
 
 
+// release config-waiters 
+static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int reload_rc ) {
+
+   // signal anyone waiting that we're done
+   int** mboxes = NULL;
+   uint64_t num_waiters = 0;
+
+   pthread_mutex_lock( &gateway->num_config_reload_waiters_lock );
+   
+   num_waiters = gateway->num_config_reload_waiters;
+   gateway->num_config_reload_waiters = 0;
+
+   mboxes = gateway->config_reload_mboxes;
+   gateway->config_reload_mboxes = 0;
+
+   pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
+
+   for( uint64_t i = 0; i < num_waiters; i++ ) {
+      *(mboxes[i]) = reload_rc;
+      sem_post( &gateway->config_finished_sem );
+   }
+
+   SG_safe_free( mboxes );
+}
+
+
 // main loop
 // periodically reload the volume and certificates
 // return 0 on success 
@@ -1348,8 +1374,6 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       struct ms_gateway_cert* new_gateway_cert = NULL;
       char* new_driver_text = NULL;
       size_t new_driver_text_len = 0;
-
-      uint64_t num_waiters = 0;
       
       clock_gettime( CLOCK_REALTIME, &now );
       
@@ -1446,6 +1470,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
             syndicate_pubkey = NULL;
          }
          
+         SG_gateway_wakeup_config_waiters( gateway, rc );
          rc = 0;
          continue;
       }
@@ -1494,6 +1519,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
          // nope--no driver change
          // no need to reload
          SG_debug("%s", "driver did not change\n");
+         SG_gateway_wakeup_config_waiters( gateway, 0 );
          continue;
       }
 
@@ -1545,16 +1571,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
      
       rc = 0;
       SG_debug("Reloaded at %ld.%ld\n", reload_deadline.tv_sec, reload_deadline.tv_nsec );
-
-      // signal anyone waiting that we're done 
-      pthread_mutex_lock( &gateway->num_config_reload_waiters_lock );
-      num_waiters = gateway->num_config_reload_waiters;
-      gateway->num_config_reload_waiters = 0;
-      pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
-
-      for( uint64_t i = 0; i < num_waiters; i++ ) {
-         sem_post( &gateway->config_finished_sem );
-      }
+      SG_gateway_wakeup_config_waiters( gateway, 0 );
    }
 
    SG_debug("%s", "Leaving main loop\n");
@@ -1572,10 +1589,29 @@ int SG_gateway_start_reload( struct SG_gateway* gateway ) {
 }
 
 // wait for the reload to be done 
-int SG_gateway_wait_reload( struct SG_gateway* gateway ) {
+int SG_gateway_wait_reload( struct SG_gateway* gateway, int* mbox ) {
    
+   int** new_mboxes = NULL;
+
    pthread_mutex_lock( &gateway->num_config_reload_waiters_lock );
+   
+   new_mboxes = SG_CALLOC( int*, gateway->num_config_reload_waiters + 1 );
+   if( new_mboxes == NULL ) {
+      pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
+      return -ENOMEM;
+   }
+
+   if( gateway->config_reload_mboxes != NULL ) {
+       memcpy( new_mboxes, gateway->config_reload_mboxes, sizeof(int*) * gateway->num_config_reload_waiters );
+       SG_safe_free( gateway->config_reload_mboxes );
+   }
+
+   new_mboxes[gateway->num_config_reload_waiters] = mbox;
+
+   gateway->config_reload_mboxes = new_mboxes;
+
    gateway->num_config_reload_waiters++;
+
    pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
 
    sem_wait( &gateway->config_finished_sem );
