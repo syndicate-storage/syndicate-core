@@ -2525,7 +2525,7 @@ class Gateway( StubObject ):
                     # just updating the gateway
                     print >> sys.stderr, "Reloading gateway '%s'" % gateway_cert.name
                     gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
-                    if not gateway_status:
+                    if gateway_status != 0:
                         print >> sys.stderr, "Failed to reload gateway '%s'" % gateway_cert.name
                         print >> sys.stderr, "Recommend reloading manually with the 'gateway_reload' command"
 
