@@ -128,13 +128,14 @@ def list_volume_coordinators( config, volume_id ):
 #-------------------------------
 def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_name=None, cert_bundle_version=None, volume_version=None ):
     """
-    Make a signed, serialized gateway-reload request, destined to a particular gateway.
+    Make a signed, serialized gateway-reload request.
+    If gateway_id or gateway_name is not None, then the request will be destined to a particular gateway, and will be signed with the owner's private key.
+    Otherwise, the request will be destined to all write/coordinate gateways in the volume, and will be signed with the volume owner's private key.
     Return the signed request.
     Raise on error.
     """
 
     signing_key = None
-    key_id = None
     gateway_cert_version = None
 
     # need either volume key or gateway key 
@@ -145,18 +146,26 @@ def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_na
         gateway_name = object_stub.load_gateway_name( config, gateway_id )
 
     if gateway_name is not None:
-        gateway_pkey = storage.load_private_key( config, "gateway", gateway_name )
-        if gateway_pkey is not None:
-            signing_key = gateway_pkey
-            key_id = gateway_id
-
-        # look up the gateway's cert version as well--it must match gateway_cert_version
+        # look up the gateway's cert--its version it must match gateway_cert_version
         gateway_cert = object_stub.load_gateway_cert( config, gateway_name )
         if gateway_cert is None:
             raise MissingCertException("Missing gateway certificate for %s" % gateway_name )
 
+        assert volume_id == gateway_cert.volume_id, "Gateway '%s' is not in volume %s (but %s)" % (gateway_cert.name, volume_id, gateway_cert.volume_id)
         gateway_cert_version = gateway_cert.version
+    
+        # look up the owner's user 
+        user_cert = object_stub.load_user_cert( config, str(gateway_cert.owner_id) )
+        if user_cert is None:
+            raise MissingCertException("Missing user certificate for %s, owner of '%s'" % (gateway_cert.owner_id, gateway_cert.name))
 
+        # look up the user's private key, to sign with that 
+        user_pkey = storage.load_private_key( config, "user", user_cert.email )
+        if user_pkey is None:
+            raise MissingCertException("Missing user private key for '%s'" % user_cert.email)
+
+        log.debug("Sign reload request with private key of user '%s' for gateway '%s' in volume %s" % (user_cert.email, gateway_cert.name, volume_id))
+        signing_key = user_pkey 
 
     else:
         volume_cert = object_stub.load_volume_cert( config, str(volume_id) )
@@ -171,8 +180,8 @@ def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_na
         if volume_pkey is None:
             raise MissingKeyException("Missing both gateway and volume private keys")
 
+        log.debug("Sign reload request with private key of volume owner '%s' for gateway '%s' in volume %s" % (owner_cert.email, gateway_id, volume_cert.name))
         signing_key = volume_pkey 
-        key_id = volume_id
 
     if volume_version is None:
         # look up volume cert version 
@@ -257,9 +266,9 @@ def send_reload( config, user_id, volume_id, gateway_id ):
 
     url = 'http://%s:%s' % (gateway_cert.host, gateway_cert.port)
     msg = make_reload_request( config, user_id, volume_id, gateway_id=gateway_id )
-
+    msgtxt = msg.SerializeToString()
     try:
-        req = requests.post( url, data={"control-plane": msg} )
+        req = requests.post( url, data={"control-plane": msgtxt} )
         if req.status_code == 200:
             return 0
 
@@ -270,6 +279,7 @@ def send_reload( config, user_id, volume_id, gateway_id ):
         return -1
 
     except requests.exceptions.Timeout:
+        log.debug("Timed out on %s" % gateway_id)
         return -1
 
     except requests.exceptions.RequestException, re:
