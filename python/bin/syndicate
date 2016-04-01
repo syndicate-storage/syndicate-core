@@ -200,7 +200,7 @@ def reload_gateway( config, gateway_name ):
     gateway_id = gateway_cert.gateway_id
     volume_id = gateway_cert.volume_id
 
-    log.debug("Sending reload to gateway '%s'" % gateway_cert.name )
+    log.debug("Sending reload to gateway '%s' in volume %s" % (gateway_cert.name, volume_id) )
     rc = reloader.send_reload( config, user_id, volume_id, gateway_id )
     if rc == 0:
         return True
@@ -840,14 +840,14 @@ def main( argv ):
 
 
    elif method_name == "reload_gateway":
-       # directly send a reload to a gateway 
+       # directly send a reload to one or more gateways
        if len(args) != 1:
            print >> sys.stderr, "Usage: %s reload_gateway GATEWAY_NAME_OR_ID" % sys.argv[0]
            sys.exit(1)
 
        rc = reload_gateway( CONFIG, args[0] )
        if not rc:
-           print >> sys.stderr, "Failed to reload gateway '%s'" % sys.argv[1]
+           print >> sys.stderr, "Failed to reload gateway '%s'" % args[0]
            sys.exit(1)
        else:
            sys.exit(0)
