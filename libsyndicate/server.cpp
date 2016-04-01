@@ -1077,6 +1077,7 @@ static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Re
    
    int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
+   struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
    
    // de-serialize 
    rc = md_parse< SG_messages::Request >( msg, msg_buf, msg_sz );
@@ -1090,16 +1091,20 @@ static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Re
    if( msg->src_gateway_id() == SG_GATEWAY_TOOL ) {
       
       ms_client_config_rlock( ms );
+
+      rc = 0;
       
       // from the admin tool.  verify that it's from the volume owner or the gateway owner 
-      // (i.e. signed by the volume owner's private key, or the gateway's own private key)
+      // (i.e. signed by the volume owner's private key, or the user's own private key)
       if( ms_client_get_volume_owner_id( ms ) == msg->user_id() ) {
+          SG_debug("Try verifying reload from %" PRIu64 " with volume public key\n", msg->user_id() );
           rc = md_verify< SG_messages::Request >( ms->volume->volume_public_key, msg );
       }
-      else if( SG_gateway_user_id( gateway ) == msg->user_id() ) { 
-          rc = md_verify< SG_messages::Request >( ms->gateway_pubkey, msg );
+      if( rc != 0 && SG_gateway_user_id( gateway ) == msg->user_id() ) { 
+          SG_debug("Try verifying reload from %" PRIu64 " with user public key\n", msg->user_id() );
+          rc = md_verify< SG_messages::Request >( conf->user_pubkey, msg );
       }
-      else {
+      if( rc != 0 ) {
           SG_error("%s", "Message did not come from either the volume owner or gateway owner\n");
           rc = -EINVAL;
       }
@@ -1108,7 +1113,7 @@ static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Re
       
       if( rc != 0 ) {
          
-         SG_error("Invalid message from unauthorized recipient %" PRIu64 "\n", msg->user_id() );
+         SG_error("Invalid message from unauthorized sender %" PRIu64 "\n", msg->user_id() );
          return -EPERM;
       }
    }
@@ -1201,8 +1206,9 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
       reqdat->block_id = request_msg->blocks(0).block_id();
       reqdat->block_version = request_msg->blocks(0).block_version();
    }
-   else {
+   else if( request_msg->request_type() != SG_messages::Request::RELOAD ) {
       
+      // missing data, and not a reload request 
       return -EINVAL;
    }
    
@@ -1283,6 +1289,12 @@ int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Reque
    uint64_t required_caps = SG_server_request_capabilities( request_type );
    
    int rc = 0;
+
+   // ignore anon 
+   if( request_gateway_id == SG_GATEWAY_ANON ) {
+      SG_error("%s", "Ignore message from anonymous gateway\n");
+      return -EINVAL;
+   }
    
    // can only communicate with gateways in our volume
    if( request_volume_id != volume_id ) {
@@ -1290,34 +1302,53 @@ int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Reque
       SG_error("Invalid volume %" PRIu64 "; expected %" PRIu64 "\n", request_volume_id, volume_id );
       return -EINVAL;
    }
-   
-   // what volume is this gateway in?
-   rc = ms_client_get_gateway_volume( ms, request_gateway_id, &cert_volume_id );
-   if( volume_id != cert_volume_id ) {
+  
+   if( request_gateway_id != SG_GATEWAY_TOOL ) {
+      // came from a gateway, not the admin tool
+      // what volume is this gateway in?
+      rc = ms_client_get_gateway_volume( ms, request_gateway_id, &cert_volume_id );
+      if( rc != 0 ) {
+         SG_error("ms_client_get_gateway_volume(%" PRIu64 ") rc = %d\n", request_gateway_id, rc );
+         return -EINVAL;
+      }
+
+      if( volume_id != cert_volume_id ) {
+         
+         // volume mismatch
+         SG_error("Invalid volume %" PRIu64 "; expected %" PRIu64 "\n", cert_volume_id, volume_id );
+         return -EINVAL;
+      }
       
-      // volume mismatch
-      SG_error("Invalid volume %" PRIu64 "; expected %" PRIu64 "\n", cert_volume_id, volume_id );
-      return -EINVAL;
+      // what user runs this gateway?
+      rc = ms_client_get_gateway_user( ms, request_gateway_id, &cert_user_id );
+      if( rc != 0 ) {
+         SG_error("ms_client_get_gateway_user(%" PRIu64 ") rc = %d\n", request_gateway_id, rc );
+         return -EINVAL;
+      }
+
+      if( request_user_id != cert_user_id ) {
+         
+         // user mismatch 
+         SG_error("Invalid user %" PRIu64 "; expected %" PRIu64 "\n", cert_user_id, request_user_id );
+         return -EINVAL;
+      }
+
+      // does this gatewy have the required capabilities?
+      rc = ms_client_check_gateway_caps( ms, request_gateway_id, required_caps );
+      if( rc != 0 ) {
+         
+         SG_error("ms_client_check_gateway_caps( %" PRIu64 ", %" PRIX64 " ) rc = %d\n", request_gateway_id, required_caps, rc );
+         return rc;
+      }
    }
-   
-   // what user runs this gateway?
-   rc = ms_client_get_gateway_user( ms, request_gateway_id, &cert_user_id );
-   if( request_user_id != cert_user_id ) {
-      
-      // user mismatch 
-      SG_error("Invalid user %" PRIu64 "; expected %" PRIu64 "\n", cert_user_id, request_user_id );
-      return -EINVAL;
+   else {
+
+      // only volume owner or gateway owner can send
+      if( SG_gateway_user_id( gateway ) != request_user_id && ms_client_get_volume_owner_id( ms ) != request_user_id ) {
+         SG_error("Request from non-gateway-owner and non-volume-owner user %" PRIu64 "\n", request_user_id);
+         return -EINVAL;
+      }
    }
-   
-   // does this gatewy have the required capabilities?
-   rc = ms_client_check_gateway_caps( ms, request_gateway_id, required_caps );
-   if( rc != 0 ) {
-      
-      SG_error("ms_client_check_gateway_caps( %" PRIu64 ", %" PRIX64 " ) rc = %d\n", request_gateway_id, required_caps, rc );
-      return rc;
-   }
-   
-   // permitted
    return 0;
 }
 
@@ -2102,6 +2133,8 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
    struct SG_gateway* gateway = sgcon->gateway;
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t volume_id = ms_client_get_volume_id( ms );
+   int http_response = 0; 
+   int reload_rc = 0;
    
    // request data
    SG_messages::Request* request_msg = SG_safe_new( SG_messages::Request );
@@ -2509,18 +2542,16 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
       }
       
       case SG_messages::Request::RELOAD: {
-         
-         // only the volume owner or gateway owner can send this request
-         if( SG_gateway_user_id( gateway ) != reqdat->user_id && ms_client_get_volume_owner_id( ms ) != reqdat->user_id ) {
-             rc = md_HTTP_create_response_builtin( resp, 403 );
-         }
-
+        
+         SG_debug("RELOAD request from user %" PRIu64 "\n", reqdat->user_id );
+          
+         // will we need to reload?
          rc = ms_client_need_reload( ms, volume_id, request_msg->volume_version(), request_msg->cert_version() );
          if( rc < 0 ) {
       
-             // log, but mask 
              SG_warn( "ms_client_need_reload( %" PRIu64 ", %" PRIu64 ", %" PRIu64 " ) rc = %d\n", volume_id, request_msg->volume_version(), request_msg->cert_version(), rc );
              rc = 0;
+             http_response = 400;
          }
          else if( rc == 0 ) {
 
@@ -2531,19 +2562,34 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                 exit(1);
              }
 
-             if( request_msg->has_gateway_cert_version() && request_msg->gateway_cert_version() > ms_client_get_gateway_cert_version( ms, SG_gateway_id( gateway ) ) ) {
+             if( request_msg->has_gateway_cert_version() && request_msg->gateway_cert_version() >= ms_client_get_gateway_cert_version( ms, SG_gateway_id( gateway ) ) ) {
 
-                // newer version information 
+                // equal or newer version information 
                 // synchronously reload 
                 SG_debug("Reloading my certificate and driver (version %" PRIu64 ")\n", request_msg->gateway_cert_version());
                 SG_gateway_start_reload( gateway );
-                SG_gateway_wait_reload( gateway );
-                SG_debug("Finished reloading my certificate and driver (version %" PRIu64 ")\n", request_msg->gateway_cert_version());
-                rc = 0;
+                rc = SG_gateway_wait_reload( gateway, &reload_rc );
+                if( rc != 0 ) {
+                    rc = md_HTTP_create_response_builtin( resp, 500 );
+                }
+                else {
+                    if( reload_rc == 0 ) {
+                        SG_debug("Finished reloading my certificate and driver (version %" PRIu64 ")\n", request_msg->gateway_cert_version());
+                        rc = 0;
+                        http_response = 200;
+                    }
+                    else {
+                        SG_error("Reload certificate/driver to version %" PRIu64 " rc = %d\n", request_msg->gateway_cert_version(), reload_rc );
+                        rc = 0;
+                        http_response = 500;
+                    }
+                }
              }
              else if( request_msg->has_gateway_cert_version() ) {
 
-                SG_warn("Stale cert version %" PRIu64 " (expected > %" PRIu64 ")\n", current_cert_version, request_msg->gateway_cert_version() );
+                SG_warn("Stale cert version %" PRIu64 " (expected >= %" PRIu64 ")\n", current_cert_version, request_msg->gateway_cert_version() );
+                rc = 0;
+                http_response = 208;
              }
          }
          else {
@@ -2554,16 +2600,31 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                    request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
 
              SG_gateway_start_reload( gateway );
-             SG_gateway_wait_reload( gateway );
-             SG_debug("Finished reloading cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
-                   request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
+             rc = SG_gateway_wait_reload( gateway, &reload_rc );
+             if( rc != 0 ) {
+                rc = md_HTTP_create_response_builtin( resp, 500 );
+             }
+             else {
+                 if( reload_rc == 0 ) {
+                     SG_debug("Finished reloading cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
+                           request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
 
-             rc = 0;
+                     rc = 0;
+                     http_response = 200;
+                 }
+                 else {
+                     SG_error("Reload certificate graph to version %" PRIu64 ".%" PRIu64 " rc = %d\n", request_msg->volume_version(), request_msg->cert_version(), reload_rc );
+                     http_response = 500;
+                     rc = 0;
+                 }
+             }
          }
 
          SG_safe_delete( request_msg );
          SG_request_data_free( reqdat );
          SG_safe_free( reqdat );
+
+         rc = md_HTTP_create_response_builtin( resp, http_response );
 
          break;
       }
