@@ -1,0 +1,12 @@
+Format: http://dep.debian.net/deps/dep5
+Upstream-Name: syndicate-core
+Upstream-Contact: Jude Nelson <judecn@gmail.com>
+Source: https://github.com/syndicate-storage/syndicate-core
+
+Files:* 
+License: Apache-2.0
+Copyright: 2014-2016 Jude Nelson (judecn@gmail.com) et al.
+
+License: Apache-2.0
+ Found in `/usr/share/common-licenses/Apache-2.0`
+

@@ -1,0 +1,17 @@
+usr/bin/syndicate
+usr/lib/syndicate/*
+usr/lib/python2.7/dist-packages/syndicate/*.py
+usr/lib/python2.7/dist-packages/syndicate/*.so
+usr/lib/python2.7/dist-packages/syndicate/ag/*.py
+usr/lib/python2.7/dist-packages/syndicate/ag/curation/*.py
+usr/lib/python2.7/dist-packages/syndicate/ag/datasets/*.py
+usr/lib/python2.7/dist-packages/syndicate/ms/*.py
+usr/lib/python2.7/dist-packages/syndicate/observer/*.py
+usr/lib/python2.7/dist-packages/syndicate/observer/storage/*.py
+usr/lib/python2.7/dist-packages/syndicate/protobufs/*.py
+usr/lib/python2.7/dist-packages/syndicate/rg/*.py
+usr/lib/python2.7/dist-packages/syndicate/rg/drivers/*.py
+usr/lib/python2.7/dist-packages/syndicate/rg/drivers/disk/*.py
+usr/lib/python2.7/dist-packages/syndicate/rg/drivers/s3/*.py
+usr/lib/python2.7/dist-packages/syndicate/util/*.py
+
