@@ -48,6 +48,7 @@ To build Syndicate, you will need the following tools, libraries, and header fil
 * [libfuse](https://github.com/libfuse/)
 * [Python 2.x](https://www.python.org)
 * [Cython](https://github.com/cython/cython)
+* [GRequests](https://github.com/kennethreitz/grequests)
 * [boto](https://github.com/boto/boto)
 
 
