@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 SECRETS = {
    "AWS_ACCESS_KEY_ID": "XXX",

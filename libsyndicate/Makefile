@@ -1,7 +1,7 @@
 include ../buildconf.mk
 
 # NOTE: we build the protocol buffers into libsyndicate...
-LIB   	:= -lpthread -lcurl -lm -lrt -ldl -lmicrohttpd -lprotobuf -lcrypto -lssl -lz -l$(LIBJSON)
+LIB   	:= -lpthread -lcurl -lm -lrt -ldl -lmicrohttpd -lprotobuf -lcrypto -lssl -lz -l$(LIBJSON) -lfskit
 
 C_SRCS	:= $(wildcard *.c) \
             $(wildcard */*.c)

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 """
    Copyright 2013 The Trustees of Princeton University
@@ -16,7 +16,8 @@
    limitations under the License.
 """
 
-from setuptools import setup, Extension
+from distutils.core import setup
+from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
 import os
@@ -43,7 +44,7 @@ while i < len(sys.argv):
    if sys.argv[i].startswith("--distro="):
       distro = sys.argv[i].split("=", 1)[1]
       sys.argv.remove( sys.argv[i] )
-      continue 
+      continue
 
    i += 1
 
@@ -59,7 +60,7 @@ ext_modules=[
               include_dirs=[os.path.join(source_root, build_dir, "../include")],
               extra_compile_args=["-D__STDC_FORMAT_MACROS", "-D_FORTIFY_SOUCRE", "-D_BUILD_PYTHON", "-fstack-protector", "-fstack-protector-all", distro_switch],
               language="c++"),
-    
+
     Extension("volume",
               sources=["volume.pyx"],
               libraries=["syndicate", "syndicate-ug"],
@@ -79,31 +80,32 @@ setup(name='syndicate',
       ext_package='syndicate',
       ext_modules = ext_modules,
       packages = ['syndicate',
-                  'syndicate.ms',
-                  'syndicate.protobufs',
-                  'syndicate.util',
-                  'syndicate.observer',
-                  'syndicate.observer.storage',
                   'syndicate.ag',
                   'syndicate.ag.curation',
                   'syndicate.ag.datasets',
+                  'syndicate.ms',
+                  'syndicate.observer',
+                  'syndicate.observer.storage',
+                  'syndicate.protobufs',
                   'syndicate.rg',
                   'syndicate.rg.drivers',
+                  'syndicate.rg.drivers.disk',
                   'syndicate.rg.drivers.s3',
-                  'syndicate.rg.drivers.disk'],
+                  'syndicate.util',
+                  ],
       package_dir = {
+                  'syndicate.ag': os.path.join(ext_source_root, build_dir, 'syndicate/ag'),
+                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation'),
+                  'syndicate.ag.datasets': os.path.join(ext_source_root, build_dir, 'syndicate/ag/datasets'),
                   'syndicate.ms': os.path.join(ext_source_root, build_dir, 'syndicate/ms'),
-                  'syndicate.protobufs': os.path.join(ext_source_root, build_dir, '../protobufs/python'),
-                  'syndicate.util': os.path.join(ext_source_root, build_dir, 'syndicate/util'),
                   'syndicate.observer': os.path.join(ext_source_root, build_dir, 'syndicate/observer'),
                   'syndicate.observer.storage': os.path.join(ext_source_root, build_dir, 'syndicate/observer/storage'),
+                  'syndicate.protobufs': os.path.join(ext_source_root, build_dir, '../protobufs/python'),
                   'syndicate.rg': os.path.join(ext_source_root, build_dir, 'syndicate/rg'),
                   'syndicate.rg.drivers': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers'),
-                  'syndicate.rg.drivers.s3': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/s3'),
                   'syndicate.rg.drivers.disk': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/disk'),
-                  'syndicate.ag': os.path.join(ext_source_root, build_dir, 'syndicate/ag'),
-                  'syndicate.ag.datasets': os.path.join(ext_source_root, build_dir, 'syndicate/ag/datasets'),
-                  'syndicate.ag.curation': os.path.join(ext_source_root, build_dir, 'syndicate/ag/curation')
+                  'syndicate.rg.drivers.s3': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/s3'),
+                  'syndicate.util': os.path.join(ext_source_root, build_dir, 'syndicate/util'),
       },
       cmdclass = {"build_ext": build_ext},
-      zip_safe=False)
+      )

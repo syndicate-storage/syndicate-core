@@ -48,63 +48,69 @@ all: $(PYTHON_BUILD) $(BUILD_PYTHON_SYNDICATE)/setup.py $(CYTHON_BUILD) $(MS_FIL
 	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) build && cp -a build/lib.*/syndicate/*.so syndicate/
 
 $(BUILD_PYTHON_SYNDICATE)/setup.py: setup.py 
-	@cp "$<" "$@"
+	cp "$<" "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/util/paths.py: $(PYTHON_SYNDICATE_ROOT)/util/paths.py.in
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" | sed -e 's~@PREFIX@~$(PREFIX)~g' > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" | sed -e 's~@PREFIX@~$(PREFIX)~g' > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/%.py: $(PYTHON_SYNDICATE_ROOT)/%.py $(PYTHON_SYNDICATE_PACKAGE)/util/paths.py
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/%/config: $(PYTHON_SYNDICATE_ROOT)/%/config
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/%/secrets: $(PYTHON_SYNDICATE_ROOT)/%/secrets
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/%/driver: $(PYTHON_SYNDICATE_ROOT)/%/driver
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/ms/%.py: $(BUILD_MS)/common/%.py
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(PYTHON_SYNDICATE_PACKAGE)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(BUILD_PYTHON_SYNDICATE)/%.pyx: %.pyx
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(BUILD_PYTHON_SYNDICATE)/%.pxd: %.pxd
-	@mkdir -p "$(shell dirname "$@")"
-	@cat "$<" > "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cat "$<" > "$@"
 
 $(BUILD_PYTHON_BIN)/%: $(PYTHON_BIN)/%
-	@mkdir -p "$(shell dirname "$@")"
-	@cp "$<" "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cp "$<" "$@"
 
 $(BUILD_PYTHON_LIBEXEC)/%: $(PYTHON_LIBEXEC)/%
-	@mkdir -p "$(shell dirname "$@")"
-	@cp -a "$<" "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cp -a "$<" "$@"
 
 $(INSTALL_PYTHON_BIN)/%: $(BUILD_PYTHON_BIN)/%
-	@mkdir -p "$(shell dirname "$@")"
-	@cp -a "$<" "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cp -a "$<" "$@"
 
 $(INSTALL_PYTHON_LIBEXEC)/%: $(BUILD_PYTHON_LIBEXEC)/%
-	@mkdir -p "$(shell dirname "$@")"
-	@cp -a "$<" "$@"
+	mkdir -p "$(shell dirname "$@")"
+	cp -a "$<" "$@"
+
+SETUP_INSTALL_ARGS := --prefix=$(DESTDIR)$(PREFIX)
+
+ifeq ($(DEBIAN_INSTALL),1)
+	SETUP_INSTALL_ARGS += --install-lib=$(DESTDIR)$(PREFIX)/lib/python2.7/dist-packages
+endif
 
 .PHONY: install 
 install: $(BUILD_PYTHON_SYNDICATE)/setup.py $(PYTHON_BUILD) $(CYTHON_BUILD) $(PYTHON_BIN_INSTALL) $(PYTHON_LIBEXEC_INSTALL)
-	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install --prefix=$(PREFIX)
+	cd $(BUILD_PYTHON_SYNDICATE) && $(SETUP) install $(SETUP_INSTALL_ARGS)
 
 .PHONY: clean 
 clean:

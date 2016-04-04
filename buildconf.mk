@@ -8,13 +8,13 @@ BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
 
 # install environment
+DESTDIR        ?= 
 PREFIX         ?= /usr/local
-DESTDIR			?= /
-BINDIR         ?= $(PREFIX)/bin
-LIBDIR         ?= $(PREFIX)/lib
-LIBEXECDIR     ?= $(PREFIX)/lib/syndicate
-INCLUDEDIR     ?= $(PREFIX)/include
-PKGCONFIGDIR   ?= $(PREFIX)/lib/pkgconfig
+BINDIR         ?= $(DESTDIR)$(PREFIX)/bin
+LIBDIR         ?= $(DESTDIR)$(PREFIX)/lib
+LIBEXECDIR     ?= $(DESTDIR)$(PREFIX)/lib/syndicate
+INCLUDEDIR     ?= $(DESTDIR)$(PREFIX)/include
+PKGCONFIGDIR   ?= $(DESTDIR)$(PREFIX)/lib/pkgconfig
 
 # protobufs 
 BUILD_PROTOBUFS_CPP     := $(BUILD)/protobufs/cpp/
@@ -54,8 +54,8 @@ BUILD_LIBSYNDICATE_UG_DIRS     := $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)
 # python extension
 BUILD_PYTHON_SYNDICATE := $(BUILD)/python/
 BUILD_PYTHON_SYNDICATE_DIRS := $(BUILD_PYTHON_SYNDICATE)
-INSTALL_PYTHON_BIN := $(DESTDIR)$(PREFIX)/bin
-INSTALL_PYTHON_LIBEXEC := $(DESTDIR)$(PREFIX)/lib/syndicate
+INSTALL_PYTHON_BIN := $(BINDIR)
+INSTALL_PYTHON_LIBEXEC := $(LIBEXECDIR)
 
 # python tools 
 BUILD_PYTHON_BIN := $(BUILD_BINDIR)
@@ -66,7 +66,7 @@ CPPFLAGS := -std=c++11 -Wall -g -fPIC -fstack-protector -fstack-protector-all -p
 CPP      := c++ $(CPPFLAGS)
 INC      := -I. -I$(BUILD_INCLUDEDIR) -I$(ROOT_DIR)
 DEFS     := -D_THREAD_SAFE -D__STDC_FORMAT_MACROS -D_DISTRO_$(DISTRO)
-LIBINC   := -L$(BUILD_LIBDIR)
+LIBINC   := -L. -L$(BUILD_LIBDIR)
 
 # build setup
 BUILD_DIRS   := $(sort $(BUILD_PROTOBUFS_DIRS) \
