@@ -27,7 +27,6 @@ import threading
 import cPickle as pickle
 import imp
 import requests
-import grequests
 from syndicate.protobufs.sg_pb2 import DriverRequest, Manifest
 
 driver_shutdown = None 

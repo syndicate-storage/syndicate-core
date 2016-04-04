@@ -27,7 +27,6 @@ import base64
 import binascii
 import json
 import requests
-import grequests
 
 logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s' )
 log = logging.getLogger()
@@ -302,6 +301,7 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
     Return {"gateway_name": True|False} on success
     """
 
+    import grequests
     gateway_certs = None 
     gateway_status = {}
 
