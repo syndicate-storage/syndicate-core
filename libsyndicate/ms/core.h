@@ -111,10 +111,10 @@ struct ms_client {
    // gateway key information (read-only, never changes)
    EVP_PKEY* gateway_key;
    EVP_PKEY* gateway_pubkey;
-   
+
    // syndicate pubkey (never changes)
    EVP_PKEY* syndicate_pubkey;
-   
+  
    // raw private key (read-only, never changes)
    char* gateway_key_pem;
    size_t gateway_key_pem_len;
@@ -174,6 +174,7 @@ uint64_t ms_client_get_volume_blocksize( struct ms_client* client );
 int ms_client_get_volume_root( struct ms_client* client, int64_t version, int64_t write_nonce, struct md_entry* root );
 EVP_PKEY* ms_client_my_pubkey( struct ms_client* client );
 EVP_PKEY* ms_client_my_privkey( struct ms_client* client );
+EVP_PKEY* ms_client_user_pubkey( struct ms_client* client );
 
 struct ms_gateway_cert* ms_client_get_gateway_cert( struct ms_client* client, uint64_t gateway_id );
 uint64_t ms_client_get_num_gateways( struct ms_client* client );
