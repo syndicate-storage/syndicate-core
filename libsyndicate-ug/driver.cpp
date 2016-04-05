@@ -192,6 +192,12 @@ int UG_driver_chunk_deserialize( struct SG_gateway* gateway, struct SG_request_d
       
       // no-op deserializer
       rc = SG_chunk_copy_or_dup( out_chunk, in_chunk );
+      if( rc != 0 ) {
+         if( rc == -ERANGE ) {
+            SG_error("Tried to copy buf len %" PRIu64 " to buf len %" PRIu64 "\n", in_chunk->len, out_chunk->len );
+         }
+      }
+
    }
   
 UG_driver_chunk_deserialize_finish: 
