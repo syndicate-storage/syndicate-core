@@ -20,6 +20,8 @@
 #include "libsyndicate/libsyndicate.h"
 #include "util.h"
 
+extern "C" {
+
 // initialize local storage
 int md_init_local_storage( struct md_syndicate_conf* c );
 
@@ -35,7 +37,7 @@ int md_rmdirs( char const* dirp );
 
 void md_object_cert_path( char const* object_dir, char const* object_name, char* path, size_t path_len );
 
-// certs
+// certs and keys
 int md_volume_cert_load( char const* certs_path, char const* volume_name, ms::ms_volume_metadata* volume_cert );
 int md_gateway_cert_load( char const* certs_path, char const* gateway_name, ms::ms_gateway_cert* cert );
 int md_gateway_private_key_load( char const* gateways_path, char const* gateway_name, struct mlock_buf* private_key );
@@ -44,5 +46,7 @@ int md_cert_bundle_version_load( char const* certs_path, char const* volume_name
 int md_cert_bundle_load( char const* certs_path, char const* volume_name, SG_messages::Manifest* cert_bundle );
 int md_driver_load( char const* certs_path, char const* hash, char** driver_text, size_t* driver_len ); 
 int md_syndicate_pubkey_load( char const* syndicate_dir, char const* syndicate_name, char** syndicate_pubkey_pem, size_t* syndicate_pubkey_pem_len );
+
+}
 
 #endif
