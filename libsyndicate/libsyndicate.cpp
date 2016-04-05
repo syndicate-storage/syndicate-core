@@ -92,70 +92,6 @@ char* md_get_hostname( struct md_syndicate_conf* conf ) {
    return SG_strdup_or_null( conf->hostname );
 }
 
-// initialize server information
-// return 0 on success
-// return -ENOMEM on OOM 
-// return gai_error if we failed to get the address or hostname information
-static int md_init_server_info( struct md_syndicate_conf* c ) {
-   
-   int rc = 0;
-   
-   char* new_hostname = SG_CALLOC( char, HOST_NAME_MAX + 1);
-   if( new_hostname == NULL ) {
-      return -ENOMEM;
-   }
-   
-   if( !c->is_client ) {
-      
-      // get hostname
-      struct addrinfo hints;
-      memset( &hints, 0, sizeof(hints) );
-      hints.ai_family = AF_UNSPEC;
-      hints.ai_socktype = SOCK_STREAM;
-      hints.ai_flags = AI_CANONNAME;
-      hints.ai_protocol = 0;
-      hints.ai_canonname = NULL;
-      hints.ai_addr = NULL;
-      hints.ai_next = NULL;
-
-      struct addrinfo *result = NULL;
-      char hostname[HOST_NAME_MAX+1];
-      gethostname( hostname, HOST_NAME_MAX );
-
-      rc = getaddrinfo( hostname, NULL, &hints, &result );
-      if( rc != 0 ) {
-         // could not get addr info
-         SG_error("getaddrinfo(%s): %s\n", hostname, gai_strerror( rc ) );
-         freeaddrinfo( result );
-         return -abs(rc);
-      }
-      
-      // now reverse-lookup ourselves
-      rc = getnameinfo( result->ai_addr, result->ai_addrlen, new_hostname, HOST_NAME_MAX, NULL, 0, NI_NAMEREQD );
-      if( rc != 0 ) {
-         SG_error("getnameinfo: %s\n", gai_strerror( rc ) );
-         freeaddrinfo( result );
-         
-         SG_safe_free( new_hostname );
-         return -abs(rc);
-      }
-      
-      SG_debug("canonical hostname is %s\n", new_hostname);
-      
-      c->hostname = new_hostname;
-      
-      freeaddrinfo( result );
-   }
-   else {
-      // fill in defaults, but they won't be used except for registration
-      strcpy( new_hostname, "localhost" );
-      c->hostname = new_hostname;
-   }
-   
-   return rc;
-}
-
-
 // look up a gateway cert by ID
 // return a pointer to the cert on success
 // return NULL if not found 
@@ -405,6 +341,7 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
    conf->gateway_version = gateway_cert.version();
    conf->blocksize = volume_cert->blocksize();
    conf->portnum = gateway_cert.port();
+   md_set_hostname( conf, gateway_cert.host().c_str() );
 
    // load each gateway certificate, as well as the cert bundle version
    rc = md_gateway_certs_load( conf, gateway_certs );
@@ -515,20 +452,7 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    }
    
    SG_debug("Store local data at %s\n", c->data_root );
-   
-   if( c->hostname == NULL ) {
-      
-      // find our hostname
-      rc = md_init_server_info( c );
-      if( rc != 0 ) {
-         
-         SG_error("md_init_server_info() rc = %d\n", rc );
-         return rc;
-      }
-      
-      SG_debug("Serve data as %s\n", c->hostname );
-   }
-   
+ 
    // go fetch or revalidate our certs, and re-load versioning information
    rc = md_certs_reload( c, syndicate_pubkey, &user_cert, &volume_owner_cert, volume_cert, gateway_certs );
    if( rc != 0 ) {
@@ -621,7 +545,8 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
       if( c->user_pubkey_pem != NULL ) {
          SG_safe_free( c->user_pubkey_pem );
       }
-      
+     
+      // load user public key 
       c->user_pubkey_pem = SG_strdup_or_null( user_cert.public_key().c_str() );
       c->user_pubkey_pem_len = user_cert.public_key().size();
       
@@ -641,6 +566,23 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
       }
       
       c->owner = user_cert.user_id();
+
+      // set hostname from our certificate
+      if( c->content_url == NULL ) { 
+          SG_debug("Setting content URL to 'http://%s:%d/', from our certificate\n", ms_client_gateway_cert_hostname(gateway_cert), ms_client_gateway_cert_portnum(gateway_cert));
+          md_set_hostname( c, ms_client_gateway_cert_hostname(gateway_cert) );
+          c->portnum = c->portnum;
+      
+          if( c->content_url != NULL ) {
+             SG_safe_free( c->content_url );
+          }
+          c->content_url = SG_CALLOC( char, strlen(c->hostname) + 20 );
+          if( c->content_url == NULL ) {
+             return -ENOMEM;
+          }
+
+          sprintf(c->content_url, "http://%s:%d/", c->hostname, c->portnum);
+      }
    }
    else {
       
