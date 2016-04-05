@@ -143,6 +143,7 @@ int UG_read( struct UG_state* state, char *buf, size_t size, UG_handle_t* fi );
 int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t *fi );
 int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* block_version, unsigned char* hash, UG_handle_t* fi );
 int UG_putblockinfo( struct UG_state* state, uint64_t block_id, int64_t block_version, unsigned char* hash, UG_handle_t* fi );
+int UG_manifest_export( struct UG_state* state, struct SG_manifest* manifest_out, UG_handle_t* fi );
 off_t UG_seek( UG_handle_t* fi, off_t pos, int whence );
 int UG_close( struct UG_state* state, UG_handle_t *fi );
 int UG_fsync( struct UG_state* state, UG_handle_t *fi );

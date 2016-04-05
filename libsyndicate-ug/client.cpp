@@ -903,7 +903,7 @@ int UG_truncate( struct UG_state* state, char const* path, off_t newsize ) {
    
    int rc = 0;
    struct SG_gateway* gateway = UG_state_gateway( state );
-   
+  
    // refresh path 
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -1201,6 +1201,84 @@ int UG_putblockinfo( struct UG_state* state, uint64_t block_id, int64_t block_ve
 UG_putblock_out:
 
    return rc;
+}
+
+
+// export a manifest--put a copy into *manifest 
+// return 0 on success, and populate *manifest
+// return -ENOMEM on OOM
+int UG_manifest_export( struct UG_state* ug, struct SG_manifest* manifest, UG_handle_t* fi ) {
+
+   struct fskit_entry* fent = NULL;
+   struct UG_inode* inode = NULL;
+   struct SG_manifest* inode_manifest = NULL;
+   struct SG_gateway* gateway = UG_state_gateway( ug );
+   int rc = 0;
+   uint64_t file_id = 0;
+   
+   if( fi == NULL ) {
+      return -EBADF;
+   }
+ 
+   if( manifest == NULL ) {
+      return -EINVAL;
+   }
+
+   if( fi->type != UG_TYPE_FILE ) {
+      return -EBADF;
+   }
+ 
+   fskit_file_handle_rlock( fi->fh );
+
+   fent = fskit_file_handle_get_entry( fi->fh );
+   if( fent == NULL ) {
+      SG_error("BUG: file handle %p's entry is NULL\n", fi->fh);
+      exit(1);
+   }
+
+   fskit_entry_rlock( fent );
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   if( inode == NULL ) {
+      SG_error("BUG: inode for entry %p (handle %p) is NULL\n", fent, fi );
+      exit(1);
+   }
+
+   file_id = UG_inode_file_id( inode );
+
+   fskit_entry_unlock( fent );
+
+   // ensure fresh 
+   rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
+   if( rc != 0 ) {
+      SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
+      fskit_file_handle_unlock( fi->fh );
+      goto UG_manifest_export_out;
+   }
+
+   fskit_entry_rlock( fent );
+
+   inode_manifest = UG_inode_manifest( inode );
+   if( inode_manifest == NULL ) {
+      SG_error("BUG: Manifest for %" PRIX64 " (%s) not set\n", file_id, fskit_file_handle_get_path( fi->fh ) );
+      exit(1);
+   }
+
+   rc = SG_manifest_dup( manifest, inode_manifest );
+   if( rc != 0 ) {
+      SG_error("SG_manifest_dup rc = %d\n", rc);
+      fskit_entry_unlock( fent );
+      fskit_file_handle_unlock( fi->fh );
+      goto UG_manifest_export_out;
+   }
+
+   fskit_entry_unlock( fent );
+   fskit_file_handle_unlock( fi->fh );
+
+UG_manifest_export_out:
+
+   return rc;
+
 }
 
 
