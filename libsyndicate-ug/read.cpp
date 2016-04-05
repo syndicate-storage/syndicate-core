@@ -337,8 +337,8 @@ int UG_read_download_gateway_list( struct SG_gateway* gateway, uint64_t coordina
       return rc;
    }
    
-   // if the coordinator is an AG, then try it first
-   if( coordinator_type == SYNDICATE_AG ) {
+   // if the coordinator is an AG, then try it first (but only if we're not in that list already)
+   if( coordinator_type == SYNDICATE_AG && coordinator_id != SG_gateway_id( gateway ) ) {
 
       SG_debug("Gateway %" PRIu64 " is an AG\n", coordinator_id );
       
@@ -600,7 +600,9 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          }
          
          // process the block and free up the download handle
-         memset( next_block.data, 0, next_block.len ); 
+         next_block.len = block_size;
+         memset( next_block.data, 0, next_block.len );
+
          rc = SG_client_get_block_finish( gateway, block_requests, dlctx, &next_block_id, &next_block );
          if( rc != 0 ) {
             
@@ -639,7 +641,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       rc = -EIO;
    }
     
-   SG_client_get_block_cleanup_loop( dlloop );
+   // SG_client_get_block_cleanup_loop( dlloop );
    SG_client_download_async_cleanup_loop( dlloop );
    md_download_loop_free( dlloop );
    SG_safe_free( dlloop );
