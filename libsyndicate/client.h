@@ -48,7 +48,6 @@ int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entr
 int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t remote_gateway_id, struct SG_manifest* manifest );
 int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t remote_gateway_id, struct md_download_loop* dlloop, struct md_download_context* dlctx );
 int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* manifest, struct md_download_context* dlctx, uint64_t* block_id, struct SG_chunk* block );
-int SG_client_get_block_cleanup_loop( struct md_download_loop* dlloop );
 int SG_client_getxattr( struct SG_gateway* gateway, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, char const* xattr_name, uint64_t xattr_nonce, char** xattr_value, size_t* xattr_len );
 int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t xattr_nonce, char** xattr_list, size_t* xattr_list_len );
 
@@ -74,7 +73,7 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
 int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_download_context* dlctx, SG_messages::Reply* reply );
 
 // low-level download logic 
-int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls );
+int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) );
 int SG_client_download_async_wait( struct md_download_context* dlctx, char** chunk_buf, off_t* chunk_len, void** cls );
 void SG_client_download_async_cleanup( struct md_download_context* dlctx );
 void SG_client_download_async_cleanup_loop( struct md_download_loop* dlloop );

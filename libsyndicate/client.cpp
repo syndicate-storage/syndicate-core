@@ -65,6 +65,7 @@ struct SG_client_request_cls {
    char* url;                           // target URL 
    
    void* cls;                           // user-given download state
+   void (*free_cls)( void* cls );       // cleanup handler for user-given download state
 };
 
 
@@ -326,7 +327,7 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
 // set up and start a download context used for transferring data asynchronously 
 // return 0 on success 
 // return -ENOMEM on OOM 
-int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls ) {
+int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) ) {
    
    int rc = 0;
    CURL* curl = NULL;
@@ -372,6 +373,7 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
    reqcls->url = url;
    reqcls->chunk_id = chunk_id;
    reqcls->cls = cls;
+   reqcls->free_cls = free_cls;
    
    // set up 
    rc = md_download_context_init( dlctx, curl, block_size * SG_MAX_BLOCK_LEN_MULTIPLIER, reqcls );
@@ -379,9 +381,7 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
       
       // failed 
       SG_error("md_download_init('%s') rc = %d\n", url, rc );
-      
       curl_easy_cleanup( curl );
-      
       SG_safe_free( reqcls );
       
       return rc;
@@ -416,7 +416,6 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
       
       // TODO: connection pool
       curl_easy_cleanup( curl );
-      
       SG_safe_free( reqcls );
       
       return rc;
@@ -448,6 +447,10 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
       }
    
       if( reqcls != NULL ) {
+         if( reqcls->free_cls != NULL ) {
+            (*reqcls->free_cls)(reqcls->cls);
+         }
+
          SG_client_request_cls_free( reqcls );
          SG_safe_free( reqcls );
       }
@@ -533,12 +536,25 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    
    if( cls != NULL ) {
       *cls = reqcls->cls;
+      reqcls->cls = NULL;
    }
    
    // done!
    SG_client_download_async_cleanup( dlctx );
    
    return rc;
+}
+
+
+// clean-up callback for get-block state
+static void SG_client_get_block_async_cleanup( void* cls ) {
+
+   struct SG_request_data* reqdat = (struct SG_request_data*)cls;
+   if( reqdat != NULL ) {
+       SG_debug("Free block request %p\n", reqdat );
+       SG_request_data_free( reqdat );
+       SG_safe_free( reqdat );
+   }
 }
 
 
@@ -590,7 +606,7 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
    }
    
    // GOGOO!
-   rc = SG_client_download_async_start( gateway, dlloop, dlctx, reqdat->block_id, block_url, block_size * SG_MAX_BLOCK_LEN_MULTIPLIER, reqdat_dup );
+   rc = SG_client_download_async_start( gateway, dlloop, dlctx, reqdat->block_id, block_url, block_size * SG_MAX_BLOCK_LEN_MULTIPLIER, reqdat_dup, SG_client_get_block_async_cleanup );
    if( rc != 0 ) {
       
       SG_error("SG_client_download_async_start('%s') rc = %d\n", block_url, rc );
@@ -838,6 +854,7 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
       if( rc != 0 ) {
          SG_error("SG_client_block_verify(%" PRIu64 ") rc = %d\n", block_id, rc );
          return rc;
+      
       }
    }
    else {
@@ -903,6 +920,8 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
       return rc;
    }
   
+   SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "]\n", reqdat->file_id, reqdat->file_version, *block_id );
+
    block_chunk.data = block_buf;
    block_chunk.len = block_len;
 
@@ -929,46 +948,22 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
    block_chunk.len -= block_data_offset; 
 
    // deserialize
+   SG_debug("Deserialize block %p (%" PRIu64 ") to block %p (%" PRIu64 ")\n", block_chunk.data, block_chunk.len, deserialized_block->data, deserialized_block->len);
    rc = SG_gateway_impl_deserialize( gateway, reqdat, &block_chunk, deserialized_block );
 
    SG_safe_free( block_buf );
    memset( &block_chunk, 0, sizeof(struct SG_chunk) );
+
    SG_request_data_free( reqdat );
    SG_safe_free( reqdat );
 
    if( rc != 0 ) {
     
        SG_error("SG_gateway_impl_deserialize( %" PRIu64 " ) rc = %d\n", *block_id, rc );
+       // memset( deserialized_block, 0, sizeof(struct SG_chunk) );
    }
 
    return rc;
-}
-
-
-// clean up an aborted download loop used for getting blocks 
-// return 0 on success 
-int SG_client_get_block_cleanup_loop( struct md_download_loop* dlloop ) {
-
-   struct md_download_context* dlctx = NULL;
-   int i = 0;
-    
-   // free all request datas
-   for( dlctx = md_download_loop_next_initialized( dlloop, &i ); dlctx != NULL; dlctx = md_download_loop_next_initialized( dlloop, &i ) ) {
-      
-      if( dlctx == NULL ) {
-         break;
-      }
-      
-      struct SG_request_data* reqdat = (struct SG_request_data*)md_download_context_get_cls( dlctx );
-      md_download_context_set_cls( dlctx, NULL );
-
-      if( reqdat != NULL ) { 
-         SG_request_data_free( reqdat );
-         SG_safe_free( reqdat );
-      }
-   }
-
-   return 0;
 }
 
 
