@@ -433,6 +433,8 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
       
       return -EISDIR;
    }
+
+   SG_debug("Truncate '%s' to %jd\n", fs_path, new_size );
   
    // get inode data... 
    rc = UG_inode_export( &inode_data, inode, 0 );
