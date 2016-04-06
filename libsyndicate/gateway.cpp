@@ -1658,6 +1658,11 @@ void SG_impl_detach( struct SG_gateway* gateway, int (*impl_detach)( struct SG_g
    gateway->impl_detach = impl_detach;
 }
 
+// set the gateway implementation refresh routine
+void SG_impl_refresh( struct SG_gateway* gateway, int (*impl_refresh)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
+   gateway->impl_refresh = impl_refresh;
+}
+
 // set the gateway implementation to serialize a chunk 
 void SG_impl_serialize( struct SG_gateway* gateway, int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) ) {
    gateway->impl_serialize = impl_serialize;
@@ -2005,12 +2010,12 @@ int SG_gateway_cached_manifest_get_raw( struct SG_gateway* gateway, struct SG_re
    if( rc == -EAGAIN ) {
       
       // not available in the cache 
-      SG_error("Chunk is not readable at this time: %p\n", reqdat);
+      SG_debug("Chunk is not readable at this time: %p\n", reqdat);
       return -ENOENT;
    }
    else if( rc != 0 ) {
 
-      SG_error("md_cache_is_block_readable rc = %d\n", rc );
+      SG_debug("md_cache_is_block_readable rc = %d\n", rc );
       return rc;
    }
    
@@ -2019,7 +2024,7 @@ int SG_gateway_cached_manifest_get_raw( struct SG_gateway* gateway, struct SG_re
    if( rc != 0 ) {
       
       // not available in the cache 
-      SG_error("Chunk is not in the cache (rc = %d)\n", rc);
+      SG_debug("Chunk is not in the cache (rc = %d)\n", rc);
       return rc;
    }
    
@@ -2236,6 +2241,33 @@ int SG_gateway_impl_detach( struct SG_gateway* gateway, struct SG_request_data* 
       if( rc != 0 ) {
          
          SG_error("gateway->impl_detach( %" PRIX64 ".%" PRId64 " (%s) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
+      }
+      
+      return rc;
+   }
+   else {
+      
+      return -ENOSYS;
+   }
+}
+
+
+// refresh a file 
+// return 0 on success 
+// return -ENOSYS if not defined 
+// return non-zero on implementation error 
+int SG_gateway_impl_refresh( struct SG_gateway* gateway, struct SG_request_data* reqdat ) {
+   
+   int rc = 0;
+   
+   if( gateway->impl_refresh != NULL ) {
+      
+      reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
+      rc = (*gateway->impl_refresh)( gateway, reqdat, gateway->cls );
+      
+      if( rc != 0 ) {
+         
+         SG_error("gateway->impl_refresh( %" PRIX64 ".%" PRId64 " (%s) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
       }
       
       return rc;

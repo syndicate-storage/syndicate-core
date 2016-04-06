@@ -133,6 +133,9 @@ struct SG_gateway {
    // delete a file 
    int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* );
 
+   // refresh a file 
+   int (*impl_refresh)( struct SG_gateway*, struct SG_request_data*, void* );
+
    // serialize a chunk
    int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* );
 
@@ -200,6 +203,7 @@ void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_g
 void SG_impl_serialize( struct SG_gateway* gateway, int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) );
 void SG_impl_deserialize( struct SG_gateway* gateway, int (*impl_deserialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) );
 void SG_impl_detach( struct SG_gateway* gateway, int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* ) );
+void SG_impl_refresh( struct SG_gateway* gateway, int (*impl_refresh)( struct SG_gateway*, struct SG_request_data*, void* ) );
 void SG_impl_get_block( struct SG_gateway* gateway, int (*impl_get_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t, void* ) );
 void SG_impl_put_block( struct SG_gateway* gateway, int (*impl_put_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t, void* ) );
 void SG_impl_delete_block( struct SG_gateway* gateway, int (*impl_delete_block)( struct SG_gateway*, struct SG_request_data*, void* ) );
@@ -288,6 +292,7 @@ int SG_gateway_impl_stat_block( struct SG_gateway* gateway, struct SG_request_da
 int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t new_size );
 int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path );
 int SG_gateway_impl_detach( struct SG_gateway* gateway, struct SG_request_data* reqdat );
+int SG_gateway_impl_refresh( struct SG_gateway* gateway, struct SG_request_data* reqdat );
 int SG_gateway_impl_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk );
 int SG_gateway_impl_deserialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk );
 int SG_gateway_impl_block_get( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block, uint64_t hints );
