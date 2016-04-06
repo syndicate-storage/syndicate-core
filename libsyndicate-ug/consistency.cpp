@@ -1629,6 +1629,7 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
 // refresh a single inode's metadata 
 // return 0 if the inode is already fresh, or is not changed remotely
 // return 1 if the inode was not fresh, but we fetched and merged the new data successfully
+// return -ESTALE if we were unable to remotely refresh the inode, and it was remotely stale
 // return -errno on failure 
 // inode->entry must NOT be locked
 int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
@@ -1639,6 +1640,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    uint64_t file_id = 0;
    int64_t file_version = 0;
    int64_t write_nonce = 0;
+   uint64_t coordinator_id = 0;
    struct timespec now;
    struct ms_path_ent path_ent;
    struct md_entry entry;
@@ -1647,6 +1649,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct ms_client* ms = SG_gateway_ms( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
+   bool need_request_refresh = false;
 
    char* fs_dirpath = md_dirname( fs_path, NULL );
    char* fent_name = md_basename( fs_path, NULL );
@@ -1661,23 +1664,38 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    memset( &entry, 0, sizeof(struct md_entry) );
    clock_gettime( CLOCK_REALTIME, &now );
 
-   if( !UG_inode_is_read_stale( inode, &now ) ) {
+   fskit_entry_rlock( UG_inode_fskit_entry( inode ));
+
+   volume_id = UG_inode_volume_id( inode );
+   file_id = UG_inode_file_id( inode );
+   coordinator_id = UG_inode_coordinator_id( inode );
+   file_version = UG_inode_file_version( inode );
+   write_nonce = UG_inode_write_nonce( inode );
+
+   need_request_refresh = (UG_inode_is_write_stale( inode, &now ) && coordinator_id != SG_gateway_id(gateway));
+   if( !need_request_refresh && !UG_inode_is_read_stale( inode, &now ) ) {
 
       // still fresh 
+      fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
       SG_safe_free( fent_name );
       SG_safe_free( fs_dirpath );
       return 0;
    }
 
-   fskit_entry_rlock( UG_inode_fskit_entry( inode ));
-
-   volume_id = UG_inode_volume_id( inode );
-   file_id = UG_inode_file_id( inode );
-   file_version = UG_inode_file_version( inode );
-   write_nonce = UG_inode_write_nonce( inode );
-
    fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
 
+   if( need_request_refresh ) {
+      SG_debug("Requesting remote fresh on %" PRIX64 "\n", file_id );
+      rc = UG_consistency_request_refresh( gateway, fs_path );
+      if( rc != 0 ) {
+
+         SG_error("UG_consistency_request_refresh('%s') rc = %d\n", fs_path, rc);
+         SG_safe_free( fent_name );
+         SG_safe_free( fs_dirpath );
+         return -ESTALE;
+      }
+   }
+   
    SG_debug("Refresh inode %" PRIX64 "\n", UG_inode_file_id( inode ) );
  
    rc = ms_client_getattr_request( &path_ent, volume_id, file_id, file_version, write_nonce, NULL);
@@ -2101,3 +2119,126 @@ static int UG_consistency_fetchxattrs_all( struct SG_gateway* gateway, ms_path_t
    
    return 0;
 }
+
+
+// ask a remote coordinator to verify that its data is still present
+// return 0 on success
+// return -ENOMEM on OOM
+// return -EINVAL if we're the coordinator
+// return -EREMOTEIO on network error
+// return -EAGAIN on timeout
+// return non-zero error code from the remote refresh if it failed for some reason
+int UG_consistency_request_refresh( struct SG_gateway* gateway, char const* fs_path ) {
+
+   int rc = 0;
+   SG_messages::Request req;
+   SG_messages::Reply reply;
+   struct SG_request_data reqdat;
+   struct fskit_entry* fent = NULL;
+   struct UG_inode* inode = NULL;
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+   struct fskit_core* fs = UG_state_fs( ug );
+   
+   int64_t manifest_mtime_sec = 0;
+   int32_t manifest_mtime_nsec = 0;
+   uint64_t file_id = 0;
+   int64_t file_version = 0;
+  
+   fent = fskit_entry_resolve_path( fs, fs_path, 0, 0, false, &rc );
+   if( fent == NULL ) {
+      SG_error("fskit_entry_resolve_path('%s') rc = %d\n", fs_path, rc);
+      return rc;
+   }
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   file_id = UG_inode_file_id( inode );
+   file_version = UG_inode_file_version( inode );
+
+   // can't do this if we're the coordinator 
+   if( SG_gateway_id( gateway ) == UG_inode_coordinator_id( inode ) ) {
+      SG_error("We're the coordinator of '%s'\n", fs_path );
+      fskit_entry_unlock( fent );
+      return -EINVAL;
+   }
+    
+   SG_manifest_get_modtime( UG_inode_manifest( inode ), &manifest_mtime_sec, &manifest_mtime_nsec );
+   
+   rc = SG_request_data_init_manifest( gateway, fs_path, UG_inode_file_id( inode ), UG_inode_file_version( inode ), manifest_mtime_sec, manifest_mtime_nsec, &reqdat );
+   if( rc != 0 ) {
+      
+      // OOM
+      fskit_entry_unlock( fent );
+      return rc;
+   }
+   
+   rc = SG_client_request_REFRESH_setup( gateway, &req, &reqdat, UG_inode_coordinator_id( inode ) );
+   if( rc != 0 ) {
+      
+      // OOM 
+      fskit_entry_unlock( fent );
+      SG_error("SG_client_request_REFRESH_setup('%s') rc = %d\n", fs_path, rc );
+      SG_request_data_free( &reqdat );
+      return rc;
+   }
+   
+   SG_request_data_free( &reqdat );
+   
+   rc = SG_client_request_send( gateway, UG_inode_coordinator_id( inode ), &req, NULL, &reply );
+   fskit_entry_unlock( fent );
+
+   if( rc != 0 ) {
+      
+      // network error 
+      SG_error("SG_client_request_send(REFRESH '%s') rc = %d\n", fs_path, rc );
+      
+      // timed out? retry 
+      if( rc == -ETIMEDOUT ) {
+         rc = -EAGAIN;
+      }
+      
+      // propagate retries; everything else is remote I/O error 
+      if( rc != -EAGAIN ) {
+         rc = -EREMOTEIO;
+      }
+      
+      return rc;
+   }
+   
+   if( reply.error_code() != 0 ) {
+      
+      // failed to process
+      SG_error("SG_client_request_send(REFRESH '%s') reply error = %d\n", fs_path, rc );
+      return reply.error_code();
+   }
+
+   // success! update refresh-time 
+   fent = fskit_entry_resolve_path( fs, fs_path, 0, 0, true, &rc );
+   if( fent == NULL ) {
+      SG_error("fskit_entry_resolve_path('%s') rc = %d\n", fs_path, rc);
+      if( rc == -ENOENT ) {
+         // file disappeared during our reload (but that's okay)
+         return 0;
+      }
+      return rc;
+   }
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+
+   // did the file change while we made our request?
+   if( UG_inode_file_id( inode ) != file_id ) {
+      fskit_entry_unlock( fent );
+      goto UG_consistency_request_refresh_out;
+   }
+
+   if( UG_inode_file_version( inode ) != file_version ) {
+      fskit_entry_unlock( fent );
+      goto UG_consistency_request_refresh_out;
+   }
+
+   UG_inode_set_write_refresh_time_now( inode );
+   fskit_entry_unlock( fent );
+
+UG_consistency_request_refresh_out:
+   return rc;
+}
+
