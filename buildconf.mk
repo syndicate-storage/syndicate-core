@@ -12,6 +12,7 @@ DESTDIR        ?=
 PREFIX         ?= /usr/local
 BINDIR         ?= $(DESTDIR)$(PREFIX)/bin
 LIBDIR         ?= $(DESTDIR)$(PREFIX)/lib
+SRCDIR         ?= $(DESTDIR)$(PREFIX)/src
 LIBEXECDIR     ?= $(DESTDIR)$(PREFIX)/lib/syndicate
 INCLUDEDIR     ?= $(DESTDIR)$(PREFIX)/include
 PKGCONFIGDIR   ?= $(DESTDIR)$(PREFIX)/lib/pkgconfig
@@ -36,7 +37,7 @@ BUILD_MS_DIRS  := $(BUILD_MS)/common \
 	$(BUILD_MS)/google/protobuf \
 	$(BUILD_MS)/google/protobuf/internal \
 	$(BUILD_MS)/google/protobuf/compiler
-INSTALL_MS     := $(BUILD_LIBEXEC_DIR)/ms
+INSTALL_MS     := $(SRCDIR)/ms
 
 # libsyndicate
 BUILD_LIBSYNDICATE       := $(BUILD_LIBDIR)

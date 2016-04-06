@@ -1,11 +1,11 @@
-usr/lib/syndicate/ms/*.py
-usr/lib/syndicate/ms/common/*.py
-usr/lib/syndicate/ms/google/protobuf/*.py
-usr/lib/syndicate/ms/google/protobuf/compiler/*.py
-usr/lib/syndicate/ms/google/protobuf/internal/*.py
-usr/lib/syndicate/ms/protobufs/*.py
-usr/lib/syndicate/ms/storage/*.py
-usr/lib/syndicate/ms/storage/backends/*.py
-usr/lib/syndicate/ms/MS/*.py
-usr/lib/syndicate/ms/MS/methods/*.py
+usr/src/syndicate/ms/*.py
+usr/src/syndicate/ms/common/*.py
+usr/src/syndicate/ms/google/protobuf/*.py
+usr/src/syndicate/ms/google/protobuf/compiler/*.py
+usr/src/syndicate/ms/google/protobuf/internal/*.py
+usr/src/syndicate/ms/protobufs/*.py
+usr/src/syndicate/ms/storage/*.py
+usr/src/syndicate/ms/storage/backends/*.py
+usr/src/syndicate/ms/MS/*.py
+usr/src/syndicate/ms/MS/methods/*.py
 
