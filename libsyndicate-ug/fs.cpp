@@ -648,7 +648,7 @@ static int UG_fs_trunc_remote( struct SG_gateway* gateway, char const* fs_path, 
       return rc;
    }
    
-   rc = SG_client_request_TRUNCATE_setup( gateway, &req, &reqdat, new_size );
+   rc = SG_client_request_TRUNCATE_setup( gateway, &req, &reqdat, UG_inode_coordinator_id( inode ), new_size );
    if( rc != 0 ) {
       
       // OOM 
@@ -855,7 +855,7 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
    }
    
    // NOTE: no vacuum ticket; the receiving gateway can verify the write-permission with the certificate
-   rc = SG_client_request_DETACH_setup( gateway, &req, &reqdat );
+   rc = SG_client_request_DETACH_setup( gateway, &req, &reqdat, UG_inode_coordinator_id( inode ) );
    if( rc != 0 ) {
       
       // OOM 
@@ -1169,7 +1169,7 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
       return rc;
    }
    
-   rc = SG_client_request_RENAME_setup( gateway, &req, &reqdat, new_path );
+   rc = SG_client_request_RENAME_setup( gateway, &req, &reqdat, UG_inode_coordinator_id( inode ), new_path );
    if( rc != 0 ) {
       
       // OOM 
