@@ -618,8 +618,8 @@ static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* pat
     if( rc != 0 ) {
         return rc;
     }
-    
-    rc = SG_client_request_SETXATTR_setup( gateway, &request, &reqdat, name, value, value_len, flags );
+   
+    rc = SG_client_request_SETXATTR_setup( gateway, &request, &reqdat, UG_inode_coordinator_id( inode ), name, value, value_len, flags );
     if( rc != 0 ) {
         
         SG_request_data_free( &reqdat );
@@ -946,7 +946,7 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
         return rc;
     }
     
-    rc = SG_client_request_REMOVEXATTR_setup( gateway, &request, &reqdat, name );
+    rc = SG_client_request_REMOVEXATTR_setup( gateway, &request, &reqdat, UG_inode_coordinator_id( inode ), name );
     if( rc != 0 ) {
         
         SG_request_data_free( &reqdat );
