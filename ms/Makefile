@@ -44,7 +44,10 @@ MS_YAML_BUILD_OUT		:= $(patsubst %.yamlin,$(BUILD_MS)/%.yaml,$(MS_YAML_IN))
 # python template targets
 MS_FILES_BUILD_OUT	:= $(patsubst %.pyin,$(BUILD_MS)/%.py,$(MS_FILES_IN))
 
-all: $(MS_FILES_BUILD) $(MS_YAML_BUILD_OUT) $(MS_FILES_BUILD_OUT) $(MS_FILES_BUILD_PROTOBUF)
+# all targets
+MS_BUILD_ALL := $(MS_FILES_BUILD) $(MS_YAML_BUILD_OUT) $(MS_FILES_BUILD_OUT) $(MS_FILES_BUILD_PROTOBUF)
+
+all: $(MS_BUILD_ALL)
 
 $(BUILD_MS)/%.py: %.py
 	@mkdir -p $(shell dirname "$@")
@@ -66,7 +69,6 @@ $(BUILD_MS)/app.yaml: app.yamlin
 	@cat "$<" | \
 		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' > "$@"
 
-
 # fix up protobufs to work on GAE 
 $(BUILD_MS)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py google_protobuf_fixer.pyin
 	@mkdir -p $(shell dirname "$@")
@@ -74,9 +76,23 @@ $(BUILD_MS)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py google_protobuf_fixer
 	@cat google_protobuf_fixer.pyin >> "$@"
 	@cat "$<" >> "$@"
 
+# don't install items that embed build-time variables
+MS_EMBEDDED_VARS := $(BUILD_MS)/app.yaml $(BUILD_MS)/common/admin_info.py
+
+MS_INSTALL_ITEMS := $(filter-out $(MS_EMBEDDED_VARS), $(MS_BUILD_ALL))
+
+MS_INSTALL_TARGET := $(patsubst $(BUILD_MS)/%,$(INSTALL_MS)/%,$(MS_INSTALL_ITEMS))
+
+.PHONY: install
+install: $(MS_INSTALL_TARGET)
+
+$(MS_INSTALL_TARGET): $(MS_INSTALL_ITEMS)
+	mkdir -p "$(@D)"
+	cp -a "$<" "$@"
+
 .PHONY: clean
 clean:
-	@rm -rf $(BUILD_MS)
+	rm -rf $(BUILD_MS)
 
 # debugging
 print-%: ; @echo $*=$($*)
