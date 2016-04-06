@@ -8,7 +8,7 @@ BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
 
 # install environment
-DESTDIR        ?= 
+DESTDIR        ?=
 PREFIX         ?= /usr/local
 BINDIR         ?= $(DESTDIR)$(PREFIX)/bin
 LIBDIR         ?= $(DESTDIR)$(PREFIX)/lib
@@ -16,14 +16,14 @@ LIBEXECDIR     ?= $(DESTDIR)$(PREFIX)/lib/syndicate
 INCLUDEDIR     ?= $(DESTDIR)$(PREFIX)/include
 PKGCONFIGDIR   ?= $(DESTDIR)$(PREFIX)/lib/pkgconfig
 
-# protobufs 
+# protobufs
 BUILD_PROTOBUFS_CPP     := $(BUILD)/protobufs/cpp/
 BUILD_PROTOBUFS_OBJ     := $(BUILD)/protobufs/obj
 BUILD_PROTOBUFS_PYTHON  := $(BUILD)/protobufs/python/
 BUILD_PROTOBUFS_INCLUDEDIR := $(BUILD_INCLUDEDIR)/libsyndicate
 BUILD_PROTOBUFS_DIRS    := $(BUILD_PROTOBUFS_CPP) $(BUILD_PROTOBUFS_PYTHON)
 
-# metadata service 
+# metadata service
 BUILD_MS       := $(BUILD)/ms
 BUILD_MS_TOOLS := $(BUILD_BINDIR)
 BUILD_MS_DIRS  := $(BUILD_MS)/common \
@@ -36,7 +36,8 @@ BUILD_MS_DIRS  := $(BUILD_MS)/common \
 									$(BUILD_MS)/google/protobuf \
 									$(BUILD_MS)/google/protobuf/internal \
 									$(BUILD_MS)/google/protobuf/compiler
-INSTALL_MS     := /opt/syndicate/ms
+
+INSTALL_MS     := $(DESTDIR)/opt/syndicate/ms
 
 # libsyndicate
 BUILD_LIBSYNDICATE       := $(BUILD_LIBDIR)
@@ -58,7 +59,7 @@ BUILD_PYTHON_SYNDICATE_DIRS := $(BUILD_PYTHON_SYNDICATE)
 INSTALL_PYTHON_BIN := $(BINDIR)
 INSTALL_PYTHON_LIBEXEC := $(LIBEXECDIR)
 
-# python tools 
+# python tools
 BUILD_PYTHON_BIN := $(BUILD_BINDIR)
 BUILD_PYTHON_LIBEXEC := $(BUILD_LIBEXEC_DIR)
 
