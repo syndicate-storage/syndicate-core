@@ -1,6 +1,5 @@
 opt/syndicate/ms/*.py
 opt/syndicate/ms/common/*.py
-opt/syndicate/ms/google/*.py
 opt/syndicate/ms/google/protobuf/*.py
 opt/syndicate/ms/google/protobuf/compiler/*.py
 opt/syndicate/ms/google/protobuf/internal/*.py
