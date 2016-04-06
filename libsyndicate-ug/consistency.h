@@ -51,8 +51,11 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
 // fetch the xattrs for an inode 
 int UG_consistency_fetchxattrs( struct SG_gateway* gateway, uint64_t file_id, int64_t xattr_nonce, unsigned char* xattr_hash, fskit_xattr_set** ret_xattrs );
 
-// ensure an inode is fresh
+// ensure a locally-cached inode is fresh
 int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode );
+
+// ask a remote gateway to refresh its inode
+int UG_consistency_request_refresh( struct SG_gateway* gateway, char const* path );
 
 }
 
