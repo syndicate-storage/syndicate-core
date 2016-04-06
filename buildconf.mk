@@ -37,7 +37,7 @@ BUILD_MS_DIRS  := $(BUILD_MS)/common \
 	$(BUILD_MS)/google/protobuf \
 	$(BUILD_MS)/google/protobuf/internal \
 	$(BUILD_MS)/google/protobuf/compiler
-INSTALL_MS     := $(SRCDIR)/ms
+INSTALL_MS     := $(SRCDIR)/syndicate/ms
 
 # libsyndicate
 BUILD_LIBSYNDICATE       := $(BUILD_LIBDIR)
