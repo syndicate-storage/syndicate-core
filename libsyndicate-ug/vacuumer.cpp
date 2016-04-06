@@ -538,7 +538,7 @@ static int UG_vacuum_create_request( struct UG_vacuumer* vacuumer, struct UG_vac
    }
 
    // generate request 
-   rc = SG_client_request_DELETECHUNKS_setup( vacuumer->gateway, request, &reqdat, chunk_info, num_chunks );
+   rc = SG_client_request_DELETECHUNKS_setup( vacuumer->gateway, request, &reqdat, vctx->inode_data.coordinator, chunk_info, num_chunks );
    if( rc != 0 ) {
 
       goto UG_vacuum_create_request_fail;

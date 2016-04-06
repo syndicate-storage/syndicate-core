@@ -238,6 +238,7 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    size_t chunks_capacity = 0;
    struct SG_manifest_block* chunk_info = NULL;
    struct SG_chunk manifest_chunk;
+   uint64_t coordinator_id = UG_inode_coordinator_id( inode );
    bool we_are_coordinator = (UG_inode_coordinator_id( inode ) == SG_gateway_id( gateway ));
 
    memset( &manifest_chunk, 0, sizeof(struct SG_chunk) );
@@ -304,7 +305,7 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    }
 
    // generate the message, but don't sign it yet (still need to add data-plane metadata)
-   rc = SG_client_request_PUTCHUNKS_setup_ex( gateway, request, &reqdat, chunk_info, num_chunks, false );
+   rc = SG_client_request_PUTCHUNKS_setup_ex( gateway, request, &reqdat, coordinator_id, chunk_info, num_chunks, false );
    if( rc != 0 ) {
 
       goto UG_replica_context_make_controlplane_message_fail;
