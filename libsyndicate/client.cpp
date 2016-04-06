@@ -1694,7 +1694,7 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
 // return 0 on success 
 // return -EINVAL if the reqdat is not for a manifest
 // return -ENOMEM on OOM 
-int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, off_t new_size ) {
+int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, off_t new_size ) {
    
    int rc = 0;
    
@@ -1714,6 +1714,11 @@ int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::R
    request->set_request_type( SG_messages::Request::TRUNCATE );
    request->set_new_size( new_size );
    
+   request->set_new_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+   request->set_new_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+
+   request->set_coordinator_id( coordinator_id );
+   
    rc = md_sign< SG_messages::Request >( gateway_pkey, request );
    if( rc != 0 ) {
       
@@ -1730,7 +1735,7 @@ int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::R
 // return 0 on success 
 // return -EINVAL if teh reqdat is not for a manifest
 // return -ENOMEM on OOM 
-int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, char const* new_path ) {
+int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* new_path ) {
    
    int rc = 0;
    
@@ -1748,6 +1753,9 @@ int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Req
    }
    
    request->set_request_type( SG_messages::Request::RENAME );
+   request->set_new_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+   request->set_new_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+   request->set_coordinator_id( coordinator_id );
    
    try {
       request->set_new_fs_path( string(new_path) );
@@ -1767,12 +1775,12 @@ int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Req
 }
 
 
-// make a signed DETACH request from an initialized reqdat, optionally with an MS-given vacuum ticket
+// make a signed DETACH request from an initialized reqdat
 // the reqdat must be for a manifest
 // return 0 on success 
 // return -EINVAL if the reqdat is not for a manifest
 // return -ENOMEM on OOM 
-int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat ) {
+int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id ) {
    
    int rc = 0;
    EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
@@ -1789,6 +1797,46 @@ int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Req
    }
    
    request->set_request_type( SG_messages::Request::DETACH );
+   request->set_new_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+   request->set_new_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+   request->set_coordinator_id( coordinator_id );
+   
+   rc = md_sign< SG_messages::Request >( gateway_pkey, request );
+   if( rc != 0 ) {
+      
+      SG_error("md_sign rc = %d\n", rc );
+      return rc;
+   }
+   
+   return rc;
+}
+
+
+// make a signed REFRESH request from an initialized reqdat
+// the reqdat must be for a manifest
+// return 0 on success 
+// return -EINVAL if the reqdat is not for a manifest
+// return -ENOMEM on OOM 
+int SG_client_request_REFRESH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id ) {
+   
+   int rc = 0;
+   EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
+   
+   if( !SG_request_is_manifest( reqdat ) ) {
+      return -EINVAL;
+   }
+   
+   // basics 
+   rc = SG_client_request_setup( gateway, request, reqdat );
+   if( rc != 0 ) {
+      
+      return rc;
+   }
+   
+   request->set_request_type( SG_messages::Request::REFRESH );
+   request->set_new_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+   request->set_new_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+   request->set_coordinator_id( coordinator_id );
    
    rc = md_sign< SG_messages::Request >( gateway_pkey, request );
    if( rc != 0 ) {
@@ -1804,7 +1852,7 @@ int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Req
 // make a PUTCHUNKS request, optionally signing it
 // return 0 on sucess 
 // return -ENOMEM on OOM 
-int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
+int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
    
    int rc = 0;
    EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
@@ -1817,6 +1865,7 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
    }
    
    request->set_request_type( SG_messages::Request::PUTCHUNKS );
+   request->set_coordinator_id( coordinator_id );
   
    for( size_t i = 0; i < num_chunk_info; i++ ) {
 
@@ -1851,15 +1900,15 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
 }
 
 // make a signed PUTCHUNKS request 
-int SG_client_request_PUTCHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
-   return SG_client_request_PUTCHUNKS_setup_ex( gateway, request, reqdat, chunk_info, num_chunk_info, true );
+int SG_client_request_PUTCHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
+   return SG_client_request_PUTCHUNKS_setup_ex( gateway, request, reqdat, coordinator_id, chunk_info, num_chunk_info, true );
 }
 
 
 // make a DELETECHUNKS request, optionally signing it
 // return 0 on sucess 
 // return -ENOMEM on OOM 
-int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
+int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
    
    int rc = 0;
    EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
@@ -1872,6 +1921,7 @@ int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_mess
    }
    
    request->set_request_type( SG_messages::Request::DELETECHUNKS );
+   request->set_coordinator_id( coordinator_id );
    
    for( size_t i = 0; i < num_chunk_info; i++ ) {
 
@@ -1906,14 +1956,14 @@ int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_mess
 }
 
 // make a signed DELETECHUNKS request
-int SG_client_request_DELETECHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
-   return SG_client_request_DELETECHUNKS_setup_ex( gateway, request, reqdat, chunk_info, num_chunk_info, true );
+int SG_client_request_DELETECHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
+   return SG_client_request_DELETECHUNKS_setup_ex( gateway, request, reqdat, coordinator_id, chunk_info, num_chunk_info, true );
 }
 
 // make a signed SETXATTR request
 // return 0 on success 
 // return -ENOMEM on OOM 
-int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags ) {
+int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags ) {
     
     int rc = 0;
     EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
@@ -1926,6 +1976,7 @@ int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::R
     }
     
     request->set_request_type( SG_messages::Request::SETXATTR );
+    request->set_coordinator_id( coordinator_id );
     
     try {
         request->set_xattr_name( string(xattr_name) );
@@ -1950,7 +2001,7 @@ int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::R
 // make a signed REMOVEXATTR request 
 // return 0 on success 
 // return -ENOMEM on OOM 
-int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, char const* xattr_name ) {
+int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name ) {
     
     int rc = 0;
     EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
@@ -1963,6 +2014,7 @@ int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages
     }
     
     request->set_request_type( SG_messages::Request::REMOVEXATTR );
+    request->set_coordinator_id( coordinator_id );
     
     try {
         request->set_xattr_name( string(xattr_name) );
