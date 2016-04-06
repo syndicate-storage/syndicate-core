@@ -29,6 +29,7 @@ install:
 	$(MAKE) -C protobufs install
 	$(MAKE) -C libsyndicate install
 	$(MAKE) -C libsyndicate-ug install
+	$(MAKE) -C ms install
 	$(MAKE) -C python install
 
 .PHONY: clean

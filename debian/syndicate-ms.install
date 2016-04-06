@@ -1,0 +1,11 @@
+usr/src/syndicate/ms/*.py
+usr/src/syndicate/ms/common/*.py
+usr/src/syndicate/ms/google/protobuf/*.py
+usr/src/syndicate/ms/google/protobuf/compiler/*.py
+usr/src/syndicate/ms/google/protobuf/internal/*.py
+usr/src/syndicate/ms/protobufs/*.py
+usr/src/syndicate/ms/storage/*.py
+usr/src/syndicate/ms/storage/backends/*.py
+usr/src/syndicate/ms/MS/*.py
+usr/src/syndicate/ms/MS/methods/*.py
+
