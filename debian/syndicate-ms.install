@@ -1,0 +1,12 @@
+opt/syndicate/ms/*.py
+opt/syndicate/ms/common/*.py
+opt/syndicate/ms/google/*.py
+opt/syndicate/ms/google/protobuf/*.py
+opt/syndicate/ms/google/protobuf/compiler/*.py
+opt/syndicate/ms/google/protobuf/internal/*.py
+opt/syndicate/ms/protobufs/*.py
+opt/syndicate/ms/storage/*.py
+opt/syndicate/ms/storage/backends/*.py
+opt/syndicate/ms/MS/*.py
+opt/syndicate/ms/MS/methods/*.py
+

@@ -24,18 +24,19 @@ BUILD_PROTOBUFS_INCLUDEDIR := $(BUILD_INCLUDEDIR)/libsyndicate
 BUILD_PROTOBUFS_DIRS    := $(BUILD_PROTOBUFS_CPP) $(BUILD_PROTOBUFS_PYTHON)
 
 # metadata service 
-BUILD_MS                := $(BUILD)/ms
-BUILD_MS_TOOLS			:= $(BUILD_BINDIR)
-BUILD_MS_DIRS           := $(BUILD_MS)/common \
-                           $(BUILD_MS)/protobufs \
-                           $(BUILD_MS)/storage \
-                           $(BUILD_MS)/storage/backends \
-                           $(BUILD_MS)/MS \
-                           $(BUILD_MS)/MS/methods \
-                           $(BUILD_MS)/google \
-                           $(BUILD_MS)/google/protobuf \
-                           $(BUILD_MS)/google/protobuf/internal \
-                           $(BUILD_MS)/google/protobuf/compiler
+BUILD_MS       := $(BUILD)/ms
+BUILD_MS_TOOLS := $(BUILD_BINDIR)
+BUILD_MS_DIRS  := $(BUILD_MS)/common \
+									$(BUILD_MS)/protobufs \
+									$(BUILD_MS)/storage \
+									$(BUILD_MS)/storage/backends \
+									$(BUILD_MS)/MS \
+									$(BUILD_MS)/MS/methods \
+									$(BUILD_MS)/google \
+									$(BUILD_MS)/google/protobuf \
+									$(BUILD_MS)/google/protobuf/internal \
+									$(BUILD_MS)/google/protobuf/compiler
+INSTALL_MS     := /opt/syndicate/ms
 
 # libsyndicate
 BUILD_LIBSYNDICATE       := $(BUILD_LIBDIR)

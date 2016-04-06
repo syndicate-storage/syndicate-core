@@ -66,7 +66,6 @@ $(BUILD_MS)/app.yaml: app.yamlin
 	@cat "$<" | \
 		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' > "$@"
 
-
 # fix up protobufs to work on GAE 
 $(BUILD_MS)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py google_protobuf_fixer.pyin
 	@mkdir -p $(shell dirname "$@")
@@ -74,9 +73,23 @@ $(BUILD_MS)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py google_protobuf_fixer
 	@cat google_protobuf_fixer.pyin >> "$@"
 	@cat "$<" >> "$@"
 
+# don't install items that embed built-time variables
+MS_EMBEDDED_VARS := $(BUILD_MS)/app.yaml $(BUILD_MS)/common/admin_info.py
+
+MS_INSTALL_ITEMS := $(filter-out $(MS_EMBEDDED_VARS), $(all))
+
+MS_INSTALL_TARGET := $(patsubst $(BUILD_MS)/%,$(INSTALL_MS)/%,$(MS_INSTALL_ITEMS))
+
+.PHONY: install
+install: $(MS_INSTALL_TARGET)
+
+$(MS_INSTALL_TARGET): $(MS_INSTALL_ITEMS)
+	mkdir -p "$(@D)"
+	cp -a "$<" "$@"
+
 .PHONY: clean
 clean:
-	@rm -rf $(BUILD_MS)
+	rm -rf $(BUILD_MS)
 
 # debugging
 print-%: ; @echo $*=$($*)
