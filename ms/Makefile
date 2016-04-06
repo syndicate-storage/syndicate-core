@@ -85,7 +85,7 @@ MS_INSTALL_TARGET := $(patsubst $(BUILD_MS)/%,$(INSTALL_MS)/%,$(MS_INSTALL_ITEMS
 .PHONY: install
 install: $(MS_INSTALL_TARGET)
 
-$(MS_INSTALL_TARGET): $(MS_INSTALL_ITEMS)
+$(INSTALL_MS)/%: $(BUILD_MS)/%
 	mkdir -p "$(@D)"
 	cp -a "$<" "$@"
 
