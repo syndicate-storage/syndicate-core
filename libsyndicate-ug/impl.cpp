@@ -152,6 +152,7 @@ static int UG_impl_stat( struct SG_gateway* gateway, struct SG_request_data* req
 
          // not a file 
          md_entry_free( &ent_info );
+         SG_request_data_free( entity_info );
          return -ENOENT;
       }
    }
