@@ -57,7 +57,6 @@ extern "C" {
 // initialization
 struct UG_inode* UG_inode_alloc( int count );
 int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry* entry, uint64_t volume_id, uint64_t coordinator_id, int64_t file_version );
-// int UG_inode_init_from_protobuf( struct UG_inode* inode, struct fskit_entry* entry, ms::ms_entry* msent, SG_messages::Manifest* mmsg );
 int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_data, struct fskit_entry* fent );
 int UG_inode_fskit_entry_init( struct fskit_core* fs, struct fskit_entry* fent, struct fskit_entry* parent, struct md_entry* inode_data );
 int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data );
@@ -139,6 +138,7 @@ UG_dirty_block_map_t* UG_inode_dirty_blocks( struct UG_inode* inode );
 struct timespec UG_inode_old_manifest_modtime( struct UG_inode* inode );
 struct fskit_entry* UG_inode_fskit_entry( struct UG_inode* inode );
 bool UG_inode_is_read_stale( struct UG_inode* inode, struct timespec* now );
+bool UG_inode_is_write_stale( struct UG_inode* inode, struct timespec* now );
 bool UG_inode_renaming( struct UG_inode* inode );
 bool UG_inode_deleting( struct UG_inode* inode );
 int64_t UG_inode_ms_num_children( struct UG_inode* inode );
@@ -157,6 +157,8 @@ void UG_inode_set_file_version( struct UG_inode* inode, int64_t version );
 void UG_inode_set_write_nonce( struct UG_inode* inode, int64_t wn );
 void UG_inode_set_refresh_time( struct UG_inode* inode, struct timespec* ts );
 void UG_inode_set_refresh_time_now( struct UG_inode* inode );
+void UG_inode_set_write_refresh_time( struct UG_inode* inode, struct timespec* ts );
+void UG_inode_set_write_refresh_time_now( struct UG_inode* inode );
 void UG_inode_set_manifest_refresh_time( struct UG_inode* inode, struct timespec* ts );
 void UG_inode_set_manifest_refresh_time_now( struct UG_inode* inode );
 void UG_inode_set_children_refresh_time( struct UG_inode* inode, struct timespec* ts );
