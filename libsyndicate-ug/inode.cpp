@@ -32,10 +32,11 @@ struct UG_inode {
    int64_t xattr_nonce;         // uncommitted xattr nonce
    
    struct timespec refresh_time;                // time of last refresh from the ms
+   struct timespec write_refresh_time;          // time of last remote-fresh request to the file's coordinator
    struct timespec manifest_refresh_time;       // time of last manifest refresh
    struct timespec children_refresh_time;       // if this is a directory, this is the time the children were last reloaded
    uint32_t max_read_freshness;         // how long since last refresh, in millis, this inode is to be considered fresh for reading
-   uint32_t max_write_freshness;        // how long since last refresh, in millis, this inode is to be considered fresh for writing
+   uint32_t max_write_freshness;        // how long since last refresh, in millis, this inode is to be considered fresh from a remote update (0 means "always fresh")
    
    bool read_stale;     // if true, this file must be revalidated before the next read
    bool write_stale;    // if true, this file must be revalidated before the next write
@@ -141,51 +142,6 @@ int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry*
 
    return 0;
 }
-
-
-/*
-// initialize an inode from an fskit_entry, and protobof'ed msent and mmsg
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL if the file IDs don't match 
-int UG_inode_init_from_protobuf( struct UG_inode* inode, struct fskit_entry* entry, ms::ms_entry* msent, SG_messages::Manifest* mmsg ) {
-   
-   int rc = 0;
-   
-   // sanity check 
-   if( fskit_entry_get_file_id( entry ) != msent->file_id() ) {
-      return -EINVAL;
-   }
-   
-   rc = UG_inode_init_common( inode, msent->name().c_str(), fskit_entry_get_type( entry ) == FSKIT_ENTRY_TYPE_FILE ? MD_ENTRY_FILE : MD_ENTRY_DIR );
-   if( rc != 0 ) {
-      
-      return rc;
-   }
-   
-   // manifest 
-   rc = SG_manifest_load_from_protobuf( &inode->manifest, mmsg );
-   if( rc != 0 ) {
-      
-      SG_safe_delete( inode->sync_queue );
-      SG_safe_delete( inode->dirty_blocks );
-      return rc;
-   }
-   
-   // fill in the rest 
-   SG_manifest_set_modtime( &inode->manifest, msent->manifest_mtime_sec(), msent->manifest_mtime_nsec() );
-   
-   inode->write_nonce = msent->write_nonce();
-   inode->xattr_nonce = msent->xattr_nonce();
-   inode->generation = msent->generation();
-   inode->max_read_freshness = msent->max_read_freshness();
-   inode->max_write_freshness = msent->max_write_freshness();
-   inode->ms_num_children = msent->num_children();
-   inode->ms_capacity = msent->capacity();
-   
-   return 0;
-}
-*/
 
 
 // initialize an inode from an exported inode data and an fskit_entry 
@@ -1775,6 +1731,20 @@ bool UG_inode_is_read_stale( struct UG_inode* inode, struct timespec* now ) {
    }
 }
 
+bool UG_inode_is_write_stale( struct UG_inode* inode, struct timespec* now ) {
+   if( inode->max_write_freshness == 0 ) {
+      // always fresh
+      return false;
+   }
+
+   if( now != NULL ) {
+      return (md_timespec_diff_ms( now, &inode->write_refresh_time ) > inode->max_write_freshness);
+   }
+   else {
+      return false;
+   }
+}
+
 bool UG_inode_renaming( struct UG_inode* inode ) {
    return inode->renaming;
 }
@@ -1843,6 +1813,16 @@ void UG_inode_set_refresh_time_now( struct UG_inode* inode ) {
    UG_inode_set_refresh_time( inode, &now );
 }
 
+void UG_inode_set_write_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
+   inode->write_refresh_time = *ts;
+}
+
+void UG_inode_set_write_refresh_time_now( struct UG_inode* inode ) {
+   
+   struct timespec now;
+   clock_gettime( CLOCK_REALTIME, &now );
+   UG_inode_set_write_refresh_time( inode, &now );
+}
 
 void UG_inode_set_manifest_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
    inode->manifest_refresh_time = *ts;
