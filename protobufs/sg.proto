@@ -86,6 +86,7 @@ message Request {
       SETXATTR = 7;             // set an xattr 
       REMOVEXATTR = 8;          // remove an xattr 
       RELOAD = 9;               // reload cert bundle; new versions in volume_version and cert_version
+      REFRESH = 10;             // request that the remote coordinator refresh its version of the file
    }
 
    required uint64 volume_version = 1;    // volume configuration version
