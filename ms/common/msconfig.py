@@ -42,26 +42,19 @@ except:
 # configuration parameters
 
 # MS
-MS_HOSTNAME = ""
-MS_PROTO = ""
+MS_PROTO = "http://"
 MS_URL = ""
+MS_HOSTNAME = "%s:%s" % (str(os.environ.get("SERVER_NAME","localhost")), str(os.environ.get("SERVER_PORT", 8080)))
 
-if os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
-   
-   # running locally in a development server
-   MS_HOSTNAME = "localhost:%s" % str(os.environ.get("SERVER_PORT", 8080))
-   MS_PROTO = "http://"
-   
-else:
+if not os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
    # running publicly.
    try:
       from google.appengine.api import app_identity
       MS_HOSTNAME = app_identity.get_default_version_hostname()
+      MS_PROTO = "https://"
    except:
-      # probably running with syntool, which doesn't use this 
-      MS_HOSTNAME = "(none)"
+      pass
       
-   MS_PROTO = "https://"
    
 MS_URL = MS_PROTO + MS_HOSTNAME
 
