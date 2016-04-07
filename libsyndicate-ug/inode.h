@@ -122,6 +122,11 @@ int UG_inode_sync_queue_push( struct UG_inode* inode, struct UG_sync_context* sy
 struct UG_sync_context* UG_inode_sync_queue_pop( struct UG_inode* inode );
 int UG_inode_clear_replaced_blocks( struct UG_inode* inode );
 
+// locks 
+int UG_inode_rlock( struct UG_inode* inode );
+int UG_inode_wlock( struct UG_inode* inode );
+int UG_inode_unlock( struct UG_inode* inode );
+
 // getters 
 uint64_t UG_inode_volume_id( struct UG_inode* inode );
 uint64_t UG_inode_coordinator_id( struct UG_inode* inode );
