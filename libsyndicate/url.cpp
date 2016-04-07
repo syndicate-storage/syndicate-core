@@ -191,6 +191,21 @@ char* md_url_local_file_url( char const* data_root, uint64_t volume_id, uint64_t
    return ret;
 }
 
+// generate a locally-resolvable URL to the volume's data root
+// return the URL on success
+// return NULL on OOM
+char* md_url_local_volume_root_url( char const* data_root, uint64_t volume_id ) {
+
+   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 50 );
+   if( ret == NULL ) {
+      return NULL;
+   }
+
+   sprintf(ret, "%s%s/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id );
+   return ret;
+}
+
+
 // generate a publicly-resolvable URL to a file on this gateway
 // return the URL on success
 // return NULL on OOM

@@ -31,6 +31,7 @@ int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t g
 
 // URLs to file data in this gateway
 char* md_url_local_file_url( char const* data_root, uint64_t volume_id, uint64_t file_id, int64_t file_version );
+char* md_url_local_volume_root_url( char const* data_root, uint64_t volume_id );
 char* md_url_public_file_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version );
 
 // URLs to manifest data in this gateway
