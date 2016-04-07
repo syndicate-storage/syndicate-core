@@ -15,7 +15,7 @@ Description: Syndicate core binaries and python modules
 
 Package: syndicate-ms
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, python, python-crypto
 Description: Syndicate Metadata Service (MS)
  Metadata Service, designed to run in Google AppEngine.
 
