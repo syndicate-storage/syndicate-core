@@ -61,6 +61,36 @@ struct UG_inode {
    bool creating;                       // if true, then this inode is in the process of being created.  Truncate will be a no-op in this case.
 };
 
+
+// rlock an inode, using its fskit entry 
+// this is meant for external API consumers, like other gateways.
+int UG_inode_rlock( struct UG_inode* inode ) {
+    if( inode->entry == NULL ) {
+       return -EINVAL;
+    }
+    return fskit_entry_rlock( inode->entry );
+}
+
+// wlock an inode, using its fskit entry 
+// this is meant for external API consumers, like other gateways 
+int UG_inode_wlock( struct UG_inode* inode ) {
+   if( inode->entry == NULL ) {
+      return -EINVAL;
+   }
+   return fskit_entry_wlock( inode->entry );
+}
+
+
+// unlock an inode, using its fskit entry 
+// this is meant for external API consumers, like other gateways 
+int UG_inode_unlock( struct UG_inode* inode ) {
+   if( inode->entry == NULL ) {
+      return -EINVAL;
+   }
+   return fskit_entry_unlock( inode->entry );
+}
+
+
 // initialize common inode data 
 // type should be MD_ENTRY_FILE or MD_ENTRY_DIR
 // return 0 on success 
