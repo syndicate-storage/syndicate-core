@@ -594,7 +594,7 @@ int SG_server_HTTP_GET_getxattr( struct SG_gateway* gateway, struct SG_request_d
    if( rc < 0 ) {
       
       SG_error("SG_gateway_impl_getxattr rc = %d\n", rc );
-      if( rc == -ENOENT ) {
+      if( rc == -ENODATA || rc == -ENOENT ) {
          
          // not present 
          return md_HTTP_create_response_builtin( resp, 404 );
@@ -658,7 +658,7 @@ int SG_server_HTTP_GET_listxattr( struct SG_gateway* gateway, struct SG_request_
    if( rc < 0 ) {
       
       SG_error("SG_gateway_impl_listxattr rc = %d\n", rc );
-      if( rc == -ENOENT ) {
+      if( rc == -ENOENT || rc == -ENODATA ) {
          
          // not present 
          return md_HTTP_create_response_builtin( resp, 404 );
