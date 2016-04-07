@@ -294,7 +294,7 @@ char* md_url_public_getxattr_url( char const* base_url, uint64_t volume_id, char
 
 
 // generate a listxattr URL to another gateway
-// base_url/LISTXATTR/volume_id/fs_path.file_id.file_version.xattr_nonce 
+// base_url/LISTXATTR/volume_id/fs_path.file_id.file_version/xattr_nonce 
 // return the URL on success 
 // return NULL on OOM 
 char* md_url_public_listxattr_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, int64_t xattr_nonce ) {
@@ -306,7 +306,7 @@ char* md_url_public_listxattr_url( char const* base_url, uint64_t volume_id, cha
       return NULL;
    }
    
-   sprintf(url, "%s/%s/%" PRIu64 "/%s.%" PRIX64 ".%" PRId64 ".%" PRId64, base_url, SG_LISTXATTR_PREFIX, volume_id, fs_path, file_id, file_version, xattr_nonce );
+   sprintf(url, "%s/%s/%" PRIu64 "/%s.%" PRIX64 ".%" PRId64 "/%" PRId64, base_url, SG_LISTXATTR_PREFIX, volume_id, fs_path, file_id, file_version, xattr_nonce );
    return url;
 }
 
