@@ -58,7 +58,6 @@ $(BUILD_MS)/common/admin_info.py: common/admin_info.pyin $(MS_APP_ADMIN_PUBLIC_K
 	@cat "$<" | \
 		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' | \
 		sed -e 's~@MS_APP_ADMIN_EMAIL@~$(MS_APP_ADMIN_EMAIL)~g;' | \
-		sed -e 's~@MS_APP_ADMIN_REGISTER_PASSWD@~$(MS_APP_ADMIN_REGISTER_PASSWD)~g;' | \
 		sed -e 's~@MS_DEVEL@~$(MS_DEVEL)~g;' | \
 		sed -e 's~@MS_APP_ADMIN_PUBLIC_KEY@~$(shell cat $(MS_APP_ADMIN_PUBLIC_KEY) | tr "\n" "@" | sed 's/@/\\n/g')~g;' | \
 		sed -e 's~@MS_APP_PRIVATE_KEY@~$(shell cat $(MS_APP_PRIVATE_KEY) | tr "\n" "@" | sed 's/@/\\n/g')~g;' | \
@@ -86,7 +85,7 @@ MS_INSTALL_TARGET := $(patsubst $(BUILD_MS)/%,$(INSTALL_MS)/%,$(MS_INSTALL_ITEMS
 .PHONY: install
 install: $(MS_INSTALL_TARGET)
 
-$(MS_INSTALL_TARGET): $(MS_INSTALL_ITEMS)
+$(INSTALL_MS)/%: $(BUILD_MS)/%
 	mkdir -p "$(@D)"
 	cp -a "$<" "$@"
 
