@@ -258,7 +258,7 @@ int SG_request_data_parse( struct SG_request_data* reqdat, char const* _url_path
       }
    }
 
-   // minimum number of parts: data prefix, volume_id, path.file_id.file_version, (block.version || manifest.tv_sec.tv_nsec)
+   // minimum number of parts: data prefix, volume_id, path.file_id.file_version, (block.version || manifest.tv_sec.tv_nsec || xattr_name.xattr_nonce || xattr_nonce)
    if( num_seps < 4 ) {
       rc = -EINVAL;
       
@@ -296,31 +296,26 @@ int SG_request_data_parse( struct SG_request_data* reqdat, char const* _url_path
    file_name_id_and_version_part = num_parts-2;
    manifest_part = num_parts-1;
    block_id_and_version_part = num_parts-1;
+   xattr_name_and_nonce_part = num_parts-1;
 
    if( strcmp(prefix, SG_DATA_PREFIX) != 0 ) {
       
       if( strcmp( prefix, SG_GETXATTR_PREFIX ) == 0 ) {
          
          is_getxattr = true;
-         
-         // basename of the path is the xattr name and xattr nonce
-         xattr_name_and_nonce_part = file_name_id_and_version_part;
-         file_name_id_and_version_part--;
-         
-         if( file_name_id_and_version_part < 0 ) {
-            SG_error("Invalid URL path '%s'\n", url_path );
-            
-            rc = -EINVAL;
+                 
+         // parse name and nonce 
+         xattr_name = strdup(parts[xattr_name_and_nonce_part]);
+         if( xattr_name == NULL ) {
+            rc = -ENOMEM;
             goto SG_request_data_parse_end;
          }
-         
-         // parse name and nonce 
-         xattr_name = parts[xattr_name_and_nonce_part];
-         xattr_nonce_str = md_rchomp( parts[xattr_name_and_nonce_part], '.' );
-         
+
+         xattr_nonce_str = md_rchomp( xattr_name, '.' );
          if( xattr_nonce_str == NULL ) {
             SG_error("Invalid getxattr string '%s'\n", parts[xattr_name_and_nonce_part]);
-            
+           
+            SG_safe_free( xattr_name ); 
             rc = -EINVAL;
             goto SG_request_data_parse_end;
          }
@@ -375,7 +370,7 @@ int SG_request_data_parse( struct SG_request_data* reqdat, char const* _url_path
 
    if( !is_manifest && !is_getxattr && !is_listxattr ) {
       
-      // not a manifest request, so we must have a block ID and block version 
+      // not a manifest request or xattr request, so we must have a block ID and block version 
       rc = md_parse_block_id_and_version( parts[block_id_and_version_part], &block_id, &block_version );
       if( rc != 0 ) {
          // invalid request--neither a manifest nor a block ID
