@@ -61,10 +61,12 @@ int UG_handle_unlock( UG_handle_t* fi ) {
 struct UG_inode* UG_handle_inode( UG_handle_t* fi ) {
 
    if( fi->type == UG_TYPE_FILE ) {
-      return (struct UG_inode*)fskit_file_handle_get_user_data( fi->fh );
+      struct fskit_entry* fent = fskit_file_handle_get_entry( fi->fh );
+      return (struct UG_inode*)fskit_entry_get_user_data( fent );
    }
    else {
-      return (struct UG_inode*)fskit_dir_handle_get_user_data( fi->dh );
+      struct fskit_entry* fent = fskit_dir_handle_get_entry( fi->dh );
+      return (struct UG_inode*)fskit_entry_get_user_data( fent );
    }
 }
 
