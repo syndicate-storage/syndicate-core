@@ -293,7 +293,7 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
       return 0;
    }
 
-   SG_debug("Reload manifest %" PRIX64 "/manifest.%" PRId64 ".%d\n", file_id, manifest_mtime_sec, manifest_mtime_nsec );
+   SG_debug("Reload manifest %" PRIX64 "/manifest.%" PRId64 ".%d (coordinator? %d)\n", file_id, manifest_mtime_sec, manifest_mtime_nsec, local_coordinator );
    
    rc = clock_gettime( CLOCK_REALTIME, &now );
    if( rc != 0 ) {
