@@ -171,6 +171,10 @@ int UG_removexattr( struct UG_state* state, char const* path, char const* name )
 
 // low-level; used internally
 int UG_send_WRITE( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, struct md_entry* new_inode_state );
+int UG_handle_rlock( UG_handle_t* fi );
+int UG_handle_wlock( UG_handle_t* fi );
+int UG_handle_unlock( UG_handle_t* fi );
+struct UG_inode* UG_handle_inode( UG_handle_t* fi );
 
 }
 

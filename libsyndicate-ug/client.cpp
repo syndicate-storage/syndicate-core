@@ -23,6 +23,53 @@
 #include "xattr.h"
 #include "replication.h"
 
+// rlock the handle 
+int UG_handle_rlock( UG_handle_t* fi ) {
+   if( fi->type == UG_TYPE_FILE ) {
+      return fskit_file_handle_rlock( fi->fh );
+   }
+   else {
+      return fskit_dir_handle_rlock( fi->dh );
+   }
+}
+
+
+// wlock the handle 
+int UG_handle_wlock( UG_handle_t* fi ) {
+   if( fi->type == UG_TYPE_FILE ) {
+      return fskit_file_handle_wlock( fi->fh );
+   }
+   else {
+      return fskit_dir_handle_wlock( fi->dh );
+   }
+}
+
+
+// unlock the handle 
+int UG_handle_unlock( UG_handle_t* fi ) {
+   if( fi->type == UG_TYPE_FILE ) {
+      return fskit_file_handle_unlock( fi->fh );
+   }
+   else {
+      return fskit_dir_handle_unlock( fi->dh );
+   }
+}
+
+
+// get the poiner to the inode
+// no locking occurs
+struct UG_inode* UG_handle_inode( UG_handle_t* fi ) {
+
+   if( fi->type == UG_TYPE_FILE ) {
+      struct fskit_entry* fent = fskit_file_handle_get_entry( fi->fh );
+      return (struct UG_inode*)fskit_entry_get_user_data( fent );
+   }
+   else {
+      struct fskit_entry* fent = fskit_dir_handle_get_entry( fi->dh );
+      return (struct UG_inode*)fskit_entry_get_user_data( fent );
+   }
+}
+
 
 // generate and send a WRITE message to another UG.
 // write_data should be prepopuldated with the manifest, owner, mode, mtime, etc.--everything *but* the routing info (which will get overwritten)
@@ -1633,7 +1680,7 @@ UG_handle_t* UG_create( struct UG_state* state, char const* fs_path, mode_t mode
    ent_data.ctime_nsec = ts.tv_nsec;
    ent_data.max_read_freshness = conf->default_read_freshness;
    ent_data.max_write_freshness = conf->default_write_freshness;
-   
+
    sh = UG_publish( state, fs_path, &ent_data, ret_rc );
    md_entry_free( &ent_data );
 
@@ -1693,3 +1740,4 @@ int UG_listxattr( struct UG_state* state, char const* path, char *list, size_t s
 int UG_removexattr( struct UG_state* state, char const* path, char const* name ) {
    return UG_xattr_removexattr( UG_state_gateway( state ), path, name, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
+

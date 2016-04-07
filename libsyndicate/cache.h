@@ -188,6 +188,7 @@ ssize_t md_cache_read_block( int block_fd, char** buf );
 int md_cache_stat_block_by_id( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, struct stat* sb );
 
 // allow external client to evict data
+int md_cache_evict_all( struct md_syndicate_cache* cache );
 int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version );
 int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version );
 int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );

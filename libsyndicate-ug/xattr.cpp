@@ -477,7 +477,8 @@ static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* 
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume ) {
+// return -ESTALE if we're not the coordinator, and ask_remote is False
+ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume, bool ask_remote ) {
    
    int rc = 0;
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
@@ -505,34 +506,50 @@ ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char co
    int64_t file_version = UG_inode_file_version( inode );
    int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
    
-   fskit_entry_unlock( fent );
-   
-   // go get the xattr 
-   rc = SG_client_getxattr( gateway, coordinator_id, path, file_id, file_version, name, xattr_nonce, &value_buf, &xattr_buf_len );
-   if( rc != 0 ) {
-       
-       SG_error("SG_client_getxattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-       return rc;
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+       // local 
+       rc = fskit_fgetxattr( fs, fent, name, value, size );
+       fskit_entry_unlock( fent );
    }
-   
-   if( value != NULL ) {
+   else if( ask_remote ) { 
+      
+       fskit_entry_unlock( fent );
+
+       // go get the xattr 
+       rc = SG_client_getxattr( gateway, coordinator_id, path, file_id, file_version, name, xattr_nonce, &value_buf, &xattr_buf_len );
+       if( rc != 0 ) {
        
-      if( xattr_buf_len <= size ) {
-         memcpy( value, value_buf, xattr_buf_len );
-      }
-      else {
+           SG_error("SG_client_getxattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+           return rc;
+       }
+   
+       if( value != NULL ) {
+       
+          if( xattr_buf_len <= size ) {
+             memcpy( value, value_buf, xattr_buf_len );
+          }
+          else {
           
-         rc = -ERANGE;
-      }
+             rc = -ERANGE;
+          }
+       }
+       else {
+      
+          rc = xattr_buf_len;
+       }
+       SG_safe_free( value_buf );
    }
    else {
       
-      rc = xattr_buf_len;
+      fskit_entry_unlock( fent );
+      rc = -ESTALE;
    }
    
-   SG_safe_free( value_buf );
-   
    return rc;
+}
+
+ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume) {
+   return UG_xattr_getxattr_ex( gateway, path, name, value, size, user, volume, true );
 }
 
 
@@ -652,7 +669,8 @@ static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* pat
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume ) {
+// return -ESTALE if ask_remote is False and we're not the coordinator
+int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool ask_remote ) {
    
    int rc = 0;
    struct fskit_entry* fent = NULL;
@@ -744,7 +762,7 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
             rc = size;
         }
    }
-   else {
+   else if( ask_remote ) {
        
        // if we're not the coordinator, send the xattr to the coordinator 
        rc = UG_xattr_setxattr_remote( gateway, path, inode, name, value, size, flags );
@@ -756,6 +774,10 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
            
            rc = size;
        }
+   }
+   else {
+
+      rc = -ESTALE;
    }
    
    if( rc < 0 && old_xattr_value != NULL ) {
@@ -773,6 +795,10 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
    return rc;
 }
 
+int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume ) {
+   return UG_xattr_setxattr_ex( gateway, path, name, value, size, flags, user, volume, true );
+}
+
 
 // listxattr(2)--get back a list of xattrs from the MS
 // return the number of bytes copied on success, and fill in *list (if non-null) with \0-separated names for xattrs (up to size bytes)
@@ -785,7 +811,8 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume ) {
+// return -ESTALE if ask_remote is False, and we're not the coordinator
+ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool ask_remote ) {
    
    int rc = 0;
    
@@ -830,7 +857,7 @@ ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *
        
        fskit_entry_unlock( fent );
    }
-   else {
+   else if( ask_remote ) {
 
        fskit_entry_unlock( fent );
        
@@ -858,8 +885,15 @@ ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *
            }
        }
    }
+   else {
+      rc = -ESTALE;
+   }
    
    return rc;
+}
+
+ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume ) {
+   return UG_xattr_listxattr_ex( gateway, path, list, size, user, volume, true );
 }
 
 
@@ -978,7 +1012,8 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume ) {
+// return -ESTALE if ask_remote is False and we're not the coordinator
+int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool ask_remote ) {
    
    int rc = 0;
    struct fskit_entry* fent = NULL;
@@ -1050,8 +1085,6 @@ int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char con
             }
         }
         
-        
-   
         // remove locally 
         rc = fskit_fremovexattr( fs, fent, name );
         if( rc != 0 ) {
@@ -1069,7 +1102,7 @@ int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char con
             SG_error("UG_xattr_removexattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
         }
    }
-   else {
+   else if( ask_remote ) {
        
        // if we're not the coordinator, send the remove request to the coordinator 
        rc = UG_xattr_removexattr_remote( gateway, path, inode, name );
@@ -1077,6 +1110,10 @@ int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char con
            
            SG_error("UG_xattr_removexattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
        }
+   }
+   else {
+
+      rc = -ESTALE;
    }
    
    if( rc != 0 && old_xattr_value != NULL ) {
@@ -1093,3 +1130,8 @@ int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char con
    SG_safe_free( old_xattr_value );
    return rc;
 }
+
+int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume ) {
+   return UG_xattr_removexattr_ex( gateway, path, name, user, volume, true );
+}
+

@@ -631,6 +631,36 @@ int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char 
 }
 
 
+// clear the entire cache 
+// not thread-safe
+// return 0 on success 
+int md_cache_evict_all( struct md_syndicate_cache* cache ) {
+    
+    char* volume_root_path = NULL;
+    char* rmtree_cmd = NULL;
+    char* volume_root_url = md_url_local_volume_root_url( cache->conf->data_root, cache->conf->volume );
+    if( volume_root_url == NULL ) {
+       return -ENOMEM;
+    }
+
+    volume_root_path = SG_URL_LOCAL_PATH( volume_root_url );
+    rmtree_cmd = SG_CALLOC( char, strlen("rm -rf ") + strlen(volume_root_path) + 10 );
+    if( rmtree_cmd == NULL ) {
+       SG_safe_free( volume_root_url );
+       return -ENOMEM;
+    }
+
+    sprintf(rmtree_cmd, "rm -rf \"%s\"/*", volume_root_path);
+
+    SG_debug("Clearing cache '%s'\n", volume_root_path);
+    system( rmtree_cmd );
+
+    SG_safe_free( rmtree_cmd );
+    SG_safe_free( volume_root_url );
+    cache->num_blocks_written = 0;
+    return 0;
+}
+
 // evict a file from the cache, optionally overriding internal cache state
 // return 0 on success
 // return -ENOMEM on OOM

@@ -355,6 +355,157 @@ static int UG_impl_config_change( struct SG_gateway* gateway, int driver_reload_
 }
 
 
+// listxattr implementation
+// return 0 on success
+// return -ENOMEM on OOM
+// return -ESTALE if we're not the coordinator
+// return negative on error 
+static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk** xattr_names, size_t* num_xattrs, void* cls ) {
+
+   int rc = 0;
+   ssize_t len = 0;
+   ssize_t len2 = 0;
+   size_t xattr_count = 0;
+   struct SG_chunk* xattrs = NULL;
+   char* buf = NULL;
+   char* value = NULL;
+   int i = 0;
+   int off = 0;
+
+   len = UG_xattr_listxattr( gateway, reqdat->fs_path, NULL, 0, 0, 0 );
+   if( len < 0 ) {
+      SG_error("UG_xattr_listxattr('%s', 0) rc = %d\n", reqdat->fs_path, (int)len );
+      return len;
+   }
+
+   buf = SG_CALLOC( char, len+1 );
+   if( buf == NULL ) {
+      return -ENOMEM;
+   }
+
+   len2 = UG_xattr_listxattr_ex( gateway, reqdat->fs_path, buf, len, 0, 0, false );
+   if( len2 < 0 ) {
+      SG_error("UG_xattr_listxattr('%s', %d) rc = %d\n", reqdat->fs_path, (int)len, (int)len2 );
+      SG_safe_free( buf );
+      return len2;
+   }
+
+   // make chunks 
+   for( i = 0; i < len2; i++ ) {
+      if( buf[i] == '\0' ) {
+         xattr_count++;
+      }
+   }
+
+   xattrs = SG_CALLOC( struct SG_chunk, xattr_count );
+   if( xattrs == NULL ) {
+      return -ENOMEM;
+   }
+
+   off = 0;
+   i = 0;
+   while( off < len2 ) {
+      value = SG_strdup_or_null( &buf[off] );
+      if( value == NULL ) {
+         rc = -ENOMEM;
+         break;
+      }
+
+      off += strlen(value) + 1;
+
+      xattrs[i].data = value;
+      xattrs[i].len = strlen(value);
+   }
+
+   SG_safe_free( buf );
+
+   if( rc == -ENOMEM ) {
+      // clean up 
+      for( i = 0; (unsigned)i < xattr_count; i++ ) {
+         SG_chunk_free( &xattrs[i] );
+      }
+      SG_safe_free( xattrs );
+      return rc;
+   }
+
+   *xattr_names = xattrs;
+   *num_xattrs = xattr_count;
+   return 0;
+} 
+
+
+// getxattr implementation
+// return 0 on success
+// return -ENOMEM on OOM
+// return negative on error 
+static int UG_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* xattr_value, void* cls ) {
+
+   ssize_t len = 0;
+   ssize_t len2 = 0;
+   char* value = NULL;
+
+   len = UG_xattr_getxattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, NULL, 0, 0, 0, false );
+   if( len < 0 ) {
+      SG_error("UG_xattr_getxattr('%s', '%s', 0) rc = %d\n", reqdat->fs_path, reqdat->xattr_name, (int)len );
+      return len;
+   }
+
+   value = SG_CALLOC( char, len+1 );
+   if( value == NULL ) {
+      return -ENOMEM;
+   }
+
+   len2 = UG_xattr_getxattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, value, len, 0, 0, false );
+   if( len2 < 0 ) {
+      SG_safe_free( value );
+      SG_error("UG_xattr_getxattr('%s', '%s', %zd) rc = %d\n", reqdat->fs_path, reqdat->xattr_name, len, (int)len2);
+      return len2;
+   }
+
+   xattr_value->data = value;
+   xattr_value->len = strlen(value);
+
+   return 0;
+}
+
+
+// setxattr implementation 
+// return 0 on success
+// return -ENOMEM on OOM
+// return -ESTALE if we're not this entry's coordinator
+// return negative on error 
+static int UG_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* value, void* cls ) {
+
+   int rc = 0;
+
+   rc = UG_xattr_setxattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, value->data, value->len, 0, 0, 0, false );
+   if( rc < 0 ) {
+      SG_error("UG_xattr_setxattr_ex('%s', %zd, 0) rc = %d\n", reqdat->fs_path, value->len, rc );
+      return rc;
+   }
+
+   return 0;
+}
+
+
+// removexattr implementation 
+// return 0 on success
+// return -ENOMEM on OOM
+// return -ESTALE if we're not this entry's coordinator 
+// return negative on error 
+static int UG_impl_removexattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, void* cls ) {
+
+   int rc = 0;
+
+   rc = UG_xattr_removexattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, 0, 0, false );
+   if( rc != 0 ) {
+      SG_error("UG_xattr_removexattr_ex('%s', '%s', 0) rc = %d\n", reqdat->fs_path, reqdat->xattr_name, rc );
+      return rc;
+   }
+
+   return 0;
+} 
+
 // set up the gateway's method implementation 
 // always succeeds
 int UG_impl_install_methods( struct SG_gateway* gateway ) {
@@ -370,6 +521,11 @@ int UG_impl_install_methods( struct SG_gateway* gateway ) {
    SG_impl_config_change( gateway, UG_impl_config_change );
    SG_impl_serialize( gateway, UG_driver_chunk_serialize );
    SG_impl_deserialize( gateway, UG_driver_chunk_deserialize );
+
+   SG_impl_listxattr( gateway, UG_impl_listxattr );
+   SG_impl_getxattr( gateway, UG_impl_getxattr );
+   SG_impl_setxattr( gateway, UG_impl_setxattr );
+   SG_impl_removexattr( gateway, UG_impl_removexattr );
 
    return 0;
 }

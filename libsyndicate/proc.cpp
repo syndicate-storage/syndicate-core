@@ -805,13 +805,14 @@ bool SG_proc_is_dead( struct SG_proc* proc ) {
 static int SG_proc_group_remove_dead_unlocked( struct SG_proc_group* group, struct SG_proc* proc ) {
    
    int rc = 0;
+   int final_rc = 0;
    if( !SG_proc_is_dead( proc ) ) {
       return -EINVAL;
    }
 
    rc = SG_proc_group_remove_unlocked( group, proc );
    if( rc != 0 ) {
-      return rc;
+      final_rc = rc;
    }
 
    rc = SG_proc_tryjoin( proc, NULL );
@@ -822,7 +823,7 @@ static int SG_proc_group_remove_dead_unlocked( struct SG_proc_group* group, stru
       exit(1);
    }
 
-   return rc;
+   return final_rc;
 }
 
 
