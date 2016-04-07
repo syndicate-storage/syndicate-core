@@ -49,7 +49,7 @@ MS_URL = ""
 if os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
    
    # running locally in a development server
-   MS_HOSTNAME = "localhost:%s" % str(os.environ.get("SERVER_PORT", 8080))
+   MS_HOSTNAME = "%s:%s" % (str(os.environ.get("SERVER_NAME","localhost")), str(os.environ.get("SERVER_PORT", 8080)))
    MS_PROTO = "http://"
    
 else:
