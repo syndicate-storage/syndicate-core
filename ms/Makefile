@@ -66,7 +66,9 @@ $(BUILD_MS)/common/admin_info.py: common/admin_info.pyin $(MS_APP_ADMIN_PUBLIC_K
 $(BUILD_MS)/app.yaml: app.yamlin
 	@mkdir -p $(shell dirname "$@")
 	@cat "$<" | \
-		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' > "$@"
+		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' \
+			-e 's~@MS_APP_PUBLIC_HOST@~$(MS_APP_PUBLIC_HOST)~g;' > "$@"
+
 
 # fix up protobufs to work on GAE 
 $(BUILD_MS)/protobufs/%.py: $(BUILD_PROTOBUFS_PYTHON)/%.py google_protobuf_fixer.pyin

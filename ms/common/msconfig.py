@@ -25,13 +25,6 @@ try:
 except:
    import protobufs.ms_pb2 as ms_pb2
 
-'''
-try:
-   from admin_info import OPENID_LOCAL
-except:
-   # imported by a client program, not the MS, since admin_info isn't available
-   OPENID_LOCAL = False
-'''
 
 try:
    import syndicate.client.common.log as Log
@@ -44,19 +37,35 @@ except:
 # MS
 MS_PROTO = "http://"
 MS_URL = ""
-MS_HOSTNAME = "%s:%s" % (str(os.environ.get("SERVER_NAME","localhost")), str(os.environ.get("SERVER_PORT", 8080)))
+
+# NOTE: MS_APP_PUBLIC_HOST should be defined in the MS.mk file (or at build-time)
+# for publicly-routable deployments outside of Google AppEngine or Appscale.
+# The order of preference is:
+# * public hostname on Google AppEngine
+# * $MS_PUBLIC_HOST, if defined
+# * $SERVER_NAME, if defined
+# * "localhost"
+
+MS_HOST = str(os.environ.get( "MS_APP_PUBLIC_HOST", "" ))
+if len(MS_HOST) == 0:
+    MS_HOST = str(os.environ.get("SERVER_NAME", "localhost"))
+
+MS_HOSTPORT = "%s:%s" % (MS_HOST, str(os.environ.get("SERVER_PORT", 8080)))
 
 if not os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
-   # running publicly.
+   # running publicly on GAE.
    try:
       from google.appengine.api import app_identity
-      MS_HOSTNAME = app_identity.get_default_version_hostname()
+      MS_HOSTPORT = app_identity.get_default_version_hostname()
       MS_PROTO = "https://"
    except:
       pass
-      
+     
+
+print "MS_HOST: '%s'" % MS_HOST
+print "MS_HOSTPORT: '%s'" % MS_HOSTPORT
    
-MS_URL = MS_PROTO + MS_HOSTNAME
+MS_URL = MS_PROTO + MS_HOSTPORT
 
 # security
 OBJECT_KEY_SIZE = 4096
