@@ -237,6 +237,8 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 
       UG_inode_set_max_read_freshness( inode, inode_ms->max_read_freshness );
       UG_inode_set_max_write_freshness( inode, inode_ms->max_write_freshness );
+
+      UG_inode_set_size( inode, inode_ms->size ); 
    }
    
    return 0;
