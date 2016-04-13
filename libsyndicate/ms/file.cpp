@@ -21,6 +21,7 @@
 #include "libsyndicate/ms/url.h"
 #include "libsyndicate/download.h"
 #include "libsyndicate/ms/vacuum.h"
+#include "libsyndicate/ms/xattr.h"
 
 // convert a list of requests into a protobuf
 // return 0 on success
@@ -88,9 +89,11 @@ static int ms_client_requests_protobuf( ms_client_request_list* requests, ms::ms
                return -EINVAL;
             }
             
-            // set name, value, signature
+            // set name, value, nonce, hash, signature
             ms_req->set_xattr_name( string(request->xattr_name) );
             ms_req->set_xattr_value( string(request->xattr_value, request->xattr_value_len) );
+            ms_req->set_xattr_nonce( request->ent->xattr_nonce ); 
+            ms_req->set_xattr_hash( string((char const*)request->ent->xattr_hash, SG_XATTR_HASH_LEN) );
          }
          
          // if this is a REMOVEXATTR, then set the attr name
