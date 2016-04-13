@@ -2683,7 +2683,8 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                 SG_gateway_start_reload( gateway );
                 rc = SG_gateway_wait_reload( gateway, &reload_rc );
                 if( rc != 0 ) {
-                    rc = md_HTTP_create_response_builtin( resp, 500 );
+                    SG_debug("SG_gateway_wait_reload rc = %d\n", rc );
+                    http_response = 500;
                 }
                 else {
                     if( reload_rc == 0 ) {
@@ -2704,6 +2705,12 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                 rc = 0;
                 http_response = 208;
              }
+             else {
+
+                SG_debug("Reload request is consistent with our certificate information (%" PRIu64 ", %" PRIu64 ")\n", request_msg->volume_version(), request_msg->cert_version());
+                rc = 0;
+                http_response = 200;
+             }
          }
          else {
              
@@ -2715,7 +2722,8 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
              SG_gateway_start_reload( gateway );
              rc = SG_gateway_wait_reload( gateway, &reload_rc );
              if( rc != 0 ) {
-                rc = md_HTTP_create_response_builtin( resp, 500 );
+                SG_debug("SG_gateway_wait_reload rc = %d\n", rc );
+                http_response = 500;
              }
              else {
                  if( reload_rc == 0 ) {
