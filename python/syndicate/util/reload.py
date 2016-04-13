@@ -27,6 +27,7 @@ import base64
 import binascii
 import json
 import requests
+import urlparse
 
 logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s' )
 log = logging.getLogger()
@@ -125,6 +126,53 @@ def list_volume_coordinators( config, volume_id ):
 
 
 #-------------------------------
+def list_gateways_by_type( config, volume_id, gateway_type_str ):
+    """
+    Find all the gateways for a given volume with a particular type.
+    The type should be a type alias, like "UG" or "RG" or "AG"
+    Return the list of gateway certs on success.
+    Raise on error
+    """
+    gateway_cert_paths = certs.list_gateway_cert_paths( config )
+    ret = []
+    
+    type_aliases = object_stub.load_gateway_type_aliases( config )
+    if type_aliases is None:
+        raise Exception("Missing gateway type aliases")
+
+    gateway_type = type_aliases.get(gateway_type_str, None)
+    if gateway_type is None:
+        raise ValueError("Unknown gateway type alias '%s'" % gateway_type_str )
+
+    for path in gateway_cert_paths:
+       
+        gateway_cert = None 
+
+        try:
+            with open(path, "r") as f:
+                cert_bin = f.read()
+
+            gateway_cert = ms_pb2.ms_gateway_cert()
+            gateway_cert.ParseFromString( cert_bin )
+
+        except Exception, e:
+            log.exception(e)
+            log.error("Failed to load '%s'" % path)
+            return None
+
+        if gateway_cert.volume_id != volume_id:
+            continue
+
+        if gateway_cert.gateway_type != gateway_type:
+            continue 
+
+        log.debug("%s is type %s" % (gateway_cert.name, gateway_type))
+        ret.append( gateway_cert )
+
+    return ret
+
+
+#-------------------------------
 def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_name=None, cert_bundle_version=None, volume_version=None ):
     """
     Make a signed, serialized gateway-reload request.
@@ -167,6 +215,7 @@ def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_na
         signing_key = user_pkey 
 
     else:
+        # send to volume
         volume_cert = object_stub.load_volume_cert( config, str(volume_id) )
         if volume_cert is None:
             raise MissingCertException("Missing cert for volume %s" % (volume_id))
@@ -179,7 +228,7 @@ def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_na
         if volume_pkey is None:
             raise MissingKeyException("Missing both gateway and volume private keys")
 
-        log.debug("Sign reload request with private key of volume owner '%s' for gateway '%s' in volume %s" % (owner_cert.email, gateway_id, volume_cert.name))
+        log.debug("Sign reload request with private key of volume owner '%s' in volume %s" % (owner_cert.email, volume_cert.name))
         signing_key = volume_pkey 
 
     if volume_version is None:
@@ -214,7 +263,6 @@ def make_reload_request( config, user_id, volume_id, gateway_id=None, gateway_na
             raise MissingCertException("Missing valid version information for cert bundle")
 
         assert onfile_volume_version == volume_version, "BUG: On-file cert bundle volume version (%s) does not match given volume version (%s)" % (onfile_volume_version, volume_version)
-        cert_bundle_version = onfile_volume_version
         
 
     req = sg_pb2.Request()
@@ -289,8 +337,12 @@ def send_reload( config, user_id, volume_id, gateway_id ):
 #-------------------------------
 def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volume_version=None, gateway_names=None ):
     """
-    Generate and broadcast a set of requests to all write-capable and coordinate-capable gateways
-    to have them synchronously reload their configurations.
+    Generate and broadcast a set of requests to all gateways that:
+    * are write-capable
+    * can receive writes
+    * can coordinate writes.
+    
+    The message will have them synchronously reload their configurations.
     If gateway_names is given, then send to those gateways instead.
     Send it off and wait for their acknowledgements (or timeouts).
 
@@ -298,7 +350,8 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
 
     We'll need the volume private key.
 
-    Return {"gateway_name": True|False} on success
+    Return {"gateway_name": True|False|None} on success
+        None indicates "unknown"
     """
 
     import grequests
@@ -321,7 +374,8 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
     if gateway_names is None:
         writer_certs = list_volume_writers( config, volume_id )
         coord_certs = list_volume_coordinators( config, volume_id )
-        gateway_certs = writer_certs + coord_certs
+        recver_certs = list_gateways_by_type( config, volume_id, "RG" ) 
+        gateway_certs = writer_certs + coord_certs + recver_certs
 
     else:
         gateway_certs = []
@@ -332,6 +386,8 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
 
             gateway_certs.append( gateway_cert )
 
+    for gateway_cert in gateway_certs:
+        gateway_status[gateway_cert.name] = None
 
     gateway_url_names = dict( [('http://%s:%s' % (cert.host, cert.port), cert.name) for cert in gateway_certs] )
     urls = gateway_url_names.keys()
@@ -342,14 +398,25 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
 
     def req_exception(request, exception):
         log.warn("Caught exception on broadcast to '%s'" % request.url)
+        log.exception(exception)
         gateway_name = gateway_url_names[request.url]
         gateway_status[gateway_name] = False
 
-    reqs = [grequests.post(url, data={"control-plane": msg}, exception_handler=req_exception) for url in urls]
+    msg_txt = msg.SerializeToString()
+    reqs = [grequests.post(url, data={"control-plane": msg_txt}) for url in urls]
 
     # send all!
     iresps = grequests.imap( reqs, exception_handler=req_exception ) 
     for resp in iresps:
+        url = resp.url
+        purl = urlparse.urlparse(url)
+        hostname = purl.hostname
+        port = purl.port
+
+        gateway_name = gateway_url_names.get('http://%s:%s' % (hostname,port), None)
+        if gateway_name is None:
+            log.warn("Unknown URL '%s'" % url)
+            
         if resp.status_code == 200:
             gateway_status[gateway_name] = True
         else:
