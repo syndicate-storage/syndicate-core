@@ -62,9 +62,6 @@ if not os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
       pass
      
 
-print "MS_HOST: '%s'" % MS_HOST
-print "MS_HOSTPORT: '%s'" % MS_HOSTPORT
-   
 MS_URL = MS_PROTO + MS_HOSTPORT
 
 # security
