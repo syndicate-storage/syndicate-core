@@ -20,6 +20,7 @@
 
 #include "libsyndicate/ms/core.h"
 
+#define SG_XATTR_HASH_LEN SHA256_DIGEST_LENGTH
 
 extern "C" {
    
