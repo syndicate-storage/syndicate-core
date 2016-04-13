@@ -347,7 +347,13 @@ class MSEntryXAttr( storagetypes.Object ):
       
       NOTE: The caller must ensure that the msent is sent by the coordinator.
       """
-      
+     
+      if len(xattr_hash) == 32:
+          xattr_hash = xattr_hash.encode('hex')
+      else:
+          log.error("Invalid xattr hash of length %s" % len(xattr_hash))
+          return -errno.EINVAL
+
       xattr_key_name = MSEntryXAttr.make_key_name( msent.volume_id, msent.file_id, xattr_name )
       rc = 0
       
@@ -614,7 +620,7 @@ class MSEntry( storagetypes.Object ):
    size = None
    write_nonce = None
    xattr_nonce = None       # set each time an xattr is added, updated, or deleted.
-   xattr_hash = None        # hash over all key/values
+   xattr_hash = None        # hash over all key/values (given as binary from gateways; encoded as hex here)
    ent_sig = None           # signature over the latest MSEntry data from the writer.
    nonce_ts = None          # mostly-increasing timestamp from coordinator for xattr and write nonces
    
