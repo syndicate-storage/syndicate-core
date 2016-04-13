@@ -149,10 +149,7 @@ def file_write_allowed( owner_id, file_data ):
    Can the user write to the file?  Return the appropriate error code.
    """
    
-   if file_data.owner_id == owner_id and (file_data.mode & 0444) == 0:
-      return -errno.EACCES
-   
-   if file_data.owner_id != owner_id and (file_data.mode & 0044) == 0:
+   if (file_data.mode & 0444) == 0:
       return -errno.EACCES
    
    return 0
@@ -418,7 +415,6 @@ def file_create( reply, gateway, volume, update, async=False ):
          if ent is not None:
             ent_pb = reply.listing.entries.add()
             MSEntry.protobuf( ent, ent_pb )
-            logging.info("new ent:\n%s" % ent_pb)
             
          return rc
       
@@ -491,7 +487,6 @@ def file_update( reply, gateway, volume, update, async=False ):
          if ent is not None:
             ent_pb = reply.listing.entries.add()
             MSEntry.protobuf( ent, ent_pb )
-            logging.info("new ent:\n%s" % ent_pb)
          
          return rc
       
