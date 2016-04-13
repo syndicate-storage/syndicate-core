@@ -1,7 +1,7 @@
 # MS build parameters 
 
 MS_APP_ADMIN_EMAIL				?= jcnelson@cs.princeton.edu
-MS_APP_PUBLIC_HOST				?= "localhost"
+MS_APP_PUBLIC_HOST				?= localhost
 MS_APP_ADMIN_PUBLIC_KEY			?= $(BUILD_MS)/admin.pub
 MS_APP_ADMIN_PRIVATE_KEY		?= $(BUILD_MS)/admin.pem
 
