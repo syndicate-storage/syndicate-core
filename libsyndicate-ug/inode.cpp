@@ -446,7 +446,8 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
       SG_error("fskit_flistxattr(NULL) rc = %zd\n", xattr_list_len );
       return (int)xattr_list_len;
    }
-   
+  
+   SG_debug("xattr_list_len = %zd\n", xattr_list_len ); 
    if( xattr_list_len == 0 ) {
        
       // no xattrs
@@ -477,11 +478,17 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
          num_xattrs++;
       }
    }
-   
-   xattr_names = SG_CALLOC( char*, num_xattrs );
-   xattr_values = SG_CALLOC( char*, num_xattrs );
-   xattr_value_lengths = SG_CALLOC( size_t, num_xattrs );
-   
+
+   SG_debug("num_xattrs = %zu\n", num_xattrs); 
+   if( num_xattrs == 0 ) {
+      // trivial case: no xattrs 
+      goto UG_inode_export_xattrs_out;
+   }
+
+   xattr_names = SG_CALLOC( char*, num_xattrs + 1 );
+   xattr_values = SG_CALLOC( char*, num_xattrs + 1 );
+   xattr_value_lengths = SG_CALLOC( size_t, num_xattrs + 1 );
+
    if( xattr_names == NULL || xattr_values == NULL || xattr_value_lengths == NULL ) {
       SG_safe_free( xattr_names );
       SG_safe_free( xattr_values );
@@ -489,7 +496,7 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
       SG_safe_free( xattr_list );
       return -ENOMEM;
    }
-   
+
    // get each xattr 
    xattr_ptr = xattr_list;
    for( size_t i = 0; i < num_xattrs; i++ ) {
@@ -533,7 +540,9 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
       xattr_values[i] = xattr_value;
       xattr_value_lengths[i] = xattr_value_len;
    }
-   
+  
+UG_inode_export_xattrs_out:
+
    *ret_xattr_names = xattr_names;
    *ret_xattr_values = xattr_values;
    *ret_xattr_value_lengths = xattr_value_lengths;
