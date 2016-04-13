@@ -195,7 +195,7 @@ def reload_gateway( config, gateway_name ):
 
     gateway_cert = object_stub.load_gateway_cert( config, gateway_name )
     if gateway_cert is None:
-        raise MissingCertException("Cannot load cert for gateway '%s'" % config['username'] )
+        raise MissingCertException("Cannot load cert for gateway '%s'" % gateway_name)
 
     gateway_id = gateway_cert.gateway_id
     volume_id = gateway_cert.volume_id
