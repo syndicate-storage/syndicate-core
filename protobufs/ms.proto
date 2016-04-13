@@ -81,10 +81,11 @@ message ms_request {
    optional ms_entry dest = 3;          // used by rename
    optional string xattr_name = 4;      // used by putxattr and removexattr
    optional string xattr_value = 5;     // used by putxattr
-   optional bytes xattr_hash = 6;       // used by putxattr, removexattr, and chcoord:  SHA256 over the current set of (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value)) tuples ordered by xattr name.
+   optional int64 xattr_nonce = 6;      // used by putxattr
+   optional bytes xattr_hash = 7;       // used by putxattr, removexattr, and chcoord:  SHA256 over the current set of (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value)) tuples ordered by xattr name.
 
-   repeated uint64 affected_blocks = 7;      // IDs of blocks affected by the write (on UPDATE or VACUUMAPPEND)
-   optional string vacuum_signature = 8;     // signature from the associated vacuum ticket (whose information is embedded in this message)
+   repeated uint64 affected_blocks = 8;      // IDs of blocks affected by the write (on UPDATE or VACUUMAPPEND)
+   optional string vacuum_signature = 9;     // signature from the associated vacuum ticket (whose information is embedded in this message)
 }
 
 // collection of file updates
