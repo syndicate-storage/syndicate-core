@@ -810,7 +810,7 @@ def make_volume_cert_bundle( config, volume_owner, volume_name, volume_id=None, 
    cert_manifest.file_id = 0
    cert_manifest.owner_id = volume_cert.owner_id
    cert_manifest.file_version = volume_cert.volume_version
-   cert_manifest.mtime_sec = now_sec         # serves as the cert version
+   cert_manifest.mtime_sec = now_sec         # serves as the cert bundle version
    cert_manifest.mtime_nsec = 0
    
    # map gateway ID to cert and serialized cert
@@ -944,8 +944,7 @@ def load_gateway_type_aliases( config ):
 def do_volume_reload( config, user_id, volume_id ):
     """
     Reload a volume's writers and coordinators
-    Return True on success
-    Return False if at least one gateway failed
+    Return the list of names of gateways we failed to contact
     """
 
     import syndicate.util.reload as reloader
@@ -956,16 +955,9 @@ def do_volume_reload( config, user_id, volume_id ):
     failed = []
     for gateway_name, rc in statuses.items():
         if not rc:
-            log.error("Failed to reload gateway '%s'" % gateway_name )
             failed.append(gateway_name)
 
-    if len(failed) > 0:
-        print >> sys.stderr, "Some gateways failed to reload."
-        print >> sys.stderr, "You can manually reload them individually with '%s reload_gateway', or" % sys.argv[0]
-        print >> sys.stderr, "you can reload the entire volume with '%s reload_volume'." % sys.argv[0]
-        return False
-
-    return True
+    return failed
 
 
             
@@ -1918,7 +1910,11 @@ class Volume( StubObject ):
 
          # propagate to all write and coordinate gateways
          if not config.has_key('no_reload') or not config['no_reload']:
-             do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
+             failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
+             if len(failed) > 0:
+                 print >> sys.stderr, "Some gateways failed to reload:"
+                 print >> sys.stderr, "   " + "\n   ".join(sorted(failed))
+                 print >> sys.stderr, "You can reload them manually with the `reload` directive."
           
             
 
@@ -2434,6 +2430,15 @@ class Gateway( StubObject ):
          if volume_cert_bundle_str is None:
              raise Exception("Failed to generate volume cert bundle for Volume '%s' (Gateway '%s')" % (volume_name_or_id, gateway_name))
       
+         # put cert bundle version, so we can load it later on volume-wide reload
+         volume_cert_bundle = parse_volume_cert_bundle( volume_cert_bundle_str )
+         assert volume_cert_bundle is not None, "Failed to parse volume cert bundle"
+
+         volume_cert_versions = get_volume_cert_bundle_version_vector( volume_cert_bundle )
+         volume_cert_versions_txt = json.dumps( volume_cert_versions )
+         store_object_file( config, "volume", str(volume_id) + ".bundle.version", volume_cert_versions_txt )
+
+
       # generate the actual keyword arguments for the API call
       args = []
       kw = {
@@ -2452,11 +2457,13 @@ class Gateway( StubObject ):
       
       # pass this along to our result post-processor
       extras['gateway_cert'] = gateway_cert 
+      extras['gateway_name'] = gateway_cert.name
       extras['gateway_id'] = gateway_id
       extras['username'] = owner_username
       extras['name'] = gateway_name 
       extras['gateway_private_key'] = private_key
       extras['changed_caps'] = need_volume_cert_bundle
+      extras['need_volume_reload'] = need_volume_cert_bundle
       
       return args, kw, extras
       
@@ -2520,7 +2527,7 @@ class Gateway( StubObject ):
             if not config.has_key('no_reload') or not config['no_reload']:
                 gateway_cert = extras['gateway_cert']
 
-                if method_name == 'update_gateway':
+                if method_name == 'update_gateway' and not extras['need_volume_reload']:
 
                     # just updating the gateway
                     print >> sys.stderr, "Reloading gateway '%s'" % gateway_cert.name
@@ -2530,7 +2537,14 @@ class Gateway( StubObject ):
                         print >> sys.stderr, "Recommend reloading manually with the 'gateway_reload' command"
 
                 else:
-                    do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
+                    failed = do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
+                    if extras['gateway_name'] in failed:
+                        failed.remove( extras['gateway_name'] )
+
+                    if len(failed) > 0:
+                        print >> sys.stderr, "Some gateways failed to reload:"
+                        print >> sys.stderr, "   " + "\n   ".join(sorted(failed))
+                        print >> sys.stderr, "You can reload them manually with the `reload` directive."
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
