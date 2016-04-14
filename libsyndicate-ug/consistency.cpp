@@ -2052,22 +2052,21 @@ int UG_consistency_fetchxattrs( struct SG_gateway* gateway, uint64_t file_id, in
       SG_safe_free( xattr_value_lengths );
       return 0;
    }
-   
-   // load them into an xattr set to be fed into the inode 
-   xattr_set = fskit_xattr_set_new();
-   if( xattr_set == NULL ) {
-      
-      SG_FREE_LIST( xattr_names, free );
-      SG_FREE_LIST( xattr_values, free );
-      SG_safe_free( xattr_value_lengths );
-      return -ENOMEM;
-   }
-   
+ 
    for( size_t i = 0; xattr_names[i] != NULL; i++ ) {
-     
+  
+      //////////////////////////////////////////////////////////////////
+      char value_buf[25];
+      memset( value_buf, 0, 25 );
+      memcpy( value_buf, xattr_values[i], MIN(20, xattr_value_lengths[i]) );
+      memcpy( value_buf +( MIN(20, xattr_value_lengths[i])), "...\0", 4);
+
+      SG_debug("fetchxattr: '%s' = '%s' (length %zu)\n", xattr_names[i], value_buf, xattr_value_lengths[i] );
+      //////////////////////////////////////////////////////////////////
+
       rc = fskit_xattr_set_insert( &xattr_set, xattr_names[i], xattr_values[i], xattr_value_lengths[i], 0 );
       if( rc != 0 ) {
-         
+         SG_error("fskit_xattr_set_insert rc = %d\n", rc ); 
          break;
       }
    }
