@@ -571,6 +571,7 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
     struct fskit_core* fs = UG_state_fs( ug );
     struct ms_client* ms = SG_gateway_ms( gateway );
     struct md_entry inode_data;
+    int64_t cur_xattr_nonce = 0;
     unsigned char xattr_hash[ SHA256_DIGEST_LENGTH ];
     
     memset( &inode_data, 0, sizeof(struct md_entry) );
@@ -582,8 +583,12 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
         return rc;
     }
 
-    // get new xattr hash 
+    // get new xattr hash, for the *next* nonce value 
+    cur_xattr_nonce = UG_inode_xattr_nonce( inode );
+    UG_inode_set_xattr_nonce( inode, cur_xattr_nonce + 1 );
     rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
+    UG_inode_set_xattr_nonce( inode, cur_xattr_nonce );
+
     if( rc != 0 ) {
         
         md_entry_free( &inode_data );
@@ -592,6 +597,7 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
 
     // propagate new xattr hash
     inode_data.xattr_hash = xattr_hash;
+    inode_data.xattr_nonce = cur_xattr_nonce + 1;
     
     // put on the MS...
     rc = ms_client_putxattr( ms, &inode_data, name, value, value_len, xattr_hash );
@@ -603,7 +609,7 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
         SG_error("ms_client_putxattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, inode_data.file_id, inode_data.version, inode_data.xattr_nonce, name, rc );
     }
     
-    // get new xattr info
+    // propagate new xattr info from MS
     UG_inode_set_xattr_nonce( inode, inode_data.xattr_nonce );
     UG_inode_set_ms_xattr_hash( inode, xattr_hash );
 
@@ -919,6 +925,7 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
     struct fskit_core* fs = UG_state_fs( ug );
     struct ms_client* ms = SG_gateway_ms( gateway );
     struct md_entry inode_data;
+    int64_t cur_xattr_nonce = 0;
     unsigned char xattr_hash[ SHA256_DIGEST_LENGTH ];
     
     memset( &inode_data, 0, sizeof(struct md_entry) );
@@ -930,8 +937,12 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
         return rc;
     }
 
-    // get new xattr hash 
+    // get new xattr hash, for the *next* nonce value 
+    cur_xattr_nonce = UG_inode_xattr_nonce( inode );
+    UG_inode_set_xattr_nonce( inode, cur_xattr_nonce + 1 );
     rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
+    UG_inode_set_xattr_nonce( inode, cur_xattr_nonce );
+
     if( rc != 0 ) {
         
         md_entry_free( &inode_data );
@@ -940,6 +951,7 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
 
     // propagate new xattr hash
     inode_data.xattr_hash = xattr_hash;
+    inode_data.xattr_nonce = cur_xattr_nonce + 1;
     
     // put on the MS...
     rc = ms_client_removexattr( ms, &inode_data, name, xattr_hash );
@@ -951,6 +963,10 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
         SG_error("ms_client_removexattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, inode_data.file_id, inode_data.version, inode_data.xattr_nonce, name, rc );
     }
     
+    // propagate new xattr info from MS
+    UG_inode_set_xattr_nonce( inode, inode_data.xattr_nonce );
+    UG_inode_set_ms_xattr_hash( inode, xattr_hash );
+
     md_entry_free( &inode_data );
     
     return rc;
@@ -1068,6 +1084,8 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
             
             // not present; we're good 
             rc = 0;
+            fskit_entry_unlock( fent );
+            return rc;
         }
         else {
             
@@ -1093,17 +1111,32 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
         rc = fskit_fremovexattr( fs, fent, name );
         if( rc != 0 ) {
             
+            SG_error("fskit_fremovexattr( '%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
             fskit_entry_unlock( fent );
             SG_safe_free( old_xattr_value );
             return rc;
         }
-
 
         // if we're the coordinator, remove the xattr on the MS
         rc = UG_xattr_removexattr_local( gateway, path, inode, name );
         if( rc != 0 ) {
             
             SG_error("UG_xattr_removexattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+            fskit_entry_unlock( fent );
+
+            // restore xattr value 
+            int restore_rc = fskit_fsetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len, 0 );
+            if( restore_rc < 0 ) {
+               
+               // weird error (probably OOM)
+               SG_error("fskit_fsetxattr('%s', '%s') rc = %d\n", path, name, restore_rc );
+               fskit_entry_unlock( fent );
+               SG_safe_free( old_xattr_value );
+               return -EIO;
+            }
+
+            SG_safe_free( old_xattr_value );
+            return rc;
         }
    }
    else if( ask_remote ) {
