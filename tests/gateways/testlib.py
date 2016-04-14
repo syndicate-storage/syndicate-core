@@ -132,8 +132,17 @@ def valgrind_check_output( out ):
         "Uninitialised value was created by a heap allocation"
     ]
 
+    # find the start of our output
+    # (i.e. ignore libc weirdness)
+    start_preamble = "### Syndicate gateway starting up... ###"
+    out_offset = out.find("### Syndicate gateway starting up... ###")
+    if out_offset < 0:
+        raise Exception("Gateway did not start up")
+
+    out_offset += len(start_preamble)
+
     for error in errors:
-        if error in out:
+        if error in out[out_offset:]:
             return False
 
     return True
