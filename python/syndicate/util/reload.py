@@ -28,6 +28,7 @@ import binascii
 import json
 import requests
 import urlparse
+import traceback
 
 logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s' )
 log = logging.getLogger()
@@ -358,6 +359,9 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
     """
 
     import grequests
+    logging.getLogger("requests").setLevel(logging.CRITICAL)
+    logging.getLogger("grequests").setLevel(logging.CRITICAL)
+
     gateway_certs = None 
     gateway_status = {}
 
@@ -400,8 +404,8 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
         raise Exception("BUG: failed to generate config-reload request")
 
     def req_exception(request, exception):
-        log.warn("Caught exception on broadcast to '%s'" % request.url)
-        log.exception(exception)
+        log.debug("Caught exception on broadcast to '%s'" % request.url)
+        log.debug( traceback.format_exception(type(exception), exception, None) )
         gateway_name = gateway_url_names[request.url]
         gateway_status[gateway_name] = False
 
