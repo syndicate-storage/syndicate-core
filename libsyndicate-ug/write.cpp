@@ -279,10 +279,12 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
    uint64_t buf_offset = 0;
    uint64_t buf_copy_len = 0;
    int rc = 0;
+   bool partial_head = false;
   
    if( offset % block_size != 0 ) {
 
        // write starts unaligned 
+       partial_head = true;
        block_copy_start = offset % block_size;
        buf_offset = 0;
        buf_copy_len = MIN( buf_len, block_size - block_copy_start );
@@ -352,7 +354,7 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
    }
 
    if( (last_affected_block > first_affected_block && ((offset + buf_len) % block_size) != 0) ||
-       (last_affected_block == first_affected_block && (offset % block_size) == 0 && ((offset + buf_len) % block_size) != 0 ) ) {
+       (last_affected_block == first_affected_block && !partial_head && ((offset + buf_len) % block_size) != 0 ) ) {
 
        // last block is incomplete
        block_copy_start = 0;
@@ -447,7 +449,10 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
    UG_dirty_block_aligned( offset, buf_len, block_size, &first_aligned_block, &last_aligned_block, &first_aligned_block_offset, &last_block_len );
 
    // are there any aligned blocks?
-   if( first_aligned_block > last_aligned_block || (first_aligned_block == last_aligned_block && last_block_len > 0 && (unsigned)last_block_len < block_size) ) {
+   if( first_aligned_block > last_aligned_block || (first_aligned_block == last_aligned_block && last_block_len > 0 && (unsigned)last_block_len < block_size && buf_len < block_size) ) {
+      SG_debug("No aligned blocks (first aligned = %" PRIu64 ", last aligned = %" PRIu64 ", last_block_len = %jd, block_size = %" PRIu64 ")\n",
+               first_aligned_block, last_aligned_block, last_block_len, block_size );
+
       return 0;
    }
 
