@@ -1535,11 +1535,11 @@ void* md_cache_main_loop( void* arg ) {
       // reap completed writes
       md_cache_complete_writes( cache, &new_writes );
       
-      // can get cancelled now if needed
-      pthread_setcancelstate( PTHREAD_CANCEL_ENABLE, NULL );
-      
       // evict blocks 
       md_cache_evict_blocks( cache, &new_writes );
+      
+      // can get cancelled now if needed
+      pthread_setcancelstate( PTHREAD_CANCEL_ENABLE, NULL );
    }
    
    // wait for remaining writes to finish 
@@ -1565,11 +1565,11 @@ void* md_cache_main_loop( void* arg ) {
       // reap completed writes
       md_cache_complete_writes( cache, &new_writes );
       
-      // can get cancelled now if needed
-      pthread_setcancelstate( PTHREAD_CANCEL_ENABLE, NULL );
-      
       // evict blocks 
       md_cache_evict_blocks( cache, &new_writes );
+      
+      // can get cancelled now if needed
+      pthread_setcancelstate( PTHREAD_CANCEL_ENABLE, NULL );
       
       sleep(1);
    }
