@@ -32,12 +32,10 @@ static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyval
 // stacktrace for uncaught C++ exceptions 
 void md_uncaught_exception_handler(void) {
    
-   SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows");
+   SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows\n");
    
    void *trace_elems[32];
-   char addr2line_cmd[1024];
    size_t p = 0;
-   int rc = 0;
    int trace_elem_count(backtrace( trace_elems, 32 ));
    
    char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
@@ -52,13 +50,6 @@ void md_uncaught_exception_handler(void) {
        }
 
        SG_error("        %s\n", stack_syms[i] );
-       rc = snprintf(addr2line_cmd, 1024, "addr2line %p -e %.*s", trace_elems[i], (int)p, stack_syms[i] );
-       if( rc == 1024 ) {
-          printf("Symbol too long\n");
-          exit(1);
-       }
-
-       system(addr2line_cmd);
    }
    
    SG_safe_free( stack_syms );
@@ -2420,9 +2411,11 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    msent->set_capacity( 16 );
    msent->clear_ms_signature();
 
+   /*
    SG_debug("%s", "Verify:\n");
    msent->PrintDebugString();
-   
+   */
+
    rc = md_verify< ms::ms_entry >( pubkey, msent );
     
    // restore
@@ -2506,9 +2499,11 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
        msent.set_xattr_nonce( 1 );
        msent.clear_xattr_hash();
    }
-  
+ 
+   /* 
    SG_debug("from %s:%d, sign:\n", file, lineno);
    msent.PrintDebugString();
+   */
 
    rc = md_sign< ms::ms_entry >( privkey, &msent );
    if( rc != 0 ) {
@@ -2524,7 +2519,7 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
    }
   
    memcpy( *sig, msent.signature().data(), msent.signature().size() );
-   SG_debug("Signature is %s\n", msent.signature().c_str() ); 
+   // SG_debug("Signature is %s\n", msent.signature().c_str() ); 
    return 0;
 }
 
