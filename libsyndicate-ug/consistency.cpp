@@ -2103,7 +2103,7 @@ static int UG_consistency_fetchxattrs_all( struct SG_gateway* gateway, ms_path_t
       // only do this if we're the coordinator, and if there is xattr data at all
       if( SG_gateway_id( gateway ) == remote_inodes->ents[i].coordinator && remote_inodes->ents[i].xattr_hash != NULL ) {
          
-         SG_debug("Fetch xattrs for %" PRIX64 "\n", remote_inodes->ents[i].file_id );
+         SG_debug("Fetch xattrs for %" PRIX64 ".%" PRId64 ".%" PRId64 "\n", remote_inodes->ents[i].file_id, remote_inodes->ents[i].version, remote_inodes->ents[i].xattr_nonce );
          rc = UG_consistency_fetchxattrs( gateway, (*path_remote)[i].file_id, remote_inodes->ents[i].xattr_nonce, remote_inodes->ents[i].xattr_hash, &xattrs );
          if( rc != 0 ) {
              
