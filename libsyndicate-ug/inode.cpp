@@ -205,14 +205,14 @@ int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_da
    }
     
    /////////////////////////////////////
-   
+   /* 
    char* tmp = NULL;
    rc = md_entry_to_string( inode_data, &tmp );
    if( rc == 0 && tmp != NULL ) {
       SG_debug("Init '%s' from export with:\n%s\n", inode_data->name, tmp );
       SG_safe_free( tmp );
    }
-   
+   */
    /////////////////////////////////////
 
    rc = UG_inode_init( inode, inode_data->name, fent, inode_data->volume, inode_data->coordinator, inode_data->version );
@@ -660,14 +660,14 @@ int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t paren
    dest->ent_sig_len = 0;
   
    /////////////////////////////////////
-   
+   /* 
    char* tmp = NULL;
    int rc = md_entry_to_string( dest, &tmp );
    if( rc == 0 && tmp != NULL ) {
       SG_debug("Exported '%s' with:\n%s\n", dest->name, tmp );
       SG_safe_free( tmp );
    }
-   
+   */
    /////////////////////////////////////
    return 0;
 }
