@@ -970,7 +970,6 @@ int md_cache_stop( struct md_syndicate_cache* cache ) {
    sem_post( &cache->sem_blocks_writing );
    
    // wait for cache thread to finish 
-   // pthread_cancel( cache->thread );
    pthread_join( cache->thread, NULL );
    
    return 0;
