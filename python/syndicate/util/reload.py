@@ -33,6 +33,9 @@ logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s
 log = logging.getLogger()
 log.setLevel( logging.INFO )
 
+# don't log request data
+logging.getLogger("requests").setLevel(logging.CRITICAL)
+
 import syndicate
 import syndicate.util.certs as certs
 import syndicate.util.crypto as crypto
