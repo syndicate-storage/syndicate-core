@@ -91,12 +91,15 @@ def run( path, *args, **kw ):
     Run a program, and gather its results.
     Pass `valgrind=True` to run in valgrind.
     Return (exitcode, stdout+stderr) on success
+    Return ("valgrind error", stdout+stderr) if @valgrind is True and there were valgrind errors
     Return (None, None) on error
     """
     
+    valgrind = False
     if 'valgrind' in kw.keys() and kw['valgrind']:
         args = ['--leak-check=full', path] + list(args)
         path = '/usr/bin/valgrind'
+        valgrind = True
 
     prog = start( path, *args, **kw )
     if prog is None:
@@ -107,7 +110,13 @@ def run( path, *args, **kw ):
         stdin_fd = subprocess.PIPE
         stdin = kw['stdin']
 
-    return finish( prog, stdin=stdin )
+    exitcode, output = finish( prog, stdin=stdin )
+    if valgrind:
+        rc = valgrind_check_output( output )
+        if not rc:
+            return ("valgrind error", output)
+
+    return exitcode, output
 
 
 def valgrind_check_output( out ):
@@ -115,11 +124,17 @@ def valgrind_check_output( out ):
     Verify that there were no memory-related problems in the test output
     (no invalid reads or writes)
     """
-    if "Invalid read of size" in out:
-        return False 
 
-    if "Invalid write of size" in out:
-        return False
+    errors = [
+        "Invalid read of size",
+        "Invalid write of size",
+        "Conditional jump or move depends on uninitialised value",
+        "Uninitialised value was created by a heap allocation"
+    ]
+
+    for error in errors:
+        if error in out:
+            return False
 
     return True
 
