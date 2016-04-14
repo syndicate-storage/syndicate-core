@@ -31,22 +31,8 @@ RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
 
 if __name__ == "__main__":
-    usage = "%s LOCAL_FILE COUNT" % sys.argv[0]
 
-    if len(sys.argv) <= 1:
-        print >> sys.stderr, usage
-        sys.exit(1)
-
-    local_path = sys.argv[1]
-    if not os.path.exists(local_path) or not os.path.isfile(local_path):
-        print >> sys.stderr, usage
-        sys.exit(1)
-
-    try:
-        count = int(sys.argv[2])
-    except:
-        print >> sys.stderr, usage
-        sys.exit(1)
+    local_path = testlib.make_tmp_file(16384, "abcdef\n")
 
     config_dir, output_dir = testlib.test_setup()
     volume_name = testlib.add_test_volume( config_dir )
@@ -63,12 +49,9 @@ if __name__ == "__main__":
     gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
     random_part = hex(random.randint(0, 2**32-1))[2:]
-    paths = []
-    for i in xrange(0, count):
-        paths.append( local_path )
-        paths.append( "/put-%s-%s" % (random_part, i) )
+    ms_path = '/put-%s' % random_part
 
-    exitcode, out = testlib.run( PUT_PATH, '-B', '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, *paths )
+    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, ms_path )
     rg_exitcode, rg_out = testlib.stop_gateway( rg_proc )
 
     testlib.save_output( output_dir, "syndicate-put", out )
@@ -80,10 +63,4 @@ if __name__ == "__main__":
     if rg_exitcode != 0:
         raise Exception("%s exited %s" % (RG_PATH, rg_exitcode))
    
-    benchmark_data = testlib.get_benchmark_data( out )
-    if benchmark_data is None:
-        raise Exception("No benchmark data")
-
-    print ""
-    print ",".join([str(bd) for bd in benchmark_data])
     sys.exit(0)
