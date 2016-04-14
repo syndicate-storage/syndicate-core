@@ -98,6 +98,13 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
    }
    
    SHA256_Final( sha256_buf, &context );
+
+   //////////////////////////////////////////////////////////////
+   char printable_hashbuf[ SHA256_DIGEST_LENGTH*2 + 1 ];
+   sha256_printable_buf( sha256_buf, printable_hashbuf );
+   SG_debug("xattr hash for %" PRIX64 ".%" PRId64 " is %s\n", file_id, xattr_nonce, printable_hashbuf );
+   //////////////////////////////////////////////////////////////
+
    return 0;
 }
 
@@ -249,7 +256,7 @@ int ms_client_fetchxattrs( struct ms_client* client, uint64_t volume_id, uint64_
          
          sha256_printable_buf( hash_buf, hash_buf_printable );
          
-         SG_error("hash mismatch: %s != %s\n", xattr_hash_printable, hash_buf_printable );
+         SG_error("hash mismatch: %" PRIX64 ".%" PRId64 ": %s != %s\n", file_id, xattr_nonce, xattr_hash_printable, hash_buf_printable );
          
          return -EPERM;
       }
@@ -418,29 +425,75 @@ int ms_client_removexattr( struct ms_client* client, struct md_entry* ent, char 
    int rc = 0;
    struct ms_client_request request;
    struct ms_client_request_result result;
+
+   unsigned char* old_xattr_hash = NULL;
+   unsigned char* old_sig = NULL;
+   size_t old_sig_len = 0;
    
    memset( &request, 0, sizeof(struct ms_client_request) );
    memset( &result, 0, sizeof(struct ms_client_request_result) );
-   
+  
+   SG_debug("remove xattr '%s' from %" PRIX64 "\n", xattr_name, ent->file_id );
+
    ms_client_removexattr_request( client, ent, xattr_name, xattr_hash, &request );
+   
+   // sign the resulting entry
+   old_sig = ent->ent_sig;
+   old_sig_len = ent->ent_sig_len;
+   old_xattr_hash = ent->xattr_hash;
+
+   ent->ent_sig = NULL;
+   ent->ent_sig_len = 0;
+   ent->xattr_hash = xattr_hash;
+
+   rc = md_entry_sign( client->gateway_key, ent, &ent->ent_sig, &ent->ent_sig_len );
+   if( rc != 0 ) {
+      SG_error("md_entry_sign rc = %d\n", rc );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
+      return -EPERM;
+   }
    
    rc = ms_client_single_rpc( client, &request, &result );
    if( rc != 0 ) {
+      SG_error("ms_client_single_rpc rc = %d\n", rc );
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
       return rc;
    }
    
    if( result.reply_error != 0 ) {
       // protocol-level error 
+      SG_error("MS reply error %d\n", result.reply_error );
       ms_client_request_result_free( &result );
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
       return -EPROTO;
    }
    
    if( result.rc != 0 ) {
+      SG_error("MS operation rc = %d\n", result.rc );
       ms_client_request_result_free( &result );
-      return result.rc;
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
+      return -EPERM;
    }
    
    ms_client_request_result_free( &result );
+   if( old_sig != NULL ) {
+      SG_safe_free( old_sig );
+   }
+
    return 0;
 }
 
