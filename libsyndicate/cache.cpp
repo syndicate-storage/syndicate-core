@@ -962,14 +962,15 @@ int md_cache_start( struct md_syndicate_cache* cache ) {
 // stop the cache thread 
 // always succeeds
 int md_cache_stop( struct md_syndicate_cache* cache ) {
-   
+  
+   SG_debug("Stopping cache %p\n", cache); 
    cache->running = false;
    
    // wake up the writer
    sem_post( &cache->sem_blocks_writing );
    
    // wait for cache thread to finish 
-   pthread_cancel( cache->thread );
+   // pthread_cancel( cache->thread );
    pthread_join( cache->thread, NULL );
    
    return 0;
@@ -986,6 +987,8 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
       return -EINVAL;
    }
    
+   SG_debug("Destroy cache %p\n", cache);
+
    cache->pending = NULL;
    cache->completed = NULL;
    
@@ -994,7 +997,9 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
       cache->pending_2,
       NULL
    };
-   
+  
+   md_cache_pending_wlock( cache );
+
    for( int i = 0; pendings[i] != NULL; i++ ) {
       for( md_cache_block_buffer_t::iterator itr = pendings[i]->begin(); itr != pendings[i]->end(); itr++ ) {
          if( *itr != NULL ) {
@@ -1004,7 +1009,14 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
       
       SG_safe_delete( pendings[i] );
    }
+
+   cache->pending_1 = NULL;
+   cache->pending_2 = NULL;
    
+   md_cache_pending_unlock( cache );
+
+   md_cache_completed_wlock( cache );
+
    md_cache_completion_buffer_t* completeds[] = {
       cache->completed_1,
       cache->completed_2,
@@ -1020,6 +1032,13 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
       SG_safe_delete( completeds[i] );
    }
    
+   cache->completed_1 = NULL;
+   cache->completed_2 = NULL;
+
+   md_cache_completed_unlock( cache );
+   
+   md_cache_lru_wlock( cache );
+
    md_cache_lru_t* lrus[] = {
       cache->cache_lru,
       cache->promotes_1,
@@ -1035,6 +1054,14 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
    
    SG_safe_delete( cache->ongoing_writes );
    
+   cache->cache_lru = NULL;
+   cache->promotes_1 = NULL;
+   cache->promotes_2 = NULL;
+   cache->evicts_1 = NULL;
+   cache->evicts_2 = NULL;
+
+   md_cache_lru_unlock( cache );
+
    pthread_rwlock_t* locks[] = {
       &cache->pending_lock,
       &cache->completed_lock,
@@ -1427,11 +1454,26 @@ int md_cache_evict_blocks( struct md_syndicate_cache* cache, md_cache_lru_t* new
    }
    
    md_cache_promotes_unlock( cache );
-   
+  
+   // dead?
+   if( !cache->running || promotes == NULL || evicts == NULL ) {
+      // cache is dead 
+      SG_debug("Cache %p is dead\n", cache);
+      return 0;
+   }
+
    // safe access to the promote and evicts buffers, as long as no one performs the above swap
    
    md_cache_lru_wlock( cache );
-   
+    
+   // dead?
+   if( !cache->running || cache->cache_lru == NULL ) {
+      // cache is dead 
+      md_cache_lru_unlock( cache );
+      SG_debug("Cache %p is dead\n", cache);
+      return 0;
+   }
+
    // merge in the new writes, as the most-recently-used
    if( new_writes ) {
       cache->cache_lru->splice( cache->cache_lru->end(), *new_writes );
