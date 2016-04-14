@@ -563,7 +563,7 @@ ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char co
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-// NOTE: inode->entry must be at least read-locked
+// NOTE: inode->entry must be write-locked
 static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name, char const* value, size_t value_len, int flags ) {
     
     int rc = 0;
@@ -603,6 +603,10 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
         SG_error("ms_client_putxattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, inode_data.file_id, inode_data.version, inode_data.xattr_nonce, name, rc );
     }
     
+    // get new xattr info
+    UG_inode_set_xattr_nonce( inode, inode_data.xattr_nonce );
+    UG_inode_set_ms_xattr_hash( inode, xattr_hash );
+
     md_entry_free( &inode_data );
     
     return rc;
