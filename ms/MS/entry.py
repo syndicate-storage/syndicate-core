@@ -376,20 +376,20 @@ class MSEntryXAttr( storagetypes.Object ):
       
    
    @classmethod 
-   def RemoveXAttr( cls, volume, msent, xattr_name, xattr_nonce, xattr_hash ):
+   def RemoveXAttr( cls, volume, msent, xattr_name, xattr_nonce, xattr_hash, ent_sig ):
       """
       Delete an extended attribute from the MSEntry msent.
       
       The caller needs to ensure that only the coordinator can call this method.
       """
       
-      storagetypes.deferred.defer( MSEntryXAttr.remove_and_uncache, volume, msent, xattr_name, xattr_nonce, xattr_hash )
+      storagetypes.deferred.defer( MSEntryXAttr.remove_and_uncache, volume, msent, xattr_name, xattr_nonce, xattr_hash, ent_sig )
       
       return 0
       
       
    @classmethod 
-   def remove_and_uncache( cls, volume, msent, xattr_name, xattr_nonce, xattr_hash ):
+   def remove_and_uncache( cls, volume, msent, xattr_name, xattr_nonce, xattr_hash, ent_sig ):
       """
       Remove and uncache an xattr.
       Updates the MSEntry shard.
@@ -401,7 +401,7 @@ class MSEntryXAttr( storagetypes.Object ):
       xattr_key = storagetypes.make_key( MSEntryXAttr, xattr_key_name )
       
       # get a new shard 
-      new_shard = MSEntry.update_shard( volume.num_shards, msent, xattr_nonce=xattr_nonce, xattr_hash=xattr_hash )
+      new_shard = MSEntry.update_shard( volume.num_shards, msent, xattr_nonce=xattr_nonce, xattr_hash=xattr_hash.encode('hex'), ent_sig=ent_sig )
       
       # delete the xattr and put the new shard
       delete_fut = xattr_key.delete_async()
@@ -920,7 +920,7 @@ class MSEntry( storagetypes.Object ):
              ent_pb.xattr_hash = binascii.unhexlify( ent.xattr_hash )
          else:
              # empty string 
-             ent_pb.xattr_hash = ent.xattr_hash
+             ent_pb.xattr_hash = ""
       
       return
       
