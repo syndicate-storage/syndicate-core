@@ -340,7 +340,7 @@ class MSEntryXAttr( storagetypes.Object ):
       
       
    @classmethod 
-   def PutXAttr( cls, volume, msent, xattr_name, xattr_value, xattr_nonce, xattr_hash ):
+   def PutXAttr( cls, volume, msent, xattr_name, xattr_value, xattr_nonce, xattr_hash, ent_sig ):
       """
       Put an xattr, possibly overwriting it.
       Return 0 on success 
@@ -356,14 +356,14 @@ class MSEntryXAttr( storagetypes.Object ):
 
       xattr_key_name = MSEntryXAttr.make_key_name( msent.volume_id, msent.file_id, xattr_name )
       rc = 0
-      
+
       xattr = MSEntryXAttr( key=storagetypes.make_key( MSEntryXAttr, xattr_key_name ), file_id=msent.file_id, volume_id=volume.volume_id,
                             xattr_name=xattr_name, xattr_value=xattr_value )
-         
+          
       xattr_fut = xattr.put_async()
    
       # update the xattr_nonce in the msentry
-      new_shard = MSEntry.update_shard( volume.num_shards, msent, xattr_nonce=xattr_nonce, xattr_hash=xattr_hash )
+      new_shard = MSEntry.update_shard( volume.num_shards, msent, xattr_nonce=xattr_nonce, xattr_hash=xattr_hash, ent_sig=ent_sig )
       shard_fut = new_shard.put_async()
       
       storagetypes.wait_futures( [xattr_fut, shard_fut] )
