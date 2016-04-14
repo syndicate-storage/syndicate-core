@@ -23,13 +23,11 @@ struct UG_inode {
    char* name;                          // name of this inode (allowed, since Syndicate does not support links)
    struct SG_manifest manifest;         // latest manifest of this file's blocks (includes coordinator_id and file_version)
    
-   int64_t ms_write_nonce;      // last-known write nonce from the MS
-   int64_t ms_xattr_nonce;      // last-known xattr nonce from the MS
-   unsigned char ms_xattr_hash[ SHA256_DIGEST_LENGTH ]; // last-known xattr hash from the MS
+   unsigned char ms_xattr_hash[ SHA256_DIGEST_LENGTH ]; // latest xattr hash
    int64_t generation;          // last-known generation number of this file
    
-   int64_t write_nonce;         // uncommited write nonce (initialized to ms_write_nonce; used to indicate dirty data)
-   int64_t xattr_nonce;         // uncommitted xattr nonce
+   int64_t write_nonce;         // latest write nonce
+   int64_t xattr_nonce;         // latest xattr nonce
    
    struct timespec refresh_time;                // time of last refresh from the ms
    struct timespec write_refresh_time;          // time of last remote-fresh request to the file's coordinator
@@ -859,9 +857,6 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
    ts.tv_nsec = src->mtime_nsec;
    fskit_entry_set_mtime( dest->entry, &ts );
    
-   dest->ms_write_nonce = src->write_nonce;
-   dest->ms_xattr_nonce = src->xattr_nonce;
-   
    SG_manifest_set_coordinator_id( &dest->manifest, src->coordinator );
    SG_manifest_set_owner_id( &dest->manifest, src->owner );
    
@@ -959,6 +954,7 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
    }
    
    UG_inode_set_write_nonce( inode, inode_data_out.write_nonce );
+   UG_inode_set_xattr_nonce( inode, inode_data_out.xattr_nonce );
    UG_inode_set_max_read_freshness( inode, inode_data_out.max_read_freshness );
    UG_inode_set_max_write_freshness( inode, inode_data_out.max_write_freshness );
    SG_manifest_set_coordinator_id( UG_inode_manifest( inode ), inode_data_out.coordinator );
@@ -1839,6 +1835,14 @@ void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
 
 void UG_inode_set_write_nonce( struct UG_inode* inode, int64_t wn ) {
    inode->write_nonce = wn;
+}
+
+void UG_inode_set_xattr_nonce( struct UG_inode* inode, int64_t xn) {
+   inode->xattr_nonce = xn;
+}
+
+void UG_inode_set_ms_xattr_hash( struct UG_inode* inode, unsigned char* ms_xattr_hash ) {
+   memcpy( inode->ms_xattr_hash, ms_xattr_hash, SHA256_DIGEST_LENGTH );
 }
 
 void UG_inode_set_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
