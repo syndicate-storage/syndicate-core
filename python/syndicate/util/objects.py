@@ -1912,9 +1912,9 @@ class Volume( StubObject ):
          if not config.has_key('no_reload') or not config['no_reload']:
              failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
              if len(failed) > 0:
-                 log.info("Some gateways failed to reload:")
-                 log.info("   " + "\n   ".join(sorted(failed)))
-                 log.info("You can reload them manually with the `reload` directive.")
+                 log.warn("Some gateways failed to reload:")
+                 log.warn("   " + "\n   ".join(sorted(failed)))
+                 log.warn("You can reload them manually with the `reload` directive.")
           
             
 
@@ -2533,8 +2533,8 @@ class Gateway( StubObject ):
                     log.info( "Reloading gateway '%s'" % gateway_cert.name )
                     gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
                     if gateway_status != 0:
-                        log.info( "Failed to reload gateway '%s'" % gateway_cert.name )
-                        log.info( "Recommend reloading manually with the 'gateway_reload' command" )
+                        log.warn( "Failed to reload gateway '%s'" % gateway_cert.name )
+                        log.warn( "Recommend reloading manually with the 'gateway_reload' command" )
 
                 else:
                     failed = do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
@@ -2542,9 +2542,9 @@ class Gateway( StubObject ):
                         failed.remove( extras['gateway_name'] )
 
                     if len(failed) > 0:
-                        log.info( "Some gateways failed to reload:" )
-                        log.info( "   " + "\n   ".join(sorted(failed)) )
-                        log.info( "You can reload them manually with the `reload` directive." )
+                        log.warn( "Some gateways failed to reload:" )
+                        log.warn( "   " + "\n   ".join(sorted(failed)) )
+                        log.warn( "You can reload them manually with the `reload` directive." )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
