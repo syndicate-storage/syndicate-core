@@ -68,6 +68,7 @@ int UG_read_setup_block_buffer( struct UG_inode* inode, uint64_t block_id, char*
    // and put it in place 
    try {
       
+      SG_debug("Set up block %" PRIu64 " with %p len %" PRIu64 "\n", block_id, buf, buf_len ); 
       (*blocks)[ block_id ] = block_data;
    }
    catch( bad_alloc& ba ) {
@@ -272,6 +273,11 @@ int UG_read_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, of
       }
       else {
          read_len = block_size;
+      }
+
+      if( read_len == 0 ) {
+         // omit 
+         continue;
       }
       
       num_read += read_len;
@@ -1000,14 +1006,16 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    write_nonce = UG_inode_write_nonce( inode );
    file_size = UG_inode_size( inode );
 
-   if( file_size > 0 ) {
-       first_block = offset / file_size;
+   if( file_size == 0 ) {
+       // nothing to do 
+       fskit_entry_unlock( fent );
+       return 0;
    }
-   else {
-       first_block = 0;
-   }
-
+     
+   first_block = offset / block_size;
    last_block = MIN( file_size / block_size, (offset + buf_len) / block_size);
+
+   SG_debug("Read blocks %" PRIu64 "-%" PRIu64 "\n", first_block, last_block);
    
    if( rc != 0 ) {
       
