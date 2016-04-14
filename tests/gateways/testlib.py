@@ -221,7 +221,6 @@ def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, 
         print >> sys.stderr, out
         raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
 
-    print out
     return random_name
 
 
