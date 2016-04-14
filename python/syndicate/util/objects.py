@@ -949,7 +949,7 @@ def do_volume_reload( config, user_id, volume_id ):
 
     import syndicate.util.reload as reloader
 
-    print >> sys.stderr, "Reloading volume %s" % volume_id
+    log.info( "Reloading volume %s" % volume_id )
 
     statuses = reloader.broadcast_reload( config, user_id, volume_id )
     failed = []
@@ -1912,9 +1912,9 @@ class Volume( StubObject ):
          if not config.has_key('no_reload') or not config['no_reload']:
              failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
              if len(failed) > 0:
-                 print >> sys.stderr, "Some gateways failed to reload:"
-                 print >> sys.stderr, "   " + "\n   ".join(sorted(failed))
-                 print >> sys.stderr, "You can reload them manually with the `reload` directive."
+                 log.info("Some gateways failed to reload:")
+                 log.info("   " + "\n   ".join(sorted(failed)))
+                 log.info("You can reload them manually with the `reload` directive.")
           
             
 
@@ -2530,11 +2530,11 @@ class Gateway( StubObject ):
                 if method_name == 'update_gateway' and not extras['need_volume_reload']:
 
                     # just updating the gateway
-                    print >> sys.stderr, "Reloading gateway '%s'" % gateway_cert.name
+                    log.info( "Reloading gateway '%s'" % gateway_cert.name )
                     gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
                     if gateway_status != 0:
-                        print >> sys.stderr, "Failed to reload gateway '%s'" % gateway_cert.name
-                        print >> sys.stderr, "Recommend reloading manually with the 'gateway_reload' command"
+                        log.info( "Failed to reload gateway '%s'" % gateway_cert.name )
+                        log.info( "Recommend reloading manually with the 'gateway_reload' command" )
 
                 else:
                     failed = do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
@@ -2542,9 +2542,9 @@ class Gateway( StubObject ):
                         failed.remove( extras['gateway_name'] )
 
                     if len(failed) > 0:
-                        print >> sys.stderr, "Some gateways failed to reload:"
-                        print >> sys.stderr, "   " + "\n   ".join(sorted(failed))
-                        print >> sys.stderr, "You can reload them manually with the `reload` directive."
+                        log.info( "Some gateways failed to reload:" )
+                        log.info( "   " + "\n   ".join(sorted(failed)) )
+                        log.info( "You can reload them manually with the `reload` directive." )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
