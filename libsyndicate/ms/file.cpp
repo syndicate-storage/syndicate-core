@@ -104,6 +104,8 @@ static int ms_client_requests_protobuf( ms_client_request_list* requests, ms::ms
             }
             
             ms_req->set_xattr_name( string(request->xattr_name) );
+            ms_req->set_xattr_nonce( request->ent->xattr_nonce ); 
+            ms_req->set_xattr_hash( string((char const*)request->ent->xattr_hash, SG_XATTR_HASH_LEN) );
          }
       }
 
