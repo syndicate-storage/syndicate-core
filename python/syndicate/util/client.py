@@ -188,7 +188,7 @@ def make_rpc_client( config, caller_username=None ):
    syndicate_public_key = config['syndicate_public_key']
    
    if not ms_url.lower().startswith("https://"):
-      log.warning("MS URL %s is NOT confidential!" % ms_url )
+      log.debug("MS URL %s is NOT confidential!" % ms_url )
    
    signer = lambda method_name, data: api_call_signer( user_private_key, method_name, data )
    verifier = lambda method_name, args, kw, data, syndicate_data, rpc_result: api_call_verifier( config, syndicate_public_key, method_name, data, syndicate_data, rpc_result )
