@@ -780,8 +780,8 @@ def file_xattr_putxattr( reply, gateway, volume, update, caller_is_admin=False )
 
    attrs = MSEntry.unprotobuf_dict( update.entry )
    
-   logging.info("putxattr /%s/%s (name=%s, parent=%s) %s = %s" % 
-                (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name, update.xattr_value ))
+   logging.info("putxattr /%s/%s (name=%s, parent=%s, xattr_nonce=%s, xattr_hash=%s) %s = %s" % 
+                (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_nonce, update.xattr_hash.encode('hex'), update.xattr_name, update.xattr_value ))
       
    file_id = attrs['file_id']
    new_sig = attrs['ent_sig']
@@ -810,8 +810,8 @@ def file_xattr_putxattr( reply, gateway, volume, update, caller_is_admin=False )
       # set the xattr
       rc = MSEntryXAttr.PutXAttr( volume, msent, update.xattr_name, update.xattr_value, update.xattr_nonce, update.xattr_hash, new_sig )
       
-   logging.info("putxattr /%s/%s (name=%s, parent=%s) %s = %s rc = %s" % 
-                (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name, update.xattr_value, rc) )
+   logging.info("putxattr /%s/%s (name=%s, parent=%s, xattr_nonce=%s, xattr_hash=%s) %s = %s rc = %s" % 
+                (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_nonce, update.xattr_hash.encode('hex'), update.xattr_name, update.xattr_value, rc))
          
    return rc
 
@@ -826,10 +826,11 @@ def file_xattr_removexattr( reply, gateway, volume, update ):
 
    attrs = MSEntry.unprotobuf_dict( update.entry )
    
-   logging.info("removexattr /%s/%s (name=%s, parent=%s) %s" % 
-                  (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name))
+   logging.info("removexattr /%s/%s (name=%s, parent=%s, xattr_nonce=%s, xattr_hash=%s) %s" % 
+                  (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_nonce, update.xattr_hash.encode('hex'), update.xattr_name))
       
    file_id = attrs['file_id']
+   ent_sig = attrs['ent_sig']
    
    owner_id = GATEWAY_ID_ANON
    if gateway is not None:
@@ -851,11 +852,10 @@ def file_xattr_removexattr( reply, gateway, volume, update ):
    
    else: 
       # delete it 
-      rc = MSEntryXAttr.RemoveXAttr( volume, msent, update.xattr_name, update.xattr_nonce, update.xattr_hash )
+      rc = MSEntryXAttr.RemoveXAttr( volume, msent, update.xattr_name, update.xattr_nonce, update.xattr_hash, ent_sig )
    
-   logging.info("removexattr /%s/%s (name=%s, parent=%s) %s rc = %s" % 
-                 (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name, rc) )
-   
+   logging.info("removexattr /%s/%s (name=%s, parent=%s, xattr_nonce=%s, xattr_hash=%s) %s rc = %s" % 
+                  (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_nonce, update.xattr_hash.encode('hex'), update.xattr_name, rc))
    
    return rc
 
