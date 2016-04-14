@@ -160,6 +160,8 @@ bool UG_inode_creating( struct UG_inode* inode );
 // setters
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version );
 void UG_inode_set_write_nonce( struct UG_inode* inode, int64_t wn );
+void UG_inode_set_xattr_nonce( struct UG_inode* inode, int64_t xn );
+void UG_inode_set_ms_xattr_hash( struct UG_inode* inode, unsigned char* ms_xattr_hash );
 void UG_inode_set_refresh_time( struct UG_inode* inode, struct timespec* ts );
 void UG_inode_set_refresh_time_now( struct UG_inode* inode );
 void UG_inode_set_write_refresh_time( struct UG_inode* inode, struct timespec* ts );
