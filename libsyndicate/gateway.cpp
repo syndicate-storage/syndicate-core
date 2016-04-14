@@ -802,6 +802,8 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    // set debug level
    md_set_debug_level( opts->debug_level );
    
+   SG_debug("%s", "### Syndicate gateway starting up... ###\n");
+
    // read the config file, if given
    if( opts->config_file != NULL ) {
       
@@ -1149,7 +1151,7 @@ int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc
    int rc = 0;
    struct md_opts opts;
    int first_arg_optind = 0;
-   
+    
    rc = md_opts_default( &opts );
    if( rc != 0 ) {
        // OOM
