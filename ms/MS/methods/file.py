@@ -784,6 +784,7 @@ def file_xattr_putxattr( reply, gateway, volume, update, caller_is_admin=False )
                 (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name, update.xattr_value ))
       
    file_id = attrs['file_id']
+   new_sig = attrs['ent_sig']
    rc = 0
    
    owner_id = GATEWAY_ID_ANON
@@ -807,7 +808,7 @@ def file_xattr_putxattr( reply, gateway, volume, update, caller_is_admin=False )
    else:
       # can write
       # set the xattr
-      rc = MSEntryXAttr.PutXAttr( volume, msent, update.xattr_name, update.xattr_value, update.xattr_nonce, update.xattr_hash )
+      rc = MSEntryXAttr.PutXAttr( volume, msent, update.xattr_name, update.xattr_value, update.xattr_nonce, update.xattr_hash, new_sig )
       
    logging.info("putxattr /%s/%s (name=%s, parent=%s) %s = %s rc = %s" % 
                 (attrs['volume_id'], attrs['file_id'], attrs['name'], attrs['parent_id'], update.xattr_name, update.xattr_value, rc) )
