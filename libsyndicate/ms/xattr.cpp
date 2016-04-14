@@ -259,7 +259,18 @@ int ms_client_fetchxattrs( struct ms_client* client, uint64_t volume_id, uint64_
       *xattr_names = names;
       *xattr_values = values;
       *xattr_lengths = lengths;
-      
+     
+      SG_debug("Got xattrs for %" PRIX64 "\n", file_id );
+      for( int i = 0; names[i] != NULL; i++ ) {
+
+         char value_buf[25];
+         memset( value_buf, 0, 25 );
+         memcpy( value_buf, values[i], MIN(20, lengths[i]) );
+         memcpy( value_buf + MIN(20, lengths[i]), "...\0", 4);
+
+         SG_debug("   xattr: '%s' = '%s' (length %zu)\n", names[i], value_buf, lengths[i] );
+      }
+
       return 0;
    }
 }
@@ -297,78 +308,82 @@ int ms_client_putxattr_request( struct ms_client* ms, struct md_entry* ent, char
 // return -EPROTO on HTTP 400-level error, or an MS RPC-level error
 // return -EREMOTEIO for HTTP 500-level error 
 // return -errno on socket, connect, and recv related errors
+// WARN: ent->ent_sig and ent->ent_sig_len will be changed.  If ent->ent_sig is not NULL, it will be free'd (be sure that it's heap-allocated!)
 int ms_client_putxattr( struct ms_client* client, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, unsigned char* xattr_hash ) {
    
    int rc = 0;
    
    struct ms_client_request request;
    struct ms_client_request_result result;
+
+   unsigned char* old_xattr_hash = NULL;
+   unsigned char* old_sig = NULL;
+   size_t old_sig_len = 0;
    
    memset( &request, 0, sizeof(struct ms_client_request) );
    memset( &result, 0, sizeof(struct ms_client_request_result) );
    
    ms_client_putxattr_request( client, ent, xattr_name, xattr_value, xattr_value_len, xattr_hash, &request );
+
+   // sign the resulting entry
+   old_sig = ent->ent_sig;
+   old_sig_len = ent->ent_sig_len;
+   old_xattr_hash = ent->xattr_hash;
+
+   ent->ent_sig = NULL;
+   ent->ent_sig_len = 0;
+   ent->xattr_hash = xattr_hash;
+
+   rc = md_entry_sign( client->gateway_key, ent, &ent->ent_sig, &ent->ent_sig_len );
+   if( rc != 0 ) {
+      SG_error("md_entry_sign rc = %d\n", rc );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
+      return -EPERM;
+   }
    
    rc = ms_client_single_rpc( client, &request, &result );
    if( rc != 0 ) {
+      SG_error("ms_client_single_rpc rc = %d\n", rc );
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
       return rc;
    }
    
    if( result.reply_error != 0 ) {
       // protocol-level error 
+      SG_error("MS reply error %d\n", result.reply_error );
       ms_client_request_result_free( &result );
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
       return -EPROTO;
    }
    
    if( result.rc != 0 ) {
+      SG_error("MS operation rc = %d\n", result.rc );
       ms_client_request_result_free( &result );
-      return result.rc;
+
+      SG_safe_free( ent->ent_sig );
+      ent->ent_sig = old_sig;
+      ent->ent_sig_len = old_sig_len;
+      ent->xattr_hash = old_xattr_hash;
+      return -EPERM;
    }
    
    ms_client_request_result_free( &result );
+   if( old_sig != NULL ) {
+      SG_safe_free( old_sig );
+   }
+
    return 0;
 }
-
-/*
-// TODO: route through coordinator gateway
-// set a file's xattr.
-// flags is either 0, XATTR_CREATE, or XATTR_REPLACE (see setxattr(2))
-// return 0 on success
-// return -EPERM if we failed to sign the xattr, for some reason
-// return -ENOENT if the file doesn't exist or either isn't readable or writable.
-// return -ENODATA if the semantics in flags can't be met.
-// return -ENOMEM if OOM 
-// return -ENODATA if the replied message has no xattr field
-// return -EBADMSG on reply's signature mismatch
-// return -EPROTO on HTTP 400-level error
-// return -EREMOTEIO for HTTP 500-level error 
-// return -errno on socket, connect, and recv related errors
-int ms_client_setxattr( struct ms_client* client, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags ) {
-   
-   // sanity check...can't have both XATTR_CREATE and XATTR_REPLACE
-   if( (flags & (XATTR_CREATE | XATTR_REPLACE)) == (XATTR_CREATE | XATTR_REPLACE) ) {
-      return -EINVAL;
-   }
-   
-   // generate our update
-   struct md_update up;
-   int rc = 0;
-   
-   ms_client_populate_update( &up, ms::ms_request::SETXATTR, flags, ent );
-   
-   // add the xattr information (these won't be free'd, so its safe to cast)
-   up.xattr_name = (char*)xattr_name;
-   
-   up.xattr_value = (char*)xattr_value;
-   up.xattr_value_len = xattr_value_len;
-   
-   // TODO: xattr hash 
-   
-   rc = ms_client_update_rpc( client, &up );
-   
-   return rc;
-}
-*/
 
 
 // make a removexattr request 

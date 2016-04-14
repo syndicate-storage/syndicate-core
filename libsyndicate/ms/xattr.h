@@ -25,9 +25,6 @@
 extern "C" {
    
 // xattr API
-// int ms_client_getxattr( struct ms_client* client, uint64_t volume_id, uint64_t file_id, int64_t xattr_nonce, char const* xattr_name, char** xattr_value, size_t* xattr_value_len );
-// int ms_client_listxattr( struct ms_client* client, uint64_t volume_id, uint64_t file_id, char** xattr_names, size_t* xattr_names_len );
-// int ms_client_setxattr( struct ms_client* client, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags );
 int ms_client_putxattr_request( struct ms_client* ms, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, unsigned char* xattr_hash, struct ms_client_request* request );
 int ms_client_removexattr_request( struct ms_client* client, struct md_entry* ent, char const* xattr_name, unsigned char* xattr_hash, struct ms_client_request* request );
 
