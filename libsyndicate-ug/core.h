@@ -86,6 +86,10 @@ int UG_state_close_rh( struct UG_state* state );
 int UG_state_sync_rh( struct UG_state* state );
 int UG_state_detach_rh( struct UG_state* state );
 int UG_state_rename_rh( struct UG_state* state );
+int UG_state_getxattr_rh( struct UG_state* state, int rh );
+int UG_state_setxattr_rh( struct UG_state* state, int rh );
+int UG_state_listxattr_rh( struct UG_state* state, int rh );
+int UG_state_removexattr_rh( struct UG_state* state, int rh );
 
 // setters 
 void UG_state_set_cls( struct UG_state* state, void* cls );
@@ -100,6 +104,10 @@ int UG_state_set_close_rh( struct UG_state* state, int rh );
 int UG_state_set_sync_rh( struct UG_state* state, int rh );
 int UG_state_set_detach_rh( struct UG_state* state, int rh );
 int UG_state_set_rename_rh( struct UG_state* state, int rh );
+int UG_state_set_getxattr_rh( struct UG_state* state, int rh );
+int UG_state_set_setxattr_rh( struct UG_state* state, int rh );
+int UG_state_set_listxattr_rh( struct UG_state* state, int rh );
+int UG_state_set_removexattr_rh( struct UG_state* state, int rh );
 
 
 }

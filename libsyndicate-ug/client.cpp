@@ -1729,7 +1729,6 @@ int UG_getxattr( struct UG_state* state, char const* path, char const* name, cha
    return UG_xattr_getxattr( UG_state_gateway( state ), path, name, value, size, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
-
 // listxattr(2)
 // forward to xattr 
 int UG_listxattr( struct UG_state* state, char const* path, char *list, size_t size ) {

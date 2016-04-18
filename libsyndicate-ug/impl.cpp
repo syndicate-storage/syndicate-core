@@ -355,11 +355,11 @@ static int UG_impl_config_change( struct SG_gateway* gateway, int driver_reload_
 }
 
 
-// listxattr implementation
+// server listxattr implementation
 // return 0 on success
 // return -ENOMEM on OOM
 // return -ESTALE if we're not the coordinator
-// return negative on error 
+// return negative on error
 static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk** xattr_names, size_t* num_xattrs, void* cls ) {
 
    int rc = 0;
@@ -372,9 +372,9 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
    int i = 0;
    int off = 0;
 
-   len = UG_xattr_listxattr( gateway, reqdat->fs_path, NULL, 0, 0, 0 );
+   len = UG_xattr_listxattr_ex( gateway, reqdat->fs_path, NULL, 0, 0, 0, false );
    if( len < 0 ) {
-      SG_error("UG_xattr_listxattr('%s', 0) rc = %d\n", reqdat->fs_path, (int)len );
+      SG_error("UG_xattr_listxattr_ex('%s', 0) rc = %d\n", reqdat->fs_path, (int)len );
       return len;
    }
 
@@ -385,7 +385,7 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
 
    len2 = UG_xattr_listxattr_ex( gateway, reqdat->fs_path, buf, len, 0, 0, false );
    if( len2 < 0 ) {
-      SG_error("UG_xattr_listxattr('%s', %d) rc = %d\n", reqdat->fs_path, (int)len, (int)len2 );
+      SG_error("UG_xattr_listxattr_ex('%s', %d) rc = %d\n", reqdat->fs_path, (int)len, (int)len2 );
       SG_safe_free( buf );
       return len2;
    }
@@ -437,14 +437,15 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
 // getxattr implementation
 // return 0 on success
 // return -ENOMEM on OOM
-// return negative on error 
+// return negative on error
+// TODO: don't handle if we don't coordinate the file
 static int UG_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* xattr_value, void* cls ) {
 
    ssize_t len = 0;
    ssize_t len2 = 0;
    char* value = NULL;
 
-   len = UG_xattr_getxattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, NULL, 0, 0, 0, false );
+   len = UG_xattr_getxattr( gateway, reqdat->fs_path, reqdat->xattr_name, NULL, 0, 0, 0 );
    if( len < 0 ) {
       SG_error("UG_xattr_getxattr('%s', '%s', 0) rc = %d\n", reqdat->fs_path, reqdat->xattr_name, (int)len );
       return len;
@@ -455,7 +456,7 @@ static int UG_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data*
       return -ENOMEM;
    }
 
-   len2 = UG_xattr_getxattr_ex( gateway, reqdat->fs_path, reqdat->xattr_name, value, len, 0, 0, false );
+   len2 = UG_xattr_getxattr( gateway, reqdat->fs_path, reqdat->xattr_name, value, len, 0, 0 );
    if( len2 < 0 ) {
       SG_safe_free( value );
       SG_error("UG_xattr_getxattr('%s', '%s', %zd) rc = %d\n", reqdat->fs_path, reqdat->xattr_name, len, (int)len2);
@@ -493,6 +494,7 @@ static int UG_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data*
 // return -ENOMEM on OOM
 // return -ESTALE if we're not this entry's coordinator 
 // return negative on error 
+// TODO: bail if not local
 static int UG_impl_removexattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, void* cls ) {
 
    int rc = 0;

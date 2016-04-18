@@ -1237,6 +1237,69 @@ static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* rou
 }
 
 
+// fskit route for handling getxattr 
+// return > 0 on success
+// return 0 if not built-in
+// return negative on error (see xattr.cpp)
+// fent must be read-locked
+static int UG_fs_fgetxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
+
+   int rc = 0;
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
+   char const* path = fskit_route_metadata_get_path( route_metadata );
+   
+   rc = UG_xattr_fgetxattr( gateway, path, fent, name, value, value_len );
+   return rc;
+}
+
+
+// fskit route for handling listxattr 
+// merges "normal" fskit xattrs with builtins 
+// return > 0 on success
+// return -ERANGE if not big enough
+// fent must be read-locked
+static int UG_fs_flistxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len ) {
+
+   int rc = 0;
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
+   char const* path = fskit_route_metadata_get_path( route_metadata );
+
+   rc = UG_xattr_flistxattr( gateway, path, fent, buf, buf_len );
+   return rc;
+}
+
+
+// fskit route for handling setxattr 
+// handles built-in xattrs, and forwards the rest to local fskit
+// calls the MS to replicate xattrs.
+// return 0 on success
+// return -ERANGE if buffer is not big enough 
+// fent must be write-locked
+static int UG_fs_fsetxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name, char const* value, size_t value_len, int flags ) {
+
+   int rc = 0;
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
+   char const* path = fskit_route_metadata_get_path( route_metadata );
+
+   rc = UG_xattr_fsetxattr( gateway, path, fent, name, value, value_len, flags );
+   return rc; 
+}
+
+
+// fskit route for removexattr
+// return 0 if handled
+// return 1 if not handled
+// return negative on error 
+static int UG_fs_fremovexattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name ) {
+
+   int rc = 0;
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
+   char const* path = fskit_route_metadata_get_path( route_metadata );
+
+   rc = UG_xattr_fremovexattr( gateway, path, fent, name );
+   return rc;
+}
+
 // insert fskit entries into the fskit core 
 // return 0 on success.
 // return -ENOMEM on OOM 
@@ -1331,7 +1394,39 @@ int UG_fs_install_methods( struct fskit_core* core, struct UG_state* state ) {
       return rh;
    }
    UG_state_set_rename_rh( state, rh );
-   
+  
+   rh = fskit_route_getxattr( core, FSKIT_ROUTE_ANY, UG_fs_fgetxattr, FSKIT_CONCURRENT );
+   if( rh < 0 ) {
+      
+      SG_error("fskit_route_getxattr(%s) rc = %d\n", FSKIT_ROUTE_ANY, rh );
+      return rh;
+   }
+   UG_state_set_getxattr_rh( state, rh );
+
+   rh = fskit_route_setxattr( core, FSKIT_ROUTE_ANY, UG_fs_fsetxattr, FSKIT_INODE_SEQUENTIAL );
+   if( rh < 0 ) {
+
+      SG_error("fskit_route_setxattr(%s) rc = %d\n", FSKIT_ROUTE_ANY, rh );
+      return rh;
+   }
+   UG_state_set_setxattr_rh( state, rh );
+
+   rh = fskit_route_listxattr( core, FSKIT_ROUTE_ANY, UG_fs_flistxattr, FSKIT_CONCURRENT );
+   if( rh < 0 ) {
+
+      SG_error("fskit_route_listxattr(%s) rc = %d\n", FSKIT_ROUTE_ANY, rh );
+      return rh;
+   }
+   UG_state_set_listxattr_rh( state, rh );
+
+   rh = fskit_route_removexattr( core, FSKIT_ROUTE_ANY, UG_fs_fremovexattr, FSKIT_INODE_SEQUENTIAL );
+   if( rh < 0 ) {
+
+      SG_error("fskit_route_removexattr(%s) rc = %d\n", FSKIT_ROUTE_ANY, rh );
+      return rh;
+   }
+   UG_state_set_removexattr_rh( state, rh );
+
    return 0;
 }
 

@@ -53,6 +53,10 @@ struct UG_state {
    int sync_rh;
    int detach_rh;
    int rename_rh;
+   int getxattr_rh;
+   int setxattr_rh;
+   int removexattr_rh;
+   int listxattr_rh;
    
    bool running_thread;                 // if true, we've set up and started a thread to run the main loop ourselves 
    pthread_t thread;                    // the main loop thread
@@ -929,6 +933,26 @@ int UG_state_rename_rh( struct UG_state* state ) {
    return state->rename_rh;
 }
 
+// get getxattr route handle 
+int UG_state_getxattr_rh( struct UG_state* state ) {
+   return state->getxattr_rh;
+}
+
+// get setxattr route handle 
+int UG_state_setxattr_rh( struct UG_state* state ) {
+   return state->setxattr_rh;
+}
+
+// get listxattr route handle 
+int UG_state_listxattr_rh( struct UG_state* state ) {
+   return state->listxattr_rh;
+}
+
+// get removexattr route handle 
+int UG_state_removexattr_rh( struct UG_state* state ) {
+   return state->removexattr_rh;
+}
+
 // set UG implementation state (UG_state must be write-locked!)
 void UG_state_set_cls( struct UG_state* state, void* cls ) {
    state->cls = cls;
@@ -1000,3 +1024,26 @@ int UG_state_set_rename_rh( struct UG_state* state, int rh ) {
    return 0;
 }
 
+// set getxattr route handle 
+int UG_state_set_getxattr_rh( struct UG_state* state, int rh ) {
+   state->getxattr_rh = rh;
+   return 0;
+}
+
+// set setxattr route handle 
+int UG_state_set_setxattr_rh( struct UG_state* state, int rh ) {
+   state->setxattr_rh = rh;
+   return 0;
+}
+
+// set listxattr route handle 
+int UG_state_set_listxattr_rh( struct UG_state* state, int rh ) {
+   state->listxattr_rh = rh;
+   return 0;
+}
+
+// set removexattr route handle 
+int UG_state_set_removexattr_rh( struct UG_state* state, int rh ) {
+   state->removexattr_rh = rh;
+   return 0;
+}
