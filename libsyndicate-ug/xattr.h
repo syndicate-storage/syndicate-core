@@ -40,14 +40,24 @@
 extern "C" {
 
 // extended attributes
-ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume );
-ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume, bool ask_remote );
-int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume);
-int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool ask_remote );
+ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len, bool query_remote );
+ssize_t UG_xattr_fgetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len );
+ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t owner_id, uint64_t volume_id, bool query_remote );
+ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const* name, char* value, size_t size, uint64_t owner_id, uint64_t volume_id );
+
+int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char const* value, size_t size, int flags );
+int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool query_remote );
+int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume );
+
+ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len, bool query_remote );
+ssize_t UG_xattr_flistxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len );
+ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool query_remote );
 ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume );
-ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool ask_remote );
-int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume );
-int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool ask_remote );
+
+int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, bool query_remote );
+int UG_xattr_fremovexattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name );
+int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool query_remote );
+int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const* name, uint64_t user, uint64_t volume );
 
 }
 

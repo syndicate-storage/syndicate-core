@@ -88,7 +88,7 @@ static struct UG_xattr_handler_t* UG_xattr_lookup_handler( char const* name ) {
 
 // get size of all of the names of our xattrs
 // always succeeds
-static size_t UG_xattr_len_all( void ) {
+size_t UG_xattr_builtin_len_all( void ) {
    
    size_t len = 0;
    
@@ -105,9 +105,9 @@ static size_t UG_xattr_len_all( void ) {
 // fill in buf with the names, if it is long enough (buf_len)
 // return the number of bytes copied on success
 // return -ERANGE if the buffer is not big enough.
-static ssize_t UG_xattr_get_builtin_names( char* buf, size_t buf_len ) {
+ssize_t UG_xattr_get_builtin_names( char* buf, size_t buf_len ) {
    
-   size_t needed_len = UG_xattr_len_all();
+   size_t needed_len = UG_xattr_builtin_len_all();
    
    if( needed_len > buf_len ) {
       return -ERANGE;
@@ -467,60 +467,67 @@ static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* 
 }
 
 
-// getxattr(2)
+// handle built-in getxattr
 // return the length of the xattr value on success
-// return the length of the xattr value if *value is NULL, but we were able to get the xattr
-// return -ENOMEM on OOM 
-// return -ENOENT if the file doesn't exist
-// return -EACCES if we're not allowed to read the file or the attribute
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EAGAIN if we were signaled to retry the request 
-// return -EREMOTEIO if the HTTP error is >= 500 
-// return -EPROTO on HTTP 400-level error
-// return -ESTALE if we're not the coordinator, and ask_remote is False
-ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume, bool ask_remote ) {
-   
+// return 0 if not handled
+// return the length of the xattr value on success
+// return the length of the xattr value of *value is NULL, but the xattr is built-in
+// return -ENOMEM on OOM
+// return -ERANGE if the buf isn't big enough
+// fent must be read-locked
+static ssize_t UG_xattr_fgetxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
+    
    int rc = 0;
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
-   char* value_buf = NULL;
-   size_t xattr_buf_len = 0;
-   
-   // revalidate...
-   rc = UG_consistency_path_ensure_fresh( gateway, path );
-   if( rc != 0 ) {
-      
-      return rc;
-   }
-   
-   // look up...
-   struct fskit_entry* fent = fskit_entry_resolve_path( fs, path, user, volume, false, &rc );
-   if( fent == NULL ) {
-      
-      return rc;
-   }
-   
+   struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
+   if( handler == NULL ) {
+      // not handled
+      return 0;
+   } 
+
+   rc = (*handler->get)( fs, fent, name, value, value_len );
+   return rc;
+}
+
+
+// fgetxattr(2) implementation, for use in both the client, HTTP server, and fskit.
+// handles local built-in xattrs and all remote xattrs.
+// does not handle local non-built-in xattrs; defer to fskit for these.
+// return length of the xattr on success
+// return 0 if not handled (i.e. local request, and not a built-in xattr)
+// return -ERANGE if the buffer is too small
+// return -ENOENT if the entry doesn't exist
+// return -EACCES if we don't have permission to read
+// return -EAGAIN if we're acting on stale data, and should try again
+// return -ETIMEDOUT if the xattr is remote, and could not be completed on time
+// return -EREMOTEIO on remote I/O error
+// return -ENOATTR if the attribute doesn't exist
+// NOTE: fent must be read-locked
+ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t size, bool query_remote ) {
+
+   int rc = 0;
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    uint64_t coordinator_id = UG_inode_coordinator_id( inode );
    uint64_t file_id = UG_inode_file_id( inode );
    int64_t file_version = UG_inode_file_version( inode );
    int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
+
+   char* value_buf = NULL;
+   size_t xattr_buf_len = 0;
    
    if( coordinator_id == SG_gateway_id( gateway ) ) {
-       // local 
-       rc = fskit_fgetxattr( fs, fent, name, value, size );
-       fskit_entry_unlock( fent );
+       // local (built-in or otherwise)
+       rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
+       return rc;
    }
-   else if( ask_remote ) { 
+   else if( query_remote ) { 
       
-       fskit_entry_unlock( fent );
-
-       // go get the xattr 
+       // go get the xattr remotely
        rc = SG_client_getxattr( gateway, coordinator_id, path, file_id, file_version, name, xattr_nonce, &value_buf, &xattr_buf_len );
        if( rc != 0 ) {
        
            SG_error("SG_client_getxattr('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-           return rc;
        }
    
        if( value != NULL ) {
@@ -540,29 +547,92 @@ ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char
        SG_safe_free( value_buf );
    }
    else {
-      
-      fskit_entry_unlock( fent );
       rc = -ESTALE;
    }
-   
+
+   if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -ENOMEM && rc != -EAGAIN && rc != -ERANGE && rc != -ENOATTR && rc != -ESTALE ) {
+      rc = -EREMOTEIO;
+   }
    return rc;
 }
 
-ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t user, uint64_t volume) {
-   return UG_xattr_getxattr_ex( gateway, path, name, value, size, user, volume, true );
+ssize_t UG_xattr_fgetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
+   return UG_xattr_fgetxattr_ex( gateway, path, fent, name, value, value_len, true );
+}
+
+// getxattr(2) for the HTTP server and client
+// handles all xattrs--local and remote, builtin and non-built-in.
+// return the length of the xattr value on success
+// return the length of the xattr value if *value is NULL, but we were able to get the xattr
+// return -ENOMEM on OOM 
+// return -ENOENT if the file doesn't exist
+// return -EACCES if we're not allowed to read the file or the attribute
+// return -ETIMEDOUT if the transfer could not complete in time 
+// return -EAGAIN if we were signaled to retry the request 
+// return -EREMOTEIO if the remote host couldn't process the request 
+ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t owner_id, uint64_t volume_id, bool query_remote ) {
+   
+   int rc = 0;
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+   struct fskit_core* fs = UG_state_fs( ug );
+   
+   // revalidate...
+   rc = UG_consistency_path_ensure_fresh( gateway, path );
+   if( rc != 0 ) {
+      
+      return rc;
+   }
+   
+   // look up...
+   struct fskit_entry* fent = fskit_entry_resolve_path( fs, path, owner_id, volume_id, false, &rc );
+   if( fent == NULL ) {
+      
+      return rc;
+   }
+
+   // get the xattr
+   rc = UG_xattr_fgetxattr_ex( gateway, path, fent, name, value, size, query_remote );
+   if( rc == 0 ) {
+
+      // not built-in 
+      // get from inode directly
+      rc = fskit_xattr_fgetxattr( fs, path, fent, name, value, size );
+   }
+   fskit_entry_unlock( fent );
+   return rc;
+}
+
+ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const* name, char* value, size_t size, uint64_t owner_id, uint64_t volume_id ) {
+   return UG_xattr_getxattr_ex( gateway, path, name, value, size, owner_id, volume_id, true );
+}
+
+
+// handle built-in setxattr
+// return 0 if handled
+// return 1 if not handled
+// return -ENOMEM on OOM
+// fent must be read-locked
+static ssize_t UG_xattr_fsetxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char const* value, size_t value_len, int flags ) {
+    
+   int rc = 0;
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+   struct fskit_core* fs = UG_state_fs( ug );
+   struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
+   if( handler == NULL || handler->set == UG_xattr_set_undefined ) {
+      // not handled
+      return 0;
+   } 
+
+   rc = (*handler->set)( fs, fent, name, value, value_len, flags );
+   return rc;
 }
 
 
 // local setxattr, for when we're the coordinator of the file.
-// NOTE: the xattr must already be present in inode->entry's xattr set
 // return 0 on success 
 // return -ENOMEM on OOM 
 // return -EEXIST if the XATTR_CREATE flag was set but the attribute existed 
 // return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EAGAIN if we were signaled to retry the request 
-// return -EREMOTEIO if the HTTP error is >= 500 
-// return -EPROTO on HTTP 400-level error
 // NOTE: inode->entry must be write-locked
 static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name, char const* value, size_t value_len, int flags ) {
     
@@ -667,9 +737,74 @@ static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* pat
 }
 
 
+// fsetxattr implementation, used by the client, the HTTP server, and fskit
+// handles both remote and local xattrs, as well as built-in and non-built-in. 
+// return 0 if handled
+// return 1 if not handled
+// return -ENOMEM on OOM
+// return -EPERM if this gateway is anonymous
+// return -ETIMEDOUT on timeout
+// return -EREMOTEIO on failure to process remotely 
+// return -EAGAIN if we're acting on stale data
+// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
+// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed 
+// fent must be write-locked
+int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char const* value, size_t size, int flags ) {
+
+   int rc = 0;
+   struct UG_inode* inode = NULL;
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   
+   uint64_t coordinator_id = UG_inode_coordinator_id( inode );
+   uint64_t file_id = UG_inode_file_id( inode );
+   int64_t file_version = UG_inode_file_version( inode );
+   int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
+    
+   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+      return -EPERM;
+   }
+
+   // if we're the coordinator, then preserve old xattr, in case we have to replace it on failure 
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+       
+       // built-in?
+       rc = UG_xattr_fsetxattr_builtin( gateway, path, fent, name, value, size, flags );
+       if( rc <= 0 ) {
+          // handled-built-in or error
+          return rc;
+       }
+
+       // not handled---set the xattr on the MS, and tell caller to do the set locally
+       rc = UG_xattr_setxattr_local( gateway, path, inode, name, value, size, flags );
+       if( rc != 0 ) {
+           SG_error("UG_xattr_setxattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+       }
+        
+       rc = 1;
+   }
+   else {
+       
+       // if we're not the coordinator, send the xattr to the coordinator 
+       rc = UG_xattr_setxattr_remote( gateway, path, inode, name, value, size, flags );
+       if( rc != 0 ) {
+           SG_error("UG_xattr_setxattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+       }
+
+       rc = 1;
+   }
+   
+   if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -ENOMEM && rc != -EAGAIN && rc != -ENOATTR && rc != -EEXIST ) {
+      rc = -EREMOTEIO;
+   }
+
+   return rc;
+
+} 
+
 
 // setxattr(2)
-// return the length of the value written on success
+// works for the HTTP server and client, but not for fskit
 // return -ENOMEM on OOM 
 // return -ENOENT if the file doesn't exist
 // return -EEXIST if the XATTR_CREATE flag was set but the attribute existed 
@@ -680,16 +815,13 @@ static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* pat
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
 // return -ESTALE if ask_remote is False and we're not the coordinator
-int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool ask_remote ) {
+int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool query_remote ) {
    
    int rc = 0;
    struct fskit_entry* fent = NULL;
    struct UG_inode* inode = NULL;
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
-   struct UG_xattr_handler_t* xattr_handler = UG_xattr_lookup_handler( name );
-   char* old_xattr_value = NULL;
-   size_t old_xattr_value_len = 0;
    
    if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
       return -EPERM;
@@ -706,102 +838,21 @@ int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char con
       
       return rc;
    }
-   
-   // built-in handler?
-   if( xattr_handler != NULL ) {
-      
-      rc = (*xattr_handler->set)( fs, fent, name, value, size, flags );
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data(fent);
+   if( !query_remote && UG_inode_coordinator_id(inode) != SG_gateway_id(gateway) ) {
+
       fskit_entry_unlock( fent );
-      return rc;
+      return -ESTALE;
    }
    
-   // not a built-in
-   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
-   
-   uint64_t coordinator_id = UG_inode_coordinator_id( inode );
-   uint64_t file_id = UG_inode_file_id( inode );
-   int64_t file_version = UG_inode_file_version( inode );
-   int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
-   
-   // if we're the coordinator, then preserve old xattr, in case we have to replace it on failure 
-   if( coordinator_id == SG_gateway_id( gateway ) ) {
-       
-        rc = fskit_fgetxattr( fs, fent, name, NULL, 0 );
-        if( rc < 0 ) {
-            
-            // not present; we're good 
-            rc = 0;
-        }
-        else {
-            
-            old_xattr_value_len = rc;
-            old_xattr_value = SG_CALLOC( char, old_xattr_value_len );
-            if( old_xattr_value == NULL ) {
-                
-                fskit_entry_unlock( fent );
-                return -ENOMEM;
-            }
-            
-            rc = fskit_fgetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len );
-            if( rc < 0 ) {
-                
-                // weird error 
-                SG_error("fskit_entry_fgetxattr('%s' '%s') rc = %d\n", path, name, rc );
-                fskit_entry_unlock( fent );
-                return rc;
-            }
-        }
+   rc = UG_xattr_fsetxattr( gateway, path, fent, name, value, size, flags );
+   if( rc > 0 ) {
+      // sync'ed with the MS.  Pass along to fskit.
+      rc = fskit_xattr_fsetxattr( fs, path, fent, name, value, size, flags );
+   }
 
-        // set locally 
-        rc = fskit_fsetxattr( fs, fent, name, value, size, flags );
-        if( rc != 0 ) {
-            
-            fskit_entry_unlock( fent );
-            SG_safe_free( old_xattr_value );
-            return rc;
-        }
-
-        // set the xattr on the MS
-        rc = UG_xattr_setxattr_local( gateway, path, inode, name, value, size, flags );
-        if( rc != 0 ) {
-            
-            SG_error("UG_xattr_setxattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-        }
-        else {
-            
-            rc = size;
-        }
-   }
-   else if( ask_remote ) {
-       
-       // if we're not the coordinator, send the xattr to the coordinator 
-       rc = UG_xattr_setxattr_remote( gateway, path, inode, name, value, size, flags );
-       if( rc != 0 ) {
-           
-           SG_error("UG_xattr_setxattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-       }
-       else {
-           
-           rc = size;
-       }
-   }
-   else {
-
-      rc = -ESTALE;
-   }
-   
-   if( rc < 0 && old_xattr_value != NULL ) {
-       
-       // failed; restore old xattr 
-       int restore_rc = fskit_fsetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len, 0 );
-       if( restore_rc < 0 ) {
-           
-           SG_error("fskit_entry_fsetxattr(RESTORE '%s', '%s') rc = %d\n", path, name, rc );
-       }
-   }
-   
    fskit_entry_unlock( fent );
-   SG_safe_free( old_xattr_value );
    return rc;
 }
 
@@ -810,7 +861,101 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
 }
 
 
-// listxattr(2)--get back a list of xattrs from the MS
+// handle built-in listxattr
+// return the length of the listing on success, or if *buf is NULL or buf_len is 0
+// return -ENOMEM on OOM
+// return -ERANGE if the buf isn't big enough
+// fent must be read-locked
+static ssize_t UG_xattr_flistxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len ) {
+    
+   size_t builtin_len = UG_xattr_builtin_len_all();
+   
+   if( buf == NULL || buf_len == 0 ) {
+      return builtin_len;
+   }
+
+   if( buf_len < builtin_len ) {
+      return -ERANGE;
+   }
+
+   UG_xattr_get_builtin_names( buf, buf_len );
+   return builtin_len;
+}
+
+
+// Implementation of flistxattr(2) for client, HTTP server, and fskit
+// return the length of the listing on success
+// return -ENOMEM on OOM
+// return -ERANGE if the buffer isn't big enough
+// return -EACCES if we can't read the entry
+// return -ENOENT if the entry doesn't exist
+// return -ETIMEDOUT on network timeout
+// return -EREMOTEIO on remote host processing failure
+// return -ESTALE if the query_remote is False and we're not the coordinator
+// fent must be read-locked
+ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len, bool query_remote ) {
+
+   int rc = 0;
+   
+   uint64_t file_id = 0;
+   int64_t file_version = 0;
+   int64_t xattr_nonce = 0;
+   uint64_t coordinator_id = 0;
+   struct UG_inode* inode = NULL;
+   char* list_buf = NULL;
+   size_t list_buf_len = 0;
+
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   
+   file_id = UG_inode_file_id( inode );
+   file_version = UG_inode_file_version( inode );
+   xattr_nonce = UG_inode_xattr_nonce( inode );
+   coordinator_id = UG_inode_coordinator_id( inode );
+   
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+       
+       // provide built-in xattrs
+       rc = UG_xattr_flistxattr_builtin( gateway, path, fent, buf, buf_len );
+       return rc;
+   }
+   else if( query_remote ) {
+
+       // ask the coordinator 
+       rc = SG_client_listxattrs( gateway, coordinator_id, path, file_id, file_version, xattr_nonce, &list_buf, &list_buf_len );
+       if( rc != 0 ) {
+           SG_error("SG_client_listxattrs('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ")) rc = %d\n", path, file_id, file_version, xattr_nonce, rc );
+       }
+       else {
+
+           if( buf_len > 0 && buf_len < list_buf_len ) {
+               rc = -ERANGE;
+           }
+           else if( buf != NULL ) {
+               memcpy( buf, list_buf, list_buf_len );
+               rc = list_buf_len;
+           }
+
+           SG_safe_free( list_buf );
+       }
+   } 
+   else {
+
+      rc = -ESTALE;
+   }
+
+   if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -ENOMEM && rc != -ERANGE && rc != -EAGAIN && rc != -ESTALE ) {
+      rc = -EREMOTEIO;
+   }
+
+   return rc;
+}
+
+ssize_t UG_xattr_flistxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len ) {
+   return UG_xattr_flistxattr_ex( gateway, path, fent, buf, buf_len, true );
+}
+
+
+// listxattr(2)--get back a list of xattrs from the MS (for the client and HTTP server)
 // return the number of bytes copied on success, and fill in *list (if non-null) with \0-separated names for xattrs (up to size bytes)
 // return the number of bytes needed for *list, if *list is NULL
 // return -ENOMEM on OOM 
@@ -822,24 +967,15 @@ int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
 // return -ESTALE if ask_remote is False, and we're not the coordinator
-ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool ask_remote ) {
+ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool query_remote ) {
    
    int rc = 0;
    
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
    struct fskit_entry* fent = NULL;
-   char* list_buf = NULL;
-   size_t list_buf_len = 0;
-   
-   uint64_t file_id = 0;
-   int64_t file_version = 0;
-   int64_t xattr_nonce = 0;
-   uint64_t coordinator_id = 0;
-   size_t builtin_len = UG_xattr_len_all();
-   
    struct UG_inode* inode = NULL;
-   
+      
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
       
@@ -847,63 +983,50 @@ ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, cha
       return rc;
    }
    
-   fent = fskit_entry_resolve_path( fs, path, user, volume, true, &rc );
+   fent = fskit_entry_resolve_path( fs, path, user, volume, false, &rc );
    if( fent == NULL ) {
-      
       return rc;
    }
-   
-   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
-   
-   file_id = UG_inode_file_id( inode );
-   file_version = UG_inode_file_version( inode );
-   xattr_nonce = UG_inode_xattr_nonce( inode );
-   coordinator_id = UG_inode_coordinator_id( inode );
-   
-   if( coordinator_id == SG_gateway_id( gateway ) ) {
-       
-       // we have the xattrs already. provide them.
-       rc = fskit_flistxattr( fs, fent, list, size );
-       
-       fskit_entry_unlock( fent );
-   }
-   else if( ask_remote ) {
 
-       fskit_entry_unlock( fent );
-       
-       // ask the coordinator 
-       rc = SG_client_listxattrs( gateway, coordinator_id, path, file_id, file_version, xattr_nonce, &list_buf, &list_buf_len );
-       if( rc != 0 ) {
-           
-           SG_error("SG_client_listxattrs('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ")) rc = %d\n", path, file_id, file_version, xattr_nonce, rc );
-       }
-       else {
-           
-           rc = list_buf_len;
-       }
-       
-       if( list != NULL ) {
-           
-           if( list_buf_len + builtin_len <= size ) {
-               
-               UG_xattr_get_builtin_names( list, size );
-               memcpy( list + builtin_len, list_buf, list_buf_len );
-           }
-           else {
-               
-               rc = -ERANGE;
-           }
-       }
+   inode = (struct UG_inode*)fskit_entry_get_user_data(fent);
+   if( !query_remote && UG_inode_coordinator_id(inode) != SG_gateway_id(gateway) ) {
+
+      fskit_entry_unlock( fent );
+      return -ESTALE;
    }
-   else {
-      rc = -ESTALE;
-   }
-   
+
+   rc = UG_xattr_flistxattr_ex( gateway, path, fent, list, size, query_remote );
+   fskit_entry_unlock( fent );
    return rc;
 }
 
 ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume ) {
    return UG_xattr_listxattr_ex( gateway, path, list, size, user, volume, true );
+}
+
+
+// handle built-in removexattr
+// return the length of the xattr value on success
+// return 0 if not handled
+// return the length of the xattr value on success
+// return the length of the xattr value of *value is NULL, but the xattr is built-in
+// return -ENOMEM on OOM
+// return -ENOENT if the file doesn't exist
+// return -EACCES if we're not allowed to read the file or attribute
+// fent must be read-locked
+static ssize_t UG_xattr_fremovexattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name ) {
+    
+   int rc = 0;
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+   struct fskit_core* fs = UG_state_fs( ug );
+   struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
+   if( handler == NULL || handler->del == UG_xattr_del_undefined ) {
+      // not handled
+      return 0;
+   } 
+
+   rc = (*handler->del)( fs, fent, name );
+   return rc;
 }
 
 
@@ -1021,6 +1144,82 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
 }
 
 
+// Implementation of fremovexattr for the client, HTTP server, and fskit
+// return 0 on success
+// return 1 if the xattr was removed, but was not a built-in one (i.e. fskit has to handle it too)
+// return -ENOMEM on OOM
+// return -EPERM if this is an anonymous gateway
+// return -ERANGE if the buffer isn't big enough
+// return -EACCES if we can't write to this file
+// return -ENOENT if the file doesn't exist
+// return -ETIMEDOUT if the transfer could not complete in time
+// return -EAGAIN if we're acting on stale data
+// return -ENOATTR if the attribute doesn't exist
+// return -EREMOTEIO if the the remote servers couldn't process the request
+// return -ESTALE if query_remote is False and we're not the coordinator
+// fent must be write-locked 
+int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, bool query_remote ) {
+
+   int rc = 0;
+   struct UG_inode* inode = NULL;
+ 
+   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+      return -EPERM;
+   }
+
+   // not a built-in
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   
+   uint64_t coordinator_id = UG_inode_coordinator_id( inode );
+   uint64_t file_id = UG_inode_file_id( inode );
+   int64_t file_version = UG_inode_file_version( inode );
+   int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
+   
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+      // built-in?
+      rc = UG_xattr_fremovexattr_builtin( gateway, path, fent, name );
+      if( rc <= 0 ) {
+         // handled or error 
+         return rc;
+      }
+
+      // not built-in. remove from MS
+      rc = UG_xattr_removexattr_local( gateway, path, inode, name );
+      if( rc != 0 ) {
+           
+          SG_error("UG_xattr_removexattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+      }
+
+      rc = 1;
+   }
+   else if( !query_remote ) {
+       
+       // if we're not the coordinator, send the remove request to the coordinator 
+       rc = UG_xattr_removexattr_remote( gateway, path, inode, name );
+       if( rc != 0 ) {
+           
+           SG_error("UG_xattr_removexattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+       }
+
+       rc = 1;
+   }
+   else {
+
+      rc = -ESTALE;
+   }
+
+   if( rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -EAGAIN && rc != -ENOMEM && rc != -ENOATTR && rc != -ESTALE ) {
+      rc = -EREMOTEIO;
+   }
+
+   return rc;
+}
+
+int UG_xattr_fremovexattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name ) {
+   return UG_xattr_fremovexattr_ex( gateway, path, fent, name, true );
+}
+
+
 // removexattr(2)--delete an xattr on the MS and locally
 // return 0 on success
 // return -ENOMEM on OOM 
@@ -1032,17 +1231,13 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
 // return -EAGAIN if we were signaled to retry the request 
 // return -EREMOTEIO if the HTTP error is >= 500 
 // return -EPROTO on HTTP 400-level error
-// return -ESTALE if ask_remote is False and we're not the coordinator
-int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool ask_remote ) {
+// return -ESTALE if query_remote is False and we're not the coordinator
+int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool query_remote ) {
    
    int rc = 0;
    struct fskit_entry* fent = NULL;
-   struct UG_inode* inode = NULL;
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
-   struct UG_xattr_handler_t* xattr_handler = UG_xattr_lookup_handler( name );
-   char* old_xattr_value = NULL;
-   size_t old_xattr_value_len = 0;
    
    if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
       return -EPERM;
@@ -1059,116 +1254,18 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
       
       return rc;
    }
-   
-   // built-in handler?
-   if( xattr_handler != NULL ) {
-      
-      rc = (*xattr_handler->del)( fs, fent, name );
-      fskit_entry_unlock( fent );
-      return rc;
-   }
-   
-   // not a built-in
-   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
-   
-   uint64_t coordinator_id = UG_inode_coordinator_id( inode );
-   uint64_t file_id = UG_inode_file_id( inode );
-   int64_t file_version = UG_inode_file_version( inode );
-   int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
-   
-   // if we're the coordinator, then preserve old xattr, in case we have to replace it on failure 
-   if( coordinator_id == SG_gateway_id( gateway ) ) {
-        
-        rc = fskit_fgetxattr( fs, fent, name, NULL, 0 );
-        if( rc < 0 ) {
-            
-            // not present; we're good 
-            rc = 0;
-            fskit_entry_unlock( fent );
-            return rc;
-        }
-        else {
-            
-            old_xattr_value_len = rc;
-            old_xattr_value = SG_CALLOC( char, old_xattr_value_len );
-            if( old_xattr_value == NULL ) {
-                
-                fskit_entry_unlock( fent );
-                return -ENOMEM;
-            }
-            
-            rc = fskit_fgetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len );
-            if( rc < 0 ) {
-                
-                // weird error 
-                SG_error("fskit_entry_fgetxattr('%s' '%s') rc = %d\n", path, name, rc );
-                fskit_entry_unlock( fent );
-                return rc;
-            }
-        }
-        
-        // remove locally 
-        rc = fskit_fremovexattr( fs, fent, name );
-        if( rc != 0 ) {
-            
-            SG_error("fskit_fremovexattr( '%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-            fskit_entry_unlock( fent );
-            SG_safe_free( old_xattr_value );
-            return rc;
-        }
 
-        // if we're the coordinator, remove the xattr on the MS
-        rc = UG_xattr_removexattr_local( gateway, path, inode, name );
-        if( rc != 0 ) {
-            
-            SG_error("UG_xattr_removexattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-            fskit_entry_unlock( fent );
+   rc = UG_xattr_fremovexattr_ex( gateway, path, fent, name, query_remote );
+   if( rc > 0 ) {
+      // pass along to fskit 
+      rc = fskit_xattr_fremovexattr( fs, path, fent, name );
+   }
 
-            // restore xattr value 
-            int restore_rc = fskit_fsetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len, 0 );
-            if( restore_rc < 0 ) {
-               
-               // weird error (probably OOM)
-               SG_error("fskit_fsetxattr('%s', '%s') rc = %d\n", path, name, restore_rc );
-               fskit_entry_unlock( fent );
-               SG_safe_free( old_xattr_value );
-               return -EIO;
-            }
-
-            SG_safe_free( old_xattr_value );
-            return rc;
-        }
-   }
-   else if( ask_remote ) {
-       
-       // if we're not the coordinator, send the remove request to the coordinator 
-       rc = UG_xattr_removexattr_remote( gateway, path, inode, name );
-       if( rc != 0 ) {
-           
-           SG_error("UG_xattr_removexattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
-       }
-   }
-   else {
-
-      rc = -ESTALE;
-   }
-   
-   if( rc != 0 && old_xattr_value != NULL ) {
-       
-       // restore old xattr 
-       int restore_rc = fskit_fsetxattr( fs, fent, name, old_xattr_value, old_xattr_value_len, 0 );
-       if( restore_rc < 0 ) {
-           
-           SG_error("fskit_entry_fsetxattr(RESTORE '%s', '%s') rc = %d\n", path, name, rc );
-       }
-   }
-   
    fskit_entry_unlock( fent );
-   SG_safe_free( old_xattr_value );
    return rc;
 }
 
-int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume ) {
+int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const* name, uint64_t user, uint64_t volume ) {
    return UG_xattr_removexattr_ex( gateway, path, name, user, volume, true );
 }
 
