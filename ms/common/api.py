@@ -24,7 +24,7 @@ SYNDICATE_PRIVKEY = None
 
 # detect whether or not we are in a client program or the MS
 try:
-   import admin_info 
+   import log
    in_client = False
 except ImportError, e:
    in_client = True 
@@ -37,7 +37,6 @@ if not in_client:
    from MS.user import SyndicateUser
    from MS.gateway import Gateway
    from MS.auth import *
-   from admin_info import SYNDICATE_PRIVKEY
    
 else:
     

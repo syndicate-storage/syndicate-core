@@ -23,7 +23,6 @@ from storage import storage
 import storage.storagetypes as storagetypes
 
 from common import *
-from common.admin_info import *
 import common.msconfig as msconfig
 
 import random
@@ -79,7 +78,7 @@ def file_update_complete_response( volume, reply ):
            # sign the MS-related fields
            ent_pb.ms_signature = ""
            ent_str = ent_pb.SerializeToString()
-           sig = api.sign_data( SYNDICATE_PRIVKEY, ent_str )
+           sig = api.sign_data( msconfig.SYNDICATE_PRIVKEY, ent_str )
            sigb64 = base64.b64encode( sig )
            
            ent_pb.ms_signature = sigb64
@@ -89,7 +88,7 @@ def file_update_complete_response( volume, reply ):
    reply.signature = ""
    reply_str = reply.SerializeToString()
    
-   sig = api.sign_data( SYNDICATE_PRIVKEY, reply_str )
+   sig = api.sign_data( msconfig.SYNDICATE_PRIVKEY, reply_str )
    sigb64 = base64.b64encode( sig )
    
    reply.signature = sigb64

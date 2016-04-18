@@ -37,7 +37,6 @@ from volume import Volume, VolumeCertBundle
 from user import SyndicateUser
 from gateway import *
 from common.msconfig import *
-from common.admin_info import *
 
 import errno
 import logging

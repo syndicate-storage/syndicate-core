@@ -20,7 +20,6 @@ from storage import storage
 import storage.storagetypes as storagetypes
 
 from common.msconfig import *
-from common.admin_info import *
 
 import logging
 import base64
