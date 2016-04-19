@@ -24,7 +24,6 @@ from storage import storage
 import storage.storagetypes as storagetypes
 
 from common.msconfig import *
-from common.admin_info import *
 import common.api as api
 
 from MS.user import SyndicateUser 

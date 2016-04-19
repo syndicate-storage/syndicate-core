@@ -37,16 +37,32 @@ except:
 # MS
 MS_PROTO = "http://"
 MS_URL = ""
+ADMIN_ID = 0
 
-# NOTE: MS_APP_PUBLIC_HOST should be defined in the MS.mk file (or at build-time)
+# NOTE: The MS is configured using the MS_APP_* environmental variables which
+# are set in the in app.yaml file.  app.yaml is created from app.yamlin by
+# configure_ms.mk when building from source, or by other means when the MS is
+# distributed in binary form.
+
+SYNDICATE_NAME = str(os.environ.get( "MS_APP_NAME", "syndicate-ms" ))
+
+ADMIN_EMAIL = str(os.environ.get( "MS_APP_ADMIN_EMAIL", "syndicate-ms@example.com" ))
+ADMIN_PUBKEY = str(os.environ.get( "MS_APP_ADMIN_PUBLIC_KEY", "" ))
+
+SYNDICATE_PRIVKEY = str(os.environ.get( "MS_APP_PRIVATE_KEY", "" ))
+SYNDICATE_PUBKEY = str(os.environ.get( "MS_APP_PUBLIC_KEY", "" ))
+
+# MS_APP_PUBLIC_HOST does not need to be set in all cases, only for
 # for publicly-routable deployments outside of Google AppEngine or Appscale.
-# The order of preference is:
+#
+# The order of preference for setting MS_APP_PUBLIC_HOST is:
 # * public hostname on Google AppEngine
 # * $MS_PUBLIC_HOST, if defined
 # * $SERVER_NAME, if defined
 # * "localhost"
 
 MS_HOST = str(os.environ.get( "MS_APP_PUBLIC_HOST", "" ))
+
 if len(MS_HOST) == 0:
     MS_HOST = str(os.environ.get("SERVER_NAME", "localhost"))
 
@@ -60,7 +76,6 @@ if not os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
       MS_PROTO = "https://"
    except:
       pass
-     
 
 MS_URL = MS_PROTO + MS_HOSTPORT
 
@@ -109,14 +124,14 @@ AUTH_METHOD_NONE = "VERIFY_NONE"
 PASSWORD_HASH_ITERS = 10000
 PASSWORD_SALT_LENGTH = 32
 
-# rate-limiting 
-RESOLVE_MAX_PAGE_SIZE = 10 
-MAX_NUM_CONNECTIONS = 50 
+# rate-limiting
+RESOLVE_MAX_PAGE_SIZE = 10
+MAX_NUM_CONNECTIONS = 50
 MAX_BATCH_REQUEST_SIZE = 6
 MAX_BATCH_ASYNC_REQUEST_SIZE = 100
 MAX_TRANSFER_TIME = 300
 
-# ports 
+# ports
 GATEWAY_DEFAULT_PORT = 31111
 
 # RESOLVE_MAX_PAGE_SIZE = 3       # for testing

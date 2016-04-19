@@ -23,8 +23,7 @@ if ! [ -f "$SYNDICATE" ]; then
    exit 1
 fi
 
-SYNDICATE_ADMIN_EMAIL_CODE="$(fgrep ADMIN_EMAIL "$MS"/common/admin_info.py)"
-SYNDICATE_ADMIN_EMAIL="$(echo "$SYNDICATE_ADMIN_EMAIL_CODE; print ADMIN_EMAIL" | python)"
+SYNDICATE_ADMIN_EMAIL="$(fgrep MS_APP_ADMIN_EMAIL "$MS"/app.yaml | awk '{print $2}' | sed -r "s/'//g")"
 if [ $? -ne 0 ]; then 
    echo >&2 "Failed to determine admin email"
    exit 1

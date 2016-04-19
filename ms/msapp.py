@@ -24,7 +24,7 @@ import MS.handlers
 import logging
 
 from MS.user import SyndicateUser
-from common.admin_info import *
+from common.msconfig import *
 
 from MS.handlers import *
 
@@ -58,7 +58,7 @@ def ms_initialize():
    """
    admin = SyndicateUser.Read( ADMIN_EMAIL )
    if admin is None:
-      admin_key = SyndicateUser.CreateAdmin( ADMIN_EMAIL, ADMIN_ID, ADMIN_PUBLIC_KEY, SYNDICATE_PRIVKEY )
+      admin_key = SyndicateUser.CreateAdmin( ADMIN_EMAIL, ADMIN_ID, ADMIN_PUBKEY, SYNDICATE_PRIVKEY )
    
    
 ms_initialize()

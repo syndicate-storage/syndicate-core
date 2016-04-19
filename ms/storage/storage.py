@@ -45,7 +45,6 @@ import protobufs.ms_pb2 as ms_pb2
 import protobufs.sg_pb2 as sg_pb2
 
 from common.msconfig import *
-import common.admin_info as admin_info
 
 # ----------------------------------
 def _read_user_and_volume( email_or_id, volume_name_or_id ):
