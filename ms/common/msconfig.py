@@ -52,7 +52,7 @@ ADMIN_PUBKEY = str(os.environ.get( "MS_APP_ADMIN_PUBLIC_KEY", "" ))
 SYNDICATE_PRIVKEY = str(os.environ.get( "MS_APP_PRIVATE_KEY", "" ))
 SYNDICATE_PUBKEY = str(os.environ.get( "MS_APP_PUBLIC_KEY", "" ))
 
-# MS_APP_PUBLIC_HOST does not need to be set in all cases, only for 
+# MS_APP_PUBLIC_HOST does not need to be set in all cases, only for
 # for publicly-routable deployments outside of Google AppEngine or Appscale.
 #
 # The order of preference for setting MS_APP_PUBLIC_HOST is:
@@ -124,14 +124,14 @@ AUTH_METHOD_NONE = "VERIFY_NONE"
 PASSWORD_HASH_ITERS = 10000
 PASSWORD_SALT_LENGTH = 32
 
-# rate-limiting 
-RESOLVE_MAX_PAGE_SIZE = 10 
-MAX_NUM_CONNECTIONS = 50 
+# rate-limiting
+RESOLVE_MAX_PAGE_SIZE = 10
+MAX_NUM_CONNECTIONS = 50
 MAX_BATCH_REQUEST_SIZE = 6
 MAX_BATCH_ASYNC_REQUEST_SIZE = 100
 MAX_TRANSFER_TIME = 300
 
-# ports 
+# ports
 GATEWAY_DEFAULT_PORT = 31111
 
 # RESOLVE_MAX_PAGE_SIZE = 3       # for testing
