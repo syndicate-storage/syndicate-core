@@ -451,10 +451,11 @@ static int SG_server_redirect_request( struct SG_gateway* gateway, struct md_HTT
 
 
 // populate a reply message
+// optionally sign it
 // return 0 on success
 // return -ENOMEM on OOM
 // return -EINVAL on failure to serialize and sign
-static int SG_server_reply_populate( struct SG_gateway* gateway, SG_messages::Reply* reply, uint64_t message_nonce, int error_code ) {
+static int SG_server_reply_populate( struct SG_gateway* gateway, SG_messages::Reply* reply, uint64_t message_nonce, int error_code, bool sign ) {
    
    int rc = 0;
    
@@ -479,16 +480,19 @@ static int SG_server_reply_populate( struct SG_gateway* gateway, SG_messages::Re
       reply->set_user_id( user_id );
       reply->set_gateway_id( gateway_id );
       reply->set_gateway_type( gateway_type );  
+      reply->set_signature( string("") );
    }
    catch( bad_alloc& ba ) {
       
       return -ENOMEM;
    }
    
-   rc = md_sign< SG_messages::Reply >( gateway_private_key, reply );
-   if( rc != 0 ) {
+   if( sign ) {
+       rc = md_sign< SG_messages::Reply >( gateway_private_key, reply );
+       if( rc != 0 ) {
       
-      return rc;
+          return rc;
+       }
    }
    
    return 0;
@@ -609,7 +613,7 @@ int SG_server_HTTP_GET_getxattr( struct SG_gateway* gateway, struct SG_request_d
       
       // success!
       // put it into a reply 
-      rc = SG_server_reply_populate( gateway, &reply, 0, 0 );
+      rc = SG_server_reply_populate( gateway, &reply, 0, 0, false );
       if( rc != 0 ) {
          
          SG_error("SG_server_reply_populate rc = %d\n", rc );
@@ -622,6 +626,14 @@ int SG_server_HTTP_GET_getxattr( struct SG_gateway* gateway, struct SG_request_d
       }
       catch( bad_alloc& ba ) {
          
+         return md_HTTP_create_response_builtin( resp, 500 );
+      }
+
+      // sign 
+      rc = SG_server_reply_sign( gateway, &reply );
+      if( rc != 0 ) {
+
+         SG_error("SG_server_reply_sign rc = %d\n", rc );
          return md_HTTP_create_response_builtin( resp, 500 );
       }
       
@@ -673,7 +685,7 @@ int SG_server_HTTP_GET_listxattr( struct SG_gateway* gateway, struct SG_request_
       
       // success!
       // put it into a reply 
-      rc = SG_server_reply_populate( gateway, &reply, 0, 0 );
+      rc = SG_server_reply_populate( gateway, &reply, 0, 0, false );
       if( rc != 0 ) {
          
          SG_error("SG_server_reply_populate rc = %d\n", rc );
@@ -699,6 +711,14 @@ int SG_server_HTTP_GET_listxattr( struct SG_gateway* gateway, struct SG_request_
          return md_HTTP_create_response_builtin( resp, 500 );
       }
       
+      // sign 
+      rc = SG_server_reply_sign( gateway, &reply );
+      if( rc != 0 ) {
+
+         SG_error("SG_server_reply_sign rc = %d\n", rc );
+         return md_HTTP_create_response_builtin( resp, 500 );
+      }
+
       // serialize and send off
       rc = SG_server_reply_serialize( gateway, &reply, resp );
       
@@ -1458,7 +1478,7 @@ int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
       io_rc = (*io->io_completion)( gateway, reqdat, request_msg, con_data, NULL );
       
       // generate response 
-      rc = SG_server_reply_populate( gateway, &reply_msg, request_msg->message_nonce(), io_rc );
+      rc = SG_server_reply_populate( gateway, &reply_msg, request_msg->message_nonce(), io_rc, false );
       if( rc != 0 ) {
          
          // failed to set up
@@ -1476,7 +1496,6 @@ int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
             SG_error("SG_server_reply_sign rc = %d\n", rc );
             rc = md_HTTP_create_response_builtin( resp, 500 );
          }
-         
          else {
             
             // serialize it
