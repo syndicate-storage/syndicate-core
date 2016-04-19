@@ -1,7 +1,7 @@
 # MS configuration parameters
 
 # Where app.yamlin can be found
-CONFIG_DIR ?=
+CONFIG_DIR ?= .
 
 # Output directory for app.yaml
 BUILD_MS ?=
