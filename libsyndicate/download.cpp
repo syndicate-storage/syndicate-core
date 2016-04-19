@@ -1772,6 +1772,7 @@ void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, 
    curl_easy_setopt( curl_h, CURLOPT_MAXREDIRS, 10L );
    curl_easy_setopt( curl_h, CURLOPT_NOSIGNAL, 1L );
    curl_easy_setopt( curl_h, CURLOPT_CONNECTTIMEOUT, query_timeout );
+   curl_easy_setopt( curl_h, CURLOPT_EXPECT_100_TIMEOUT_MS, query_timeout * 1000 );
    curl_easy_setopt( curl_h, CURLOPT_FILETIME, 1L );
    
    if( url != NULL && strncasecmp( url, "https", 5 ) == 0 ) {
