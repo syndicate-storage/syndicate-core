@@ -534,6 +534,7 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
        
           if( xattr_buf_len <= size ) {
              memcpy( value, value_buf, xattr_buf_len );
+             rc = xattr_buf_len;
           }
           else {
           
