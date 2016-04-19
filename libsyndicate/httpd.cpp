@@ -16,6 +16,7 @@
 
 
 #include "libsyndicate/httpd.h"
+#include "libsyndicate/gateway.h"
 
 char const MD_HTTP_NOMSG[128] = "\n";
 char const MD_HTTP_200_MSG[128] = "OK\n";
@@ -521,9 +522,9 @@ int md_HTTP_post_upload_iterator( void *coninfo_cls, enum MHD_ValueKind kind,
 
 // convert a sockaddr to a string containing the hostname and port number
 // return 0 on success
-// return -ENODATA on getnameinfo() failure 
+// return -ENODATA on getnameinfo() failure  
 // return -ENOMEM on OOM
-static int md_sockaddr_to_hostname_and_port( struct sockaddr* addr, char** buf ) {
+static int md_sockaddr_to_hostname_and_port( struct sockaddr* addr, char** buf, int* portnum ) {
    
    socklen_t addr_len = 0;
    switch( addr->sa_family ) {
@@ -562,13 +563,24 @@ static int md_sockaddr_to_hostname_and_port( struct sockaddr* addr, char** buf )
       
       SG_error("getnameinfo rc = %d (%s)\n", rc, gai_strerror(rc) );
       rc = -ENODATA;
+      SG_safe_free( *buf );
+      return rc;
    }
    
    // append port
    strcat( *buf, portbuf );
+   *portnum = strtoul(&portbuf[1], NULL, 10);
+
+   if( *portnum == 0 ) {
+      // invalid
+      SG_error("Failed to read port ('%s')\n", portbuf);
+      SG_safe_free( *buf );
+      return -ENODATA;
+   }
    
    return rc;
 }
+
 
 
 // field handler for holding data in a response buffer (RAM)
@@ -1004,6 +1016,9 @@ static int md_HTTP_connection_setup( struct md_HTTP* http_ctx, struct md_HTTP_co
    struct md_HTTP_header** headers = NULL;
    long content_length = 0;
    char* url_path = NULL;
+   struct SG_gateway* gateway = (struct SG_gateway*)md_HTTP_cls(http_ctx);
+   struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
+   int remote_port = 0;
    
    // verify that the URL starts with '/'
    if( strlen(url) > 0 && url[0] != '/' ) {
@@ -1039,11 +1054,18 @@ static int md_HTTP_connection_setup( struct md_HTTP* http_ctx, struct md_HTTP_co
    }
    
    // look up host:port string
-   rc = md_sockaddr_to_hostname_and_port( con_info->client_addr, &remote_host );
+   rc = md_sockaddr_to_hostname_and_port( con_info->client_addr, &remote_host, &remote_port );
    if( rc != 0 ) {
       
       SG_error("md_sockaddr_to_hostname_and_port rc = %d\n", rc );
       
+      return -ENOTCONN;
+   }
+
+   // sanity check--don't connect to ourselves
+   if( strcmp(remote_host, conf->hostname) && remote_port == conf->portnum ) {
+      
+      SG_error("%s", "Will not connect to myself\n");
       return -ENOTCONN;
    }
    
