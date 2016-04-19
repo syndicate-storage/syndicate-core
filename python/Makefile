@@ -35,8 +35,8 @@ PYTHON_BUILD := $(patsubst $(PYTHON_SYNDICATE_ROOT)/%,$(PYTHON_SYNDICATE_PACKAGE
 
 CYTHON_BUILD := $(patsubst %,$(BUILD_PYTHON_SYNDICATE)/%,$(PYTHON_SYNDICATE_CYTHON_FILES))
 
-# don't include admin_info
-MS_FILES_EXCLUDE := $(BUILD_MS)/common/admin_info.py $(BUILD_MS)/common/log.py
+# don't include MS's log.py
+MS_FILES_EXCLUDE := $(BUILD_MS)/common/log.py
 MS_FILES := $(filter-out $(MS_FILES_EXCLUDE),$(wildcard $(BUILD_MS)/common/*.py))
 MS_FILES_BUILD := $(patsubst $(BUILD_MS)/common/%.py,$(PYTHON_SYNDICATE_PACKAGE)/ms/%.py,$(MS_FILES))
 
