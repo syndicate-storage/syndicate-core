@@ -46,7 +46,7 @@ def atexit_gateway_shutdown():
             continue
 
         try:
-            exitcode, out = finish( gw )
+            exitcode = finish( gw )
         except:
             continue
 
@@ -54,6 +54,8 @@ def atexit_gateway_shutdown():
 def start( path, *args, **kw ):
     """
     Start a program
+    Pass `stdin=...` to feed a string as stdin
+    Pass `valgrind=True` to run in valgrind.
     Return subprocess on success
     Return None on error
     """
@@ -63,13 +65,22 @@ def start( path, *args, **kw ):
         return None
 
     stdin_fd = None
+    stdout_fd = subprocess.PIPE
     stdin = None
     if kw.has_key('stdin'):
         stdin_fd = subprocess.PIPE
         stdin = kw['stdin']
 
+    if kw.has_key('stdout_fd'):
+        stdout_fd = kw['stdout_fd']
+ 
+    valgrind = False
+    if 'valgrind' in kw.keys() and kw['valgrind']:
+        args = ['--leak-check=full', path] + list(args)
+        path = '/usr/bin/valgrind'
+
     print "$ %s" % (" ".join( [path] + [str(a) for a in args] )) 
-    prog = subprocess.Popen( [path] + [str(a) for a in args], shell=False, stdin=stdin_fd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+    prog = subprocess.Popen( [path] + [str(a) for a in args], shell=False, stdin=stdin_fd, stdout=stdout_fd, stderr=subprocess.STDOUT )
     return prog
 
 
@@ -79,38 +90,43 @@ def finish( prog, stdin=None ):
     * give it stdin
     * wait for stdout, stderr
 
-    Return (exitcode, stdout+stderr) on success
+    Return exitcode on success
     """
-    out, _ = prog.communicate( input=stdin )
+    prog.communicate( input=stdin )
     prog.wait()
-    return (prog.returncode, out)
+    return prog.returncode
 
 
 def run( path, *args, **kw ):
     """
     Run a program, and gather its results.
-    Pass `valgrind=True` to run in valgrind.
     Return (exitcode, stdout+stderr) on success
     Return ("valgrind error", stdout+stderr) if @valgrind is True and there were valgrind errors
     Return (None, None) on error
     """
-    
-    valgrind = False
-    if 'valgrind' in kw.keys() and kw['valgrind']:
-        args = ['--leak-check=full', path] + list(args)
-        path = '/usr/bin/valgrind'
-        valgrind = True
+   
+    out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
+    out_fd = os.fdopen(out_fdes, "w")
 
-    prog = start( path, *args, **kw )
+    prog = start( path, *args, stdout_fd=out_fd, **kw )
     if prog is None:
         return (None, None)
+ 
+    valgrind = False
+    if 'valgrind' in kw.keys() and kw['valgrind']:
+        valgrind = True
 
     stdin = None
     if kw.has_key('stdin'):
         stdin_fd = subprocess.PIPE
         stdin = kw['stdin']
 
-    exitcode, output = finish( prog, stdin=stdin )
+    exitcode = finish( prog, stdin=stdin )
+    out_fd.close()
+    
+    with open(out_path, "r") as f:
+        output = f.read()
+
     if valgrind:
         rc = valgrind_check_output( output )
         if not rc:
@@ -274,12 +290,16 @@ def provision_gateway( config_dir, gateway_type, email, volume_name, gateway_nam
     return gateway
 
 
-def start_gateway( config_dir, gateway_path, email, volume_name, gateway_name, *extra_args ):
+def start_gateway( config_dir, gateway_path, email, volume_name, gateway_name, *extra_args, **kw ):
     """
     Run a gateway.
-    Return the subprocess, and track the running gateway
+    Return the subprocess and stdout path, and track the running gateway
     """
     global running_gateways
+
+    out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
+    out_fd = os.fdopen(out_fdes, "w")
+
     prog = start( gateway_path,
                   '-c', os.path.join(config_dir, 'syndicate.conf'),
                   '-d2',
@@ -287,21 +307,33 @@ def start_gateway( config_dir, gateway_path, email, volume_name, gateway_name, *
                   '-u', email,
                   '-v', volume_name,
                   '-g', gateway_name,
-                  *extra_args )
+                  *extra_args, stdout_fd=out_fd, **kw )
 
     running_gateways.append( prog )
-    return prog
+    return prog, out_path
 
 
-def stop_gateway( proc ):
+def stop_gateway( proc, stdout_path, valgrind=False ):
     """
     Stop a gateway process
     Return (exitcode, stdout)
+    if @valgrind is True, then return ("valgrind error", output) if there were memory errors
     """
     global running_gateways
     proc.send_signal( signal.SIGTERM )
-    exitcode, out = finish( proc )
+    exitcode = finish( proc )
     running_gateways.remove(proc)
+   
+    out = None
+    with open(stdout_path, "r") as f:
+        out = f.read()
+
+    if valgrind:
+
+        rc = valgrind_check_output( out )
+        if not rc:
+            return ("valgrind error", out )
+
     return (exitcode, out)
 
 

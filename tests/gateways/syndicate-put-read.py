@@ -44,7 +44,7 @@ if __name__ == "__main__":
     RG_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "RG", caps="NONE", email=testconf.SYNDICATE_ADMIN )
     testlib.update_gateway( config_dir, RG_gateway_name, "port=31112", "driver=%s" % RG_DRIVER )
 
-    rg_proc = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name )
+    rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name )
     time.sleep(1)
     if rg_proc.poll() is not None:
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         if expected_data[start:end] not in out:
             raise Exception("Missing data for %s-%s" % (start, end))
 
-    rg_exitcode, rg_out = testlib.stop_gateway( rg_proc )
+    rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )
 
     testlib.save_output( output_dir, "syndicate-rg", rg_out )
 
