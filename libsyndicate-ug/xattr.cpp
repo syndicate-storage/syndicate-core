@@ -596,7 +596,7 @@ ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char
 
       // not built-in 
       // get from inode directly
-      rc = fskit_xattr_fgetxattr( fs, path, fent, name, value, size );
+      rc = fskit_xattr_fgetxattr( fs, fent, name, value, size );
    }
    fskit_entry_unlock( fent );
    return rc;
@@ -620,7 +620,7 @@ static ssize_t UG_xattr_fsetxattr_builtin( struct SG_gateway* gateway, char cons
    struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
    if( handler == NULL || handler->set == UG_xattr_set_undefined ) {
       // not handled
-      return 0;
+      return 1;
    } 
 
    rc = (*handler->set)( fs, fent, name, value, value_len, flags );
@@ -772,12 +772,19 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
        rc = UG_xattr_fsetxattr_builtin( gateway, path, fent, name, value, size, flags );
        if( rc <= 0 ) {
           // handled-built-in or error
+          if( rc < 0 ) {
+             SG_error("UG_xattr_fsetxattr_builtin(%s, '%s') rc = %d\n", path, name, rc);
+          }
+          else {
+             SG_debug("UG_xattr_fsetxattr_builtin(%s, '%s'): handled\n", path, name );
+          }
+
           return rc;
        }
 
        // not handled---set the xattr on the MS, and tell caller to do the set locally
        rc = UG_xattr_setxattr_local( gateway, path, inode, name, value, size, flags );
-       if( rc != 0 ) {
+       if( rc < 0 ) {
            SG_error("UG_xattr_setxattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
        }
         
@@ -849,7 +856,7 @@ int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char con
    rc = UG_xattr_fsetxattr( gateway, path, fent, name, value, size, flags );
    if( rc > 0 ) {
       // sync'ed with the MS.  Pass along to fskit.
-      rc = fskit_xattr_fsetxattr( fs, path, fent, name, value, size, flags );
+      rc = fskit_xattr_fsetxattr( fs, fent, name, value, size, flags );
    }
 
    fskit_entry_unlock( fent );
@@ -904,6 +911,10 @@ ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, st
    struct UG_inode* inode = NULL;
    char* list_buf = NULL;
    size_t list_buf_len = 0;
+   int builtin_len = 0;
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls(gateway);
+   struct fskit_core* fs = UG_state_fs(ug);
+   char* buf_off = NULL;
 
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    
@@ -916,7 +927,33 @@ ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, st
        
        // provide built-in xattrs
        rc = UG_xattr_flistxattr_builtin( gateway, path, fent, buf, buf_len );
-       return rc;
+       if( rc < 0 ) {
+          SG_error("UG_xattr_flistxattr_builtin(%s) rc = %d\n", path, rc );
+          goto UG_xattr_flistxattr_out;
+       }
+
+       SG_debug("builtin xattrs: %d bytes\n", rc );
+
+       // merge
+       builtin_len = rc;
+
+       // if buf is NULL, then pass NULL to flistxattr
+       if( buf != NULL ) {
+          buf_off = buf + builtin_len;
+       }
+       else {
+          buf_off = NULL;
+       }
+
+       rc = fskit_xattr_flistxattr( fs, fent, buf_off, buf_len - builtin_len );
+       if( rc < 0 ) {
+          SG_error("fskit_xattr_flistxattr(%s) rc = %d\n", path, rc );
+          goto UG_xattr_flistxattr_out;
+       }
+
+       SG_debug("fskit xattr: %d bytes\n", rc );
+
+       rc += builtin_len;
    }
    else if( query_remote ) {
 
@@ -942,6 +979,8 @@ ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, st
 
       rc = -ESTALE;
    }
+
+UG_xattr_flistxattr_out:
 
    if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -ENOMEM && rc != -ERANGE && rc != -EAGAIN && rc != -ESTALE ) {
       rc = -EREMOTEIO;
@@ -1006,8 +1045,8 @@ ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *
 
 
 // handle built-in removexattr
-// return the length of the xattr value on success
-// return 0 if not handled
+// return 0 on success
+// return 1 if not handled
 // return the length of the xattr value on success
 // return the length of the xattr value of *value is NULL, but the xattr is built-in
 // return -ENOMEM on OOM
@@ -1022,7 +1061,7 @@ static ssize_t UG_xattr_fremovexattr_builtin( struct SG_gateway* gateway, char c
    struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
    if( handler == NULL || handler->del == UG_xattr_del_undefined ) {
       // not handled
-      return 0;
+      return 1;
    } 
 
    rc = (*handler->del)( fs, fent, name );
@@ -1179,8 +1218,15 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
       // built-in?
       rc = UG_xattr_fremovexattr_builtin( gateway, path, fent, name );
       if( rc <= 0 ) {
+         if( rc < 0 ) {
+            SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') rc = %d\n", path, name, rc );
+         }
+         else {
+            SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') handled\n", path, name );
+         }
+
          // handled or error 
-         return rc;
+         goto UG_xattr_fremovexattr_out;
       }
 
       // not built-in. remove from MS
@@ -1208,7 +1254,8 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
       rc = -ESTALE;
    }
 
-   if( rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -EAGAIN && rc != -ENOMEM && rc != -ENOATTR && rc != -ESTALE ) {
+UG_xattr_fremovexattr_out:
+   if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -EAGAIN && rc != -ENOMEM && rc != -ENOATTR && rc != -ESTALE ) {
       rc = -EREMOTEIO;
    }
 
@@ -1258,7 +1305,7 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
    rc = UG_xattr_fremovexattr_ex( gateway, path, fent, name, query_remote );
    if( rc > 0 ) {
       // pass along to fskit 
-      rc = fskit_xattr_fremovexattr( fs, path, fent, name );
+      rc = fskit_xattr_fremovexattr( fs, fent, name );
    }
 
    fskit_entry_unlock( fent );
