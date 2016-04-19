@@ -423,7 +423,7 @@ int UG_file_handle_free( struct UG_file_handle* fh ) {
 }
 
 
-// export all xattrs for an inode.
+// export all non-builtin xattrs for an inode.
 // return 0 on success, filling in *ret_xattr_names, *ret_xattr_values, and *ret_xattr_value_lengths if there are xattrs in this inode.
 // return -ENOMEM on OOM 
 // NOTE: inode->entry must be read-locked
@@ -438,7 +438,7 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
    char* xattr_list = NULL;
    char* xattr_ptr = NULL;
    
-   xattr_list_len = fskit_flistxattr( fs, inode->entry, NULL, 0 );
+   xattr_list_len = fskit_xattr_flistxattr( fs, inode->entry, NULL, 0 );
    if( xattr_list_len < 0 ) {
       
       SG_error("fskit_flistxattr(NULL) rc = %zd\n", xattr_list_len );
@@ -462,7 +462,7 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
       return -ENOMEM;
    }
    
-   rc = fskit_flistxattr( fs, inode->entry, xattr_list, xattr_list_len );
+   rc = fskit_xattr_flistxattr( fs, inode->entry, xattr_list, xattr_list_len );
    if( rc < 0 ) {
       
       SG_error( "fskit_flistxattr(%zd) rc = %d\n", xattr_list_len, rc );
@@ -510,7 +510,7 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
          goto UG_inode_export_xattrs_fail;
       }
       
-      xattr_value_len = fskit_fgetxattr( fs, inode->entry, xattr_name, NULL, 0 );
+      xattr_value_len = fskit_xattr_fgetxattr( fs, inode->entry, xattr_name, NULL, 0 );
       if( xattr_value_len < 0 ) {
          
          rc = xattr_value_len;
@@ -526,7 +526,7 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
          goto UG_inode_export_xattrs_fail;
       }
       
-      rc = fskit_fgetxattr( fs, inode->entry, xattr_name, xattr_value, xattr_value_len );
+      rc = fskit_xattr_fgetxattr( fs, inode->entry, xattr_name, xattr_value, xattr_value_len );
       if( rc < 0 ) {
          
          SG_safe_free( xattr_name );
