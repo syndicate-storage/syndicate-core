@@ -155,6 +155,9 @@ static int UG_impl_stat( struct SG_gateway* gateway, struct SG_request_data* req
          SG_request_data_free( entity_info );
          return -ENOENT;
       }
+
+      // pass along xattr data 
+      entity_info->xattr_nonce = ent_info.xattr_nonce;
    }
    md_entry_free( &ent_info );
 
