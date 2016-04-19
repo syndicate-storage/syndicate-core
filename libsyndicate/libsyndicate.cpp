@@ -2822,7 +2822,7 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    
    conf->debug_lock = false;
 
-   conf->connect_timeout = 600;
+   conf->connect_timeout = 15;
    
    conf->portnum = -1;
    conf->transfer_timeout = 600;
