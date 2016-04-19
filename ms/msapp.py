@@ -24,7 +24,7 @@ import MS.handlers
 import logging
 
 from MS.user import SyndicateUser
-from common.admin_info import *
+from common.msconfig import *
 
 from MS.handlers import *
 
