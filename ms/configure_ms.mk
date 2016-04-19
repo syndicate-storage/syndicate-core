@@ -1,13 +1,13 @@
 # MS configuration parameters
 
 # Where app.yamlin can be found
-MS_FILES ?=
+CONFIG_DIR ?=
 
 # Output directory for app.yaml
 BUILD_MS ?=
 
 # Where to put generated pub/priv keys
-KEY_FILES ?= $(MS_FILES)
+KEY_FILES ?= $(CONFIG_DIR)
 
 MS_APP_NAME					?= syndicate-ms
 MS_APP_PUBLIC_HOST	?= localhost
@@ -31,7 +31,7 @@ $(MS_APP_PRIVATE_KEY):
 $(MS_APP_PUBLIC_KEY): $(MS_APP_PRIVATE_KEY)
 	openssl rsa -in "$<" -pubout > "$@"
 
-$(BUILD_MS)/app.yaml: $(MS_FILES)/app.yamlin $(MS_APP_ADMIN_PUBLIC_KEY) $(MS_APP_PUBLIC_KEY) $(MS_APP_PRIVATE_KEY)
+$(BUILD_MS)/app.yaml: $(CONFIG_DIR)/app.yamlin $(MS_APP_ADMIN_PUBLIC_KEY) $(MS_APP_PUBLIC_KEY) $(MS_APP_PRIVATE_KEY)
 	mkdir -p "$(@D)"
 	cat "$<" | \
 		sed -e 's~@MS_APP_NAME@~$(MS_APP_NAME)~g;' \
