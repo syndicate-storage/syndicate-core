@@ -418,6 +418,7 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
 
       xattrs[i].data = value;
       xattrs[i].len = strlen(value);
+      i++;
    }
 
    SG_safe_free( buf );
