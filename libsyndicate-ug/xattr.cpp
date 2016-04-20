@@ -960,7 +960,7 @@ ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, st
 
        // ask the coordinator 
        rc = SG_client_listxattrs( gateway, coordinator_id, path, file_id, file_version, xattr_nonce, &list_buf, &list_buf_len );
-       if( rc != 0 ) {
+       if( rc < 0 ) {
            SG_error("SG_client_listxattrs('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ")) rc = %d\n", path, file_id, file_version, xattr_nonce, rc );
        }
        else {
@@ -968,8 +968,10 @@ ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, st
            if( buf_len > 0 && buf_len < list_buf_len ) {
                rc = -ERANGE;
            }
-           else if( buf != NULL ) {
-               memcpy( buf, list_buf, list_buf_len );
+           else {
+               if( buf != NULL ) {
+                   memcpy( buf, list_buf, list_buf_len );
+               }
                rc = list_buf_len;
            }
 
