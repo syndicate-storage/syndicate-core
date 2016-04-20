@@ -30,4 +30,5 @@ SYNDICATE_AG_ROOT="./ag_bin/"
 SYNDICATE_PYTHON_ROOT="./python/"
 SYNDICATE_TOOL="./syndicate"
 
-SYNDICATE_PRIVKEY_PATH=os.path.join(SYNDICATE_MS_ROOT, "admin.pem")
+SYNDICATE_MS_KEYDIR="./ms_src"
+SYNDICATE_PRIVKEY_PATH=os.path.join(SYNDICATE_MS_KEYDIR, "admin.pem")
