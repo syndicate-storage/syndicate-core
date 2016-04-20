@@ -1208,7 +1208,6 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
     ms_client_config_unlock( ms );
     
     if( rc != 0 ) {
-        
         // invalid reply
         return rc;
     }
@@ -1222,7 +1221,6 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
     // how many bytes?
     *xattr_list_len = 0;
     for( int i = 0; i < reply.xattr_names_size(); i++ ) {
-        
         *xattr_list_len += reply.xattr_names(i).size() + 1;
     }
     
@@ -1239,6 +1237,7 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
         off += (reply.xattr_names(i).size() + 1);
     }
     
+    SG_debug("%d xattrs, %zu xattr bytes\n", reply.xattr_names_size(), *xattr_list_len);
     return 0;
 }
 
