@@ -75,9 +75,7 @@ static struct UG_xattr_handler_t xattr_handlers[] = {
 static struct UG_xattr_handler_t* UG_xattr_lookup_handler( char const* name ) {
    
    for( int i = 0; xattr_handlers[i].name != NULL; i++ ) {
-      
       if( strcmp( xattr_handlers[i].name, name ) == 0 ) {
-         
          return &xattr_handlers[i];
       }
    }
@@ -181,21 +179,17 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    uint64_t volume_id = ms_client_get_volume_id( ms );
    
    off_t num_blocks = (fskit_entry_get_size( fent ) / block_size) + ((fskit_entry_get_size( fent ) % block_size) == 0 ? 0 : 1);
-   
-   if( (size_t)num_blocks >= buf_len + 1 ) {
-      
-      if( buf_len == 0 || buf == NULL ) {
-         
-         // size query
-         return num_blocks + 1;         // NULL-terminated
-      }
-      else {
-         
-         // not enough space 
-         return -ERANGE;
-      }
+   SG_debug("%" PRIX64 " has %jd blocks\n", UG_inode_file_id(inode), num_blocks);
+
+   if( buf_len == 0 || buf == NULL ) {
+       // size query 
+       return num_blocks + 1;
    }
-   
+   else if( (size_t)num_blocks >= buf_len + 1 ) {
+       // not enough space 
+       return -ERANGE;
+   }
+
    char* cached_file_path = NULL;
    ssize_t rc = 0;
    
@@ -208,11 +202,8 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    cached_file_path = SG_URL_LOCAL_PATH( cached_file_url );
    
    // enough space...
-   if( buf_len > 0 ) {
-      
-      memset( buf, '0', buf_len );
-      buf[buf_len - 1] = '\0';
-   }
+   memset( buf, '0', buf_len );
+   buf[buf_len - 1] = '\0';
    
    rc = md_cache_file_blocks_apply( cached_file_path, local::xattr_stat_block, buf );
    
@@ -220,7 +211,7 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    
    if( rc == 0 ) {
       
-      rc = num_blocks;
+      rc = num_blocks + 1;
    }
    else if( rc == -ENOENT ) {
       
@@ -230,9 +221,12 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
       memset( buf, '0', buf_len );
       buf[buf_len - 1] = '\0';
       
-      rc = num_blocks;
+      rc = num_blocks + 1;
    }
-   
+   else {
+      SG_error("md_cache_file_blocks_apply rc = %zd\n", rc );
+   }
+
    return rc;
 }
 
@@ -483,6 +477,7 @@ static ssize_t UG_xattr_fgetxattr_builtin( struct SG_gateway* gateway, char cons
    struct UG_xattr_handler_t* handler = UG_xattr_lookup_handler( name );
    if( handler == NULL ) {
       // not handled
+      SG_debug("xattr '%s' is NOT built-in\n", name);
       return 0;
    } 
 
@@ -519,6 +514,9 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
    if( coordinator_id == SG_gateway_id( gateway ) ) {
        // local (built-in or otherwise)
        rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
+       if( rc > 0 ) {
+          SG_debug("xattr '%s' is built-in\n", name);
+       }
        return rc;
    }
    else if( query_remote ) { 
