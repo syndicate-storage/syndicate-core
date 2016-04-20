@@ -780,13 +780,14 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
              SG_debug("UG_xattr_fsetxattr_builtin(%s, '%s'): handled\n", path, name );
           }
 
-          return rc;
+          goto UG_xattr_fsetxattr_out;
        }
 
        // not handled---set the xattr on the MS, and tell caller to do the set locally
        rc = UG_xattr_setxattr_local( gateway, path, inode, name, value, size, flags );
        if( rc < 0 ) {
            SG_error("UG_xattr_setxattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+           goto UG_xattr_fsetxattr_out;
        }
         
        rc = 1;
@@ -797,11 +798,14 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
        rc = UG_xattr_setxattr_remote( gateway, path, inode, name, value, size, flags );
        if( rc != 0 ) {
            SG_error("UG_xattr_setxattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+           goto UG_xattr_fsetxattr_out;
        }
 
        rc = 1;
    }
    
+
+UG_xattr_fsetxattr_out:
    if( rc < 0 && rc != -EACCES && rc != -ENOENT && rc != -ETIMEDOUT && rc != -ENOMEM && rc != -EAGAIN && rc != -ENOATTR && rc != -EEXIST ) {
       rc = -EREMOTEIO;
    }
@@ -1162,6 +1166,7 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
     
     rc = SG_request_data_init_removexattr( gateway, path, file_id, file_version, xattr_nonce, name, &reqdat );
     if( rc != 0 ) {
+        SG_error("SG_request_data_init_removexattr('%s', '%s') rc = %d\n", path, name, rc );
         return rc;
     }
     
@@ -1169,6 +1174,7 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
     if( rc != 0 ) {
         
         SG_request_data_free( &reqdat );
+        SG_error("SG_request_REMOVEXATTR_setup('%s', '%s') rc = %d\n", path, name, rc );
         return rc;
     }
     
@@ -1225,7 +1231,7 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
             SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') rc = %d\n", path, name, rc );
          }
          else {
-            SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') handled\n", path, name );
+            SG_debug("UG_xattr_fremovexattr_builtin(%s, '%s') handled\n", path, name );
          }
 
          // handled or error 
@@ -1237,17 +1243,20 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
       if( rc != 0 ) {
            
           SG_error("UG_xattr_removexattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+          goto UG_xattr_fremovexattr_out;
       }
 
       rc = 1;
    }
-   else if( !query_remote ) {
+   else if( query_remote ) {
        
-       // if we're not the coordinator, send the remove request to the coordinator 
+       // if we're not the coordinator, send the remove request to the coordinator
+       SG_debug("Ask %" PRIu64 " to remove '%s'\n", coordinator_id, name ); 
        rc = UG_xattr_removexattr_remote( gateway, path, inode, name );
        if( rc != 0 ) {
            
            SG_error("UG_xattr_removexattr_remote('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
+           goto UG_xattr_fremovexattr_out;
        }
 
        rc = 1;
@@ -1309,6 +1318,10 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
    if( rc > 0 ) {
       // pass along to fskit 
       rc = fskit_xattr_fremovexattr( fs, fent, name );
+      if( rc == -ENOATTR ) {
+         // not a problem if UG_xattr_fremovexattr_ex succeeded
+         rc = 0;
+      }
    }
 
    fskit_entry_unlock( fent );
