@@ -433,6 +433,7 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
 
    *xattr_names = xattrs;
    *num_xattrs = xattr_count;
+   SG_debug("%zu xattrs, %d bytes\n", xattr_count, off);
    return 0;
 } 
 
