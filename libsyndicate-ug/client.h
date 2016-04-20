@@ -116,6 +116,8 @@ typedef struct _UG_handle {
    };
 } UG_handle_t;
 
+#define UG_FS_TYPE 0x6a636e26266d636dL
+
 // high-level metadata API
 int UG_stat( struct UG_state* state, char const* path, struct stat *statbuf );
 int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent );
@@ -149,6 +151,7 @@ int UG_close( struct UG_state* state, UG_handle_t *fi );
 int UG_fsync( struct UG_state* state, UG_handle_t *fi );
 int UG_ftruncate( struct UG_state* state, off_t offset, UG_handle_t *fi );
 int UG_fstat( struct UG_state* state, struct stat *statbuf, UG_handle_t *fi );
+int UG_statvfs( struct UG_state*, struct statvfs* svfs );
 
 // low-level file data API
 int UG_vacuum_begin( struct UG_state* state, char const* path, struct UG_vacuum_context** vctx );

@@ -1716,6 +1716,27 @@ int UG_fstat( struct UG_state* state, struct stat *statbuf, UG_handle_t *fi ) {
    return fskit_fstat( UG_state_fs( state ), fskit_file_handle_get_path( fi->fh ), fskit_file_handle_get_entry( fi->fh ), statbuf );
 }
 
+// statvfs(2)
+int UG_statvfs( struct UG_state* state, struct statvfs* vfs ) {
+   
+   struct SG_gateway* gateway = UG_state_gateway(state);
+   struct ms_client* ms = SG_gateway_ms(gateway);
+
+   vfs->f_bsize = ms_client_get_volume_blocksize(ms);
+   vfs->f_frsize = 0;
+   vfs->f_blocks = 0;
+   vfs->f_bfree = 0;
+   vfs->f_bavail = 0;
+   vfs->f_files = 0;
+   vfs->f_ffree = 0;
+   vfs->f_favail = 0;
+   vfs->f_fsid = UG_FS_TYPE;
+   vfs->f_flag = 0;
+   vfs->f_namemax = FSKIT_FILESYSTEM_NAMEMAX;
+
+   return 0;
+}
+
 // setxattr(2)
 // forward to xattr
 int UG_setxattr( struct UG_state* state, char const* path, char const* name, char const* value, size_t size, int flags ) {
