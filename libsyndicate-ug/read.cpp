@@ -242,11 +242,6 @@ int UG_read_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, of
    int num_read = 0;
 
    UG_dirty_block_aligned( offset, buf_len, block_size, &start_block_id, &end_block_id, &aligned_offset, &last_block_overflow );
-   if( (unsigned)last_block_overflow == block_size ) {
-
-      // the last block can be treated as aligned
-      end_block_id ++;
-   }
    
    // make blocks 
    for( uint64_t block_id = start_block_id; block_id <= end_block_id; block_id++ ) {
