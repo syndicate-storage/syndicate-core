@@ -675,16 +675,6 @@ int UG_dirty_block_aligned( off_t offset, size_t buf_len, uint64_t block_size, u
       last_aligned_block--;
    }
 
-   // if the last whole block ends at a block boundry, then the block overflow is 
-   // exactly one block and the last whole block is the preceding block.
-   last_block_overflow = (offset + buf_len) % block_size;
-   if( last_block_overflow == 0 ) {
-      last_block_overflow = block_size;
-      if( last_aligned_block > 0 ) {
-         last_aligned_block--;
-      }
-   }
-
    if( aligned_start_id != NULL ) {
       
       *aligned_start_id = first_aligned_block;
