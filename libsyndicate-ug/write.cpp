@@ -447,7 +447,7 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
    off_t last_block_len = 0;
    
    UG_dirty_block_aligned( offset, buf_len, block_size, &first_aligned_block, &last_aligned_block, &first_aligned_block_offset, &last_block_len );
-
+   
    // are there any aligned blocks?
    if( first_aligned_block > last_aligned_block || (first_aligned_block == last_aligned_block && last_block_len > 0 && (unsigned)last_block_len < block_size && buf_len < block_size) ) {
       SG_debug("No aligned blocks (first aligned = %" PRIu64 ", last aligned = %" PRIu64 ", last_block_len = %jd, block_size = %" PRIu64 ")\n",
@@ -906,7 +906,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    }
       
    // advance size 
-   SG_debug("%" PRIX64 ": offset + buflen = %" PRIu64 ", fent size = %" PRIu64 "\n", UG_inode_file_id(inode), (uint64_t)(offset + buf_len), fskit_entry_get_size( fent ) );
+   SG_debug("%" PRIX64 ": offset + buflen = %jd + %zu = %" PRIu64 ", fent size = %" PRIu64 "\n", UG_inode_file_id(inode), offset, buf_len, (uint64_t)(offset + buf_len), fskit_entry_get_size( fent ) );
 
    fskit_entry_set_size( fent, MAX( (unsigned)fskit_entry_get_size( fent ), (unsigned)(offset + buf_len) ) );
    SG_manifest_set_size( UG_inode_manifest( inode ), fskit_entry_get_size( fent ) ); 
