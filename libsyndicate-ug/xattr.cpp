@@ -227,6 +227,8 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
       SG_error("md_cache_file_blocks_apply rc = %zd\n", rc );
    }
 
+   SG_debug("block vector: %s (%zd)\n", buf, rc);
+
    return rc;
 }
 
@@ -514,9 +516,6 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
    if( coordinator_id == SG_gateway_id( gateway ) ) {
        // local (built-in or otherwise)
        rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
-       if( rc > 0 ) {
-          SG_debug("xattr '%s' is built-in\n", name);
-       }
        return rc;
    }
    else if( query_remote ) { 
