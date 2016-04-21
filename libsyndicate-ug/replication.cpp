@@ -220,6 +220,8 @@ static int UG_replica_make_write_delta( struct SG_manifest* whole_manifest, UG_d
       }
    }
 
+   SG_manifest_set_size( write_delta, SG_manifest_get_file_size(whole_manifest) );
+
    return 0;
 }
 
