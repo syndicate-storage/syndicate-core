@@ -353,10 +353,14 @@ def make_tmp_file( size, pattern ):
     """
     Make a temporary file with the given size and byte pattern.
     """
+    assert len(pattern) > 0
+
     fd, path = tempfile.mkstemp()
     ffd = os.fdopen(fd, "w")
-    suffix = pattern[0:len(pattern)%size]
+
+    suffix = pattern[0:size%len(pattern)]
     l = 0
+
     while l + len(pattern) < size:
         ffd.write(pattern)
         l += len(pattern)
