@@ -93,4 +93,55 @@ To set a driver, you should use the `driver=` flag in the `update_gateway` direc
     $ ./syndicate update_gateway sample-AG driver=../python/syndicate/drivers/ag/disk
 ```
 
-The gateway should automatically fetch and instantiate the driver when it next reloads and revalidates its certificate bundle.
+The gateway should automatically fetch and instantiate the driver before the command completes.
+
+Finally, you can proceed to run the gateways as follows.  Each gateway takes `-v` for the volume name, `-g` for the gateway name, and `-u` for the user name.  For example:
+
+```
+    $ # Start a UG
+    $ /path/to/user/gateway -u "$MS_APP_ADMIN_EMAIL" -v "test-volume" -g "test-volume-UG-01" 
+```
+
+Other options include `-f` for foreground, `-d` for debug level, and `-c` for path to the configuration file.
+
+Here's a more complete example that sets up a user gateway and a replica gateway for the user `bob@example.com`.  Both gateways will run locally.  The user gateway will be able to read, write, and coordinate writes for files, and the replica gateway will have all such capabilities disabled (meaning it can only get, put, and delete blocks).  The replica gateway will listen on 31112, and the user gateway will listen on 31111.
+
+In this example, we will `put`, and then `cat` a file from a replica gateway.  This is taken from a test scenario in the test suite.
+
+````
+    $ # set up the admin account
+    $ ./syndicate --trust_public_key -c /tmp/syndicate-test-ezOKLS/syndicate.conf setup "$MS_APP_ADMIN_EMAIL" ./ms_src/admin.pem http://localhost:8080
+    $
+    $ # create an unprivileged user, and automatically generate a keypair
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf create_user email=jcnelson@cs.princeton.edu private_key=auto
+    $ 
+    $ # create a volume with 4K blocks
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf create_volume name=testvolume-f0170356 description=test volume blocksize=4096 email=jcnelson@cs.princeton.edu
+    $
+    $ # make a replica gateway, and automatically generate a keypair
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf create_gateway email=jcnelson@cs.princeton.edu volume=testvolume-f0170356 name=testgateway-RG-c65925b4 private_key=auto type=RG
+    $ 
+    $ # drop RG caps
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf update_gateway testgateway-RG-c65925b4 caps=NONE
+    $ 
+    $ # update driver and port number
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf update_gateway testgateway-RG-c65925b4 port=31112 driver=./python/syndicate/rg/drivers/disk
+    $
+    $ # start the RG
+    $ /usr/local/bin/syndicate-rg -c /tmp/syndicate-test-ezOKLS/syndicate.conf -d2 -f -u jcnelson@cs.princeton.edu -v testvolume-f0170356 -g testgateway-RG-c65925b4
+    $
+    $ # make a UG
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf create_gateway email=jcnelson@cs.princeton.edu volume=testvolume-f0170356 name=testgateway-UG-307cff4b private_key=auto type=UG
+    $ 
+    $ # give the UG all capabilities, and set its port number
+    $ ./syndicate -c /tmp/syndicate-test-ezOKLS/syndicate.conf update_gateway testgateway-UG-307cff4b caps=ALL port=31111
+    $
+    $ # put the file /tmp/tmpsZigf8 to /put-e02dfe9a
+    $ /usr/local/bin/syndicate-put -c /tmp/syndicate-test-ezOKLS/syndicate.conf -u jcnelson@cs.princeton.edu -v testvolume-f0170356 -g testgateway-UG-307cff4b /tmp/tmpsZigf8 /put-e02dfe9a
+    $ 
+    $ # cat it again, to stdout
+    $ /usr/local/bin/syndicate-cat -c /tmp/syndicate-test-ezOKLS/syndicate.conf -u jcnelson@cs.princeton.edu -v testvolume-f0170356 -g testgateway-UG-557992d7 /put-e02dfe9a
+```
+
+
+
