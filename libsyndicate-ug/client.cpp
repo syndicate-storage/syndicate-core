@@ -525,6 +525,110 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 }
 
 
+// remove a whole tree recursively.
+// path can be a file or directory.
+// call the unlink()/rmdir() routes in fskit as well.
+// return 0 on success
+// block until successful
+int UG_rmtree( struct UG_state* state, char const* path ) {
+
+   int rc = 0;
+   int cbrc = 0;
+   struct fskit_detach_ctx* ctx = NULL;
+   fskit_entry_set* dir_children = NULL;
+   struct fskit_entry* dent = NULL;
+   struct SG_gateway* gateway = UG_state_gateway( state );
+   struct fskit_core* core = UG_state_fs( state );
+   double timeout = 1.0;
+
+   // refresh path 
+   rc = UG_consistency_path_ensure_fresh( gateway, path );
+   if( rc != 0 ) {
+      
+      SG_error( "UG_consistency_path_ensure_fresh('%s') rc = %d\n", path, rc );
+      return rc;
+   }
+
+   // blow away 
+   ctx = fskit_detach_ctx_new();
+   if( ctx == NULL ) {
+      return -ENOMEM;
+   }
+
+   rc = fskit_detach_ctx_init( ctx );
+   if( rc != 0 ) {
+      SG_error("fskit_detach_ctx_init rc = %d\n", rc );
+      SG_safe_free( ctx );
+      return rc;
+   }
+
+   // fail on callback failure, so we can take appropriate action (e.g. retry with exponential backoff)
+   fskit_detach_ctx_set_flags( ctx, FSKIT_DETACH_CTX_CB_FAIL );
+   
+   dent = fskit_entry_resolve_path( core, path, 0, 0, true, &rc );
+   if( dent == NULL ) {
+       fskit_detach_ctx_free( ctx );
+       SG_safe_free( ctx );
+       SG_error("fskit_entry_resolve_path(%s) rc = %d\n", path, rc ); 
+       return rc;
+   }
+
+   // file?
+   if( fskit_entry_get_type(dent) == FSKIT_ENTRY_TYPE_FILE ) {
+    
+      // just unlink 
+      fskit_entry_unlock( dent );
+      fskit_detach_ctx_free( ctx );
+      SG_safe_free( ctx );
+      
+      return fskit_unlink( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ) );
+   }
+   
+   // swap out the children, and mark this directory as garbage-collectable
+   rc = fskit_entry_tag_garbage( dent, &dir_children );
+   if( rc != 0 ) {
+       fskit_detach_ctx_free( ctx );
+       SG_safe_free( ctx );
+       fskit_error("fskit_entry_tag_garbage('%" PRIX64 "') rc = %d\n", fskit_entry_get_file_id( dent ), rc );
+       fskit_entry_unlock( dent );
+       return rc;
+   }
+   
+   fskit_entry_unlock( dent );
+
+   // proceed to detach
+   while( true ) {
+      rc = fskit_detach_all_ex( core, path, &dir_children, ctx );
+      if( rc == 0 ) {
+         break;
+      }
+      else if( rc == -ENOMEM || rc == -EFAULT ) {
+         // what was the error?
+         cbrc = fskit_detach_ctx_get_cbrc( ctx );
+         if( cbrc == -EREMOTEIO || cbrc == -EAGAIN || cbrc == -ETIMEDOUT || cbrc == -ENOMEM ) {
+
+             // try again later
+             timeout = timeout * 2.0 + (timeout * (double)(rand()) / RAND_MAX);
+             SG_debug("Exponential backoff, retrying in %lf seconds\n", timeout);
+             sleep(timeout);
+         }
+
+         continue;
+      }
+      else {
+         SG_error("fskit_detach_all_ex('%s') rc = %d\n", path, rc );
+         break;
+      }
+   }
+   
+   fskit_entry_set_free( dir_children );
+   fskit_detach_ctx_free( ctx );
+   SG_safe_free( ctx );
+
+   return rc;
+
+}
+
 // rename(2)
 // forward to fskit, which will take care of communicating with the MS
 int UG_rename( struct UG_state* state, char const* path, char const* newpath ) {

@@ -721,6 +721,9 @@ static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* rout
 // ask the MS to detach a file or directory.  If we succeed, clear any cached state.
 // return 0 on success
 // return -ENOMEM on OOM 
+// return -ENOENT if this inode is already being deleted
+// return -EAGAIN if we should try again
+// return -EREMOTEIO on remote error (e.g. on the MS or RGs)
 // return -errno on network error 
 // NOTE: inode->entry must be write-locked
 static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
@@ -830,7 +833,8 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
 // ask a remote gateway to detach an inode for us, if the inode is a file.
 // if the inode is a directory, ask the MS directly.
 // return 0 on success
-// return -ENOMEM on OOM 
+// return -ENOMEM on OOM
+// return -EAGAIN if we timed out 
 // return -EREMOTEIO on network error
 // return non-zero error code from the remote unlink if it failed remotely
 static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {

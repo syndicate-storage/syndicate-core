@@ -124,6 +124,7 @@ int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent 
 int UG_mkdir( struct UG_state* state, char const* path, mode_t mode );
 int UG_unlink( struct UG_state* state, char const* path );
 int UG_rmdir( struct UG_state* state, char const* path );
+int UG_rmtree( struct UG_state* state, char const* path );
 int UG_rename( struct UG_state* state, char const* path, char const* newpath );
 int UG_chmod( struct UG_state* state, char const* path, mode_t mode );
 int UG_chown( struct UG_state* state, char const* path, uint64_t new_owner );
