@@ -276,8 +276,13 @@ struct md_syndicate_conf {
 #define SG_DEFAULT_SYNDICATE_PATH   "~/.syndicate/syndicate"
 #define SG_DEFAULT_CERTS_ROOT       "~/.syndicate/certs"
 
+#ifdef _PACKAGED
+#define SG_DEFAULT_CERTS_RELOAD_HELPER     "/usr/lib/syndicate/certs_reload"
+#define SG_DEFAULT_DRIVER_RELOAD_HELPER    "/usr/lib/syndicate/driver_reload"
+#else
 #define SG_DEFAULT_CERTS_RELOAD_HELPER     "/usr/local/lib/syndicate/certs_reload"
 #define SG_DEFAULT_DRIVER_RELOAD_HELPER    "/usr/local/lib/syndicate/driver_reload"
+#endif
 
 // URL protocol prefix for local files
 #define SG_LOCAL_PROTO     "file://"
