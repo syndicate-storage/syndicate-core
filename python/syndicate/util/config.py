@@ -305,6 +305,9 @@ def parse_args( config, method_name, args, kw, lib ):
    
    import syndicate.ms.api as api
    method = api.get_method( method_name )
+   if method is None:
+      raise ValueError("No such method '%s'" % method_name)
+
    try:
       if method.parse_args:
          args, kw, extras = method.parse_args( config, method_name, method.argspec, args, kw, lib )
