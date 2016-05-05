@@ -496,7 +496,7 @@ def create_volume( **attrs ):
       raise Exception("Missing root inode")
    
    caller_user = _check_authenticated( attrs )
-   user, volume = validate_volume_cert( volume_cert, signing_user_id=caller_user.owner_id )
+   user, volume = validate_volume_cert( volume_cert )
    
    # user should exist
    if user is None:
@@ -539,7 +539,7 @@ def create_volume( **attrs ):
    
    root_inode.signature = root_inode_sigb64
    
-   rc = verify_data( caller_user.public_key, root_inode_nosig, root_inode_sig )
+   rc = verify_data( user.public_key, root_inode_nosig, root_inode_sig )
    if not rc:
       raise Exception("Root inode not signed by user '%s'" % (user.email))
    
@@ -620,7 +620,7 @@ def update_volume( volume_name_or_id, **attrs ):
       raise e
    
    caller_user = _check_authenticated( attrs )
-   user, volume = validate_volume_cert( volume_cert, signing_user_id=caller_user.owner_id )
+   user, volume = validate_volume_cert( volume_cert )
    
    # user should exist 
    if user is None:
@@ -812,8 +812,8 @@ def create_gateway( **kw ):
       log.error("Failed to find either the user or volume")
       raise e
   
-   # only the volume owner can call this method 
-   if volume.owner_id != caller_user.owner_id:
+   # only the volume owner or admin can call this method 
+   if not caller_user.is_admin and volume.owner_id != caller_user.owner_id:
       log.error("Caller user '%s' is not the volume owner (%s)" % (caller_user.email, volume.owner_id))
       raise Exception("Caller user '%s' is not the volume owner (%s)" % (caller_user.email, volume.owner_id))
 
@@ -962,11 +962,11 @@ def update_gateway( g_name_or_id, **kw ):
            raise e
        
        # caller user must be the volume owner, or admin
-       if caller_user.owner_id != volume.owner_id:
+       if not caller_user.is_admin and caller_user.owner_id != volume.owner_id:
            raise Exception("Calling user is not the volume owner")
 
        # validate the cert bundle
-       rc = validate_cert_bundle( cert_bundle, caller_user, volume.volume_id, volume.version )
+       rc = validate_cert_bundle( cert_bundle, user, volume.volume_id, volume.version )
        if not rc:
           raise Exception("Failed to validate cert bundle version vector")
       
