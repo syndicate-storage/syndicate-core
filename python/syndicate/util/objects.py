@@ -1912,9 +1912,9 @@ class Volume( StubObject ):
          if not config.has_key('no_reload') or not config['no_reload']:
              failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
              if len(failed) > 0:
-                 log.warn("Some gateways failed to reload:")
+                 log.warn("Some gateways failed to reload.  Either they are not running, or the could not be contacted:")
                  log.warn("   " + "\n   ".join(sorted(failed)))
-                 log.warn("You can reload them manually with the `reload` directive.")
+                 log.warn("If they are running, you can try reloading them manually with the `reload_gateway` directive.")
           
             
 
@@ -2534,7 +2534,7 @@ class Gateway( StubObject ):
                     gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
                     if gateway_status != 0:
                         log.warn( "Failed to reload gateway '%s'" % gateway_cert.name )
-                        log.warn( "Recommend reloading manually with the 'gateway_reload' command" )
+                        log.warn( "If this gateway is running, you can try reloading it manually with the 'reload_gateway' command" )
 
                 else:
                     failed = do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
@@ -2542,9 +2542,9 @@ class Gateway( StubObject ):
                         failed.remove( extras['gateway_name'] )
 
                     if len(failed) > 0:
-                        log.warn( "Some gateways failed to reload:" )
+                        log.warn( "Some gateways failed to reload.  Either they are not running, or we could not contact them:" )
                         log.warn( "   " + "\n   ".join(sorted(failed)) )
-                        log.warn( "You can reload them manually with the `reload` directive." )
+                        log.warn( "If they are running, you can reload them manually with the `reload_gateway` directive." )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
