@@ -1,7 +1,14 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 CONFIG_PATH="$1"
 shift 1
 
-/usr/local/bin/syndicate -c "$CONFIG_PATH" reload_certs $@
+SYNDICATE_BIN="/usr/local/bin/syndicate"
+
+if [[ -x "/usr/bin/syndicate" ]]
+then
+  SYNDICATE_BIN="/usr/bin/syndicate"
+fi
+
+$SYNDICATE_BIN -c "$CONFIG_PATH" reload_certs $@
 

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 for i in $(seq 1 40); do
     openssl genrsa 4096 >/dev/null 2>/dev/null
