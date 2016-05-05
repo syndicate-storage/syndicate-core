@@ -128,8 +128,7 @@ class VolumeCertBundle( storagetypes.Object ):
    def Put( cls, volume_id, cert_protobuf ):
       """
       Put a new volume cert bundle (which is really an SG Manifest repurposed)
-      Verify that the version number has incremented.
-
+      Atomically verify that the version number has incremented.
       """
       
       cert = sg_pb2.Manifest() 
@@ -560,54 +559,6 @@ class Volume( storagetypes.Object ):
          
       return vol
             
-   '''
-   @classmethod
-   def ReadAll( cls, volume_ids, async=False, use_memcache=True ):
-      """
-      Given a set of Volume IDs, get all of the Volumes.
-      
-      Arguments:
-      volume_ids        -- IDs of the Volumes to get ([int])
-      
-      Keyword arguments:
-      async             -- If true, return a list of Futures for each Volume
-      use_memcache      -- If true, check memcache for each Volume and if async is false, cache the results.
-      """
-      
-      volume_key_names = map( lambda x: Volume.make_key_name( volume_id=x ), volume_ids )
-
-      volumes_dict = {}
-      if use_memcache:
-         volumes_dict = storagetypes.memcache.get_multi( volume_key_names )
-
-      ret = [None] * len(volume_key_names)
-
-      for i in xrange(0, len(volume_key_names)):
-         volume_key_name = volume_key_names[i]
-         volume = volumes_dict.get( volume_key_name )
-         if volume == None:
-            volume_key = storagetypes.make_key( Volume, volume_key_name )
-            
-            if async:
-               ret[i] = volume_key.get_async( use_memcache=False )
-            
-            else:
-               volume = volume_key.get( use_memcache=False )
-               if not volume:
-                  ret[i] = None
-               elif use_memcache and not volume.deleted:
-                  storagetypes.memcache.set( volume_key_name, volume )
-
-         else:
-            if not async:
-               # get results directly 
-               ret[i] = volume
-            else:
-               # wrap as future
-               ret[i] = storagetypes.FutureWrapper( volume )
-
-      return ret
-   '''
 
    @classmethod
    def __update_shard_count( cls, volume_key, num_shards ):
@@ -647,15 +598,16 @@ class Volume( storagetypes.Object ):
       
    @classmethod
    def Update( cls, volume_name_or_id, volume_cert ):
-      '''
+      """
       Atomically (transactionally) update a given Volume with the given fields.
+      The given volume cert must have a greater version than the current cert.
       
       NOTE: volume_cert will need to have been validated by the caller.
       NOTE: this calls should be followed up with a VolumeCertBundle.Put() to put the caller's new volume cert bundle
       
       return the volume key on success 
       raise an Exception on error
-      '''
+      """
       try:
          volume_id = int(volume_name_or_id)
       except:
@@ -693,9 +645,9 @@ class Volume( storagetypes.Object ):
       volume_cert_bin = volume_cert.SerializeToString()
       
       def update_txn( fields ):
-         '''
+         """
          Update the Volume transactionally.
-         '''
+         """
          
          volume = Volume.Read(volume_id)
          if not volume or volume.deleted:
