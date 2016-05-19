@@ -37,7 +37,7 @@ def do_driver_shutdown():
     """
     global driver_shutdown
 
-    print >> sys.stderr, "Worker %s exiting" % os.getpid()
+    log_error("Worker exiting")
 
     if driver_shutdown is not None:
         rc = driver_shutdown()
@@ -50,14 +50,71 @@ def do_driver_shutdown():
         sys.exit(0)
 
 
+def get_read_method( f ):
+   """
+   Given either a file or a socket,
+   get the method that returns data
+   """
+   if hasattr(f, "read"):
+       return f.read
+   elif hasattr(f, "recv"):
+       return f.recv
+   else:
+       raise Exception("Neither a file nor a socket")
+
+
+def sock_recvline( soc, maxsize ):
+    """
+    Receive a line of data (including newline)
+    from a socket
+    """
+    s = cStringIO.StringIO()
+    count = 0
+    while count < maxsize:
+        c = soc.recv(1)
+        s.write(c)
+        count += 1
+        if c == '\n':
+            break
+
+    return s.getvalue()
+
+
+def get_readline_method( f ):
+    """
+    Given either a file or a socket,
+    get the method that returns a line of data.
+    """
+    if hasattr(f, "readline"):
+        return f.readline 
+    elif hasattr(f, "recv"):
+        return lambda size: sock_recvline(f, size)
+    else:
+        raise Exception("Neither a file nor a socket")
+
+
+def get_write_method( f ):
+    """
+    Given either a file or a socket,
+    get the method that sends data.
+    """
+    if hasattr(f, "write"):
+        return f.write
+    elif hasattr(f, "send"):
+        return f.send
+    else:
+        raise Exception("Neither a file nor a socket")
+    
+
 def read_string( f ):
    """
    Read a null-terminated string from file f. 
    """
    s = cStringIO.StringIO()
+   read_method = get_read_method(f)
    while True:
       
-      c = f.read(1)
+      c = read_method(1)
       if c == '\0':
          break 
       
@@ -72,9 +129,16 @@ def read_int( f ):
    Return the int on success 
    Return None on error
    """
-   
-   # read the int 
-   i = f.readline( 100 )
+  
+   readline_method = get_readline_method(f)
+   # read the int
+   try:
+      i = readline_method(100)
+   except Exception, e:
+      log_error(traceback.format_exc())
+      log_error("Failed to read integer")
+      return None
+
    if len(i) == 0:
        # gateway exit 
        do_driver_shutdown()
@@ -82,13 +146,13 @@ def read_int( f ):
    if i[-1] != '\n':
       
       # invalid line 
-      print >> sys.stderr, "Integer too long: '%s'" % i 
+      log_error( "Integer too long: '%s'" % i )
       return None
   
    try:
       i = int(i.strip())
    except Exception, e:
-      print >> sys.stderr, "Invalid integer: '%s'" % i
+      log_error( "Invalid integer: '%s'" % i )
       return None 
    
    return i
@@ -100,8 +164,14 @@ def read_data( f, size ):
    Return the chunk on success
    Return None on error
    """
-   
-   chunk = f.read( size+1 )
+  
+   read_method = get_read_method(f)
+   try:
+       chunk = read_method(size+1)
+   except:
+       log_error("Failed to read chunk")
+       return None 
+
    if len(chunk) == 0:
        # gateway exit
        do_driver_shutdown()
@@ -109,13 +179,13 @@ def read_data( f, size ):
    if len(chunk) != size+1:
       
       # invalid chunk 
-      print >> sys.stderr, "Data too short"
+      raise Exception("Data too short (size = %s, chunk = %s)" % (size, len(chunk)))
       return None 
    
    if chunk[-1] != '\n':
       
-      # invalid chunk 
-      print >> sys.stderr, "Data too long"
+      # invalid chunk
+      raise Exception("Data too long (size = %s, chunk = %s, terminator = '%s')" % (size, len(chunk), chunk[-1]))
       return None 
    
    chunk = chunk[:len(chunk)-1]
@@ -130,6 +200,7 @@ def read_chunk( f ):
 
    chunk_len = read_int( f )
    if chunk_len is None:
+       log_error("Failed to read chunk length")
        do_driver_shutdown()
 
    chunk = read_data( f, chunk_len )
@@ -145,11 +216,15 @@ def read_request( f ):
    """
    
    req_chunk = read_chunk( f )
+   if req_chunk is None:
+       log_error("Failed to read driver request chunk")
+       do_driver_shutdown()
+
    try:
        driver_req = DriverRequest()
        driver_req.ParseFromString( req_chunk )
    except:
-       print >> sys.stderr, "Failed to parse driver request"
+       log_error("Failed to parse driver request")
        do_driver_shutdown()
 
    return driver_req
@@ -185,14 +260,16 @@ def write_int( f, i ):
    """
    Send back an integer to the main Syndicate daemon.
    """
-   f.write( "%s\n" % i )
+   write_method = get_write_method(f)
+   write_method( "%s\n" % i )
 
 
 def write_data( f, data ):
    """
    Send back a string of data to the main Syndicate daemon.
    """
-   f.write( "%s\n" % data )
+   write_method = get_write_method(f)
+   write_method( "%s\n" % data )
 
 
 def write_chunk( f, data ):
@@ -200,7 +277,8 @@ def write_chunk( f, data ):
    Send back a length, followed by a newline, followed by a string
    of data to Syndicate.
    """
-   f.write( "%s\n%s\n" % (len(data), data))
+   write_method = get_write_method(f)
+   write_method("%s\n%s\n" % (len(data), data))
 
 
 def request_byte_offset( request ):
@@ -333,8 +411,16 @@ def write_metadata_command( f, cmd_dict ):
    if not check_metadata_command( cmd_dict ):
        raise Exception("Malformed command: %s" % cmd_dict)
 
-   # see the AG documentation for the description of this stanza 
-   f.write("%s\n%s 0%o %s %s %s\n%s\n\0\n" % (cmd_dict['cmd'], cmd_dict['ftype'], cmd_dict['mode'], cmd_dict['size'], cmd_dict['read_ttl'], cmd_dict['write_ttl'], cmd_dict['path']) )
+   lines = [
+      "%s\n" % cmd_dict['cmd'],
+      "%s 0%o %s %s %s\n" % (cmd_dict['ftype'], cmd_dict['mode'], cmd_dict['size'], cmd_dict['read_ttl'], cmd_dict['write_ttl']),
+      "%s\n" % cmd_dict['path'],
+      "0\n"
+   ]
+
+   serialized_buf = "".join(lines)
+   write_method = get_write_method(f)
+   write_method("%s:%s" % (len(serialized_buf), serialized_buf))
 
 
 def crawl( cmd_dict ):
@@ -346,12 +432,35 @@ def crawl( cmd_dict ):
    Returns the integer code, or raises an exception if 
    the command dict is malformed.
    """
+   global crawl_rendezvous_func
+   return crawl_rendezvous_func( cmd_dict )
 
+
+def default_crawl_rendezvous( cmd_dict ):
+   """
+   Default implementation of the crawl rendezvous function
+   """
    write_metadata_command( sys.stdout, cmd_dict )
    sys.stdout.flush()
 
    rc = read_int( sys.stdin )
    return rc
+
+
+# default crawl implementation
+crawl_rendezvous_func = default_crawl_rendezvous
+
+def set_crawl_rendezvous_func( sink_func ):
+   """
+   Set the global function that will accept crawl command data
+   from the AG driver, feed it to the AG, and give back the
+   AG's response.
+
+   The sink_func() must take a command dict as its only argument,
+   and return a numerical return code.
+   """
+   global crawl_rendezvous_func
+   crawl_rendezvous_func = sink_func
 
 
 def get_gateway_id():
@@ -413,6 +522,17 @@ def get_config_path():
     return config_path
 
 
+def get_ipc_root():
+    """
+    Where are the gateway/driver IPC structures stored?
+    """
+    ipc_root = os.environ.get("SYNDICATE_IPC_PATH")
+    if ipc_root is None:
+        raise Exception("BUG: SYNDICATE_IPC_PATH is not set")
+
+    return ipc_root
+
+
 def log_error( msg ):
     """
     Synchronously log an error message
@@ -446,6 +566,14 @@ def has_method( mod, method_name ):
     return hasattr( mod, method_name ) and is_callable( getattr(mod, method_name, None) )
 
 
+# fail before startup
+def do_fail(exitrc):
+    print "1"
+    sys.stderr.flush()
+    sys.stdout.flush()
+    sys.exit(exitrc)
+
+
 def driver_setup( operation_modes, expected_callback_names, default_callbacks={} ):
    """
    Set up a gateway driver:
@@ -475,8 +603,7 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
       print >> sys.stderr, "Usage: %s operation_mode" % sys.argv[0]
       
       # tell the parent that we failed
-      print "1"
-      sys.exit(1)
+      do_fail(1)
    
    usage = sys.argv[1]
    
@@ -485,42 +612,37 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
       print >> sys.stderr, "Usage: %s operation_mode" % sys.argv[0]
       
       # tell the parent that we failed
-      print "1"
-      sys.exit(1)
+      do_fail(1)
  
-   method_name_idx = operation_modes.index(usage)
-   method_name = expected_callback_names[method_name_idx]
-       
+   methods = []
+   for i in xrange(0, len(operation_modes)):
+       if operation_modes[i] == usage:
+           methods.append( expected_callback_names[i] )
+
    # on stdin: config and secrets (as two separate null-terminated strings)
    config_len = read_int( sys.stdin )
    if config_len is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
       
    config_str = read_data( sys.stdin, config_len )
    if config_str is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
    
    secrets_len = read_int( sys.stdin )
    if secrets_len is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
       
    secrets_str = read_data( sys.stdin, secrets_len )
    if secrets_str is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
    
    driver_len = read_int( sys.stdin )
    if driver_len is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
    
    driver_str = read_data( sys.stdin, driver_len )
    if driver_str is None:
-      print "1"
-      sys.exit(1)
+      do_fail(1)
       
    CONFIG = {}
    SECRETS = {}
@@ -535,8 +657,7 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
       log_error( traceback.format_exc() )
       
       # tell the parent that we failed
-      print "1"
-      sys.exit(2)
+      do_fail(2)
    
    # secrets_str should be a JSON dict
    try:
@@ -547,8 +668,7 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
       log_error( traceback.format_exc() )
       
       # tell the parent that we failed 
-      print "1"
-      sys.exit(2)
+      do_fail(2)
 
    # driver should be a set of methods 
    driver_mod = imp.new_module("driver_mod")
@@ -559,27 +679,29 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
       log_error("Failed to load driver")
       log_error(traceback.format_exc())
       
-      # tell the parent that we failed 
-      print "1"
-      sys.exit(2)
+      # tell the parent that we failed
+      do_fail(2)
      
-   # verify that the driver method is defined 
+   # verify that the driver methods are defined 
    fail = False
-   if not has_method( driver_mod, method_name ):
-       if not default_callbacks.has_key( method_name ):
-           fail = True
-           log_error("No method '%s' defined" % method_name)
+   for method_name in methods:
+       if not has_method( driver_mod, method_name ):
+           if not default_callbacks.has_key( method_name ):
+               fail = True
+               log_error("No method '%s' defined" % method_name)
 
-       elif default_callbacks[method_name] is None:
-           # no method implementation; fall back to the gateway
-           log_error("No implementation for '%s'" % method_name)
-           print "2"
-           sys.exit(0)
+           elif default_callbacks[method_name] is None:
+               # no method implementation; fall back to the gateway
+               log_error("No implementation for '%s'" % method_name)
+               print "2"
+               sys.exit(0)
 
-       else:
-           log_error("Using default implementation for '%s'" % method_name );
-           setattr( driver_mod, usage, default_callbacks[method_name] )
+           else:
+               log_error("Using default implementation for '%s'" % method_name );
+               setattr( driver_mod, usage, default_callbacks[method_name] )
 
+   if fail:
+       do_fail(2)
 
    # remember generic shutdown so the signal handler can use it
    if has_method( driver_mod, "driver_shutdown" ):
@@ -602,10 +724,7 @@ def driver_setup( operation_modes, expected_callback_names, default_callbacks={}
            fail = True
 
    if fail:
-      print "1"
-      sys.stderr.flush()
-      sys.stdout.flush()
-      sys.exit(2)
+      do_fail(2)
  
    driver_mod.CONFIG = CONFIG 
    driver_mod.SECRETS = SECRETS
