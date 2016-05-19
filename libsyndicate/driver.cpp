@@ -658,6 +658,7 @@ SG_driver_procs_start_finish:
 
       // install to driver
       SG_driver_init_procs( driver, driver->roles, groups, driver->num_roles );
+      SG_safe_free( groups );
    }
    
    // free memory 
@@ -898,23 +899,31 @@ int SG_driver_get_chunk( char const* driver_text, size_t driver_text_len, char c
 
 
 // get a pointer to a proc group
-// NOT THREAD SAFE 
+// NOTE: the driver can get reloaded intermittently, and the processes in the group can die unexpectedly.
+// However, the group will not be freed by the driver, or altered over the course of the gateway's lifetime.
+// The caller should lock the group to prevent the driver from adding/removing processes in it, though.
 struct SG_proc_group* SG_driver_get_proc_group( struct SG_driver* driver, char const* proc_group_name ) {
 
    if( driver->groups == NULL ) {
       return NULL;
    }
 
+   struct SG_proc_group* ret = NULL;
+
+   SG_driver_rlock( driver );
    try {
        SG_driver_proc_group_t::iterator itr = driver->groups->find( string(proc_group_name) );
-       if( itr == driver->groups->end() ) {
-          return NULL;
+       if( itr != driver->groups->end() ) {
+          ret = itr->second;
        }
-
-       return itr->second;
    }
    catch( bad_alloc& ba ) {
+       SG_driver_unlock( driver );
        return NULL;
    }
+
+   SG_driver_unlock( driver );
+   return ret;
 }
+
 
