@@ -527,107 +527,140 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 
 // remove a whole tree recursively.
 // path can be a file or directory.
+// can be called repeatedly to recover from failure.
 // call the unlink()/rmdir() routes in fskit as well.
 // return 0 on success
-// block until successful
-int UG_rmtree( struct UG_state* state, char const* path ) {
+// return -ENONET if the path doesn't exist
+// return -EPERM if we couldn't complete an operation
+// return -EACCES if we couldn't search a directory or unlink a path 
+// return -EREMOTEIO on network error
+int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
    int rc = 0;
-   int cbrc = 0;
-   struct fskit_detach_ctx* ctx = NULL;
-   fskit_entry_set* dir_children = NULL;
-   struct fskit_entry* dent = NULL;
-   struct SG_gateway* gateway = UG_state_gateway( state );
-   struct fskit_core* core = UG_state_fs( state );
-   double timeout = 1.0;
+   struct stat sb;
+   UG_handle_t* dh = NULL;
+   struct md_entry** listing = NULL;
+   char* path = NULL;
+   char* child_path = NULL;
+   size_t num_children = 0;
 
-   // refresh path 
-   rc = UG_consistency_path_ensure_fresh( gateway, path );
-   if( rc != 0 ) {
-      
-      SG_error( "UG_consistency_path_ensure_fresh('%s') rc = %d\n", path, rc );
-      return rc;
-   }
-
-   // blow away 
-   ctx = fskit_detach_ctx_new();
-   if( ctx == NULL ) {
+   char* root_path_dup = SG_strdup_or_null(root_path);
+   if( root_path_dup == NULL ) {
       return -ENOMEM;
    }
 
-   rc = fskit_detach_ctx_init( ctx );
-   if( rc != 0 ) {
-      SG_error("fskit_detach_ctx_init rc = %d\n", rc );
-      SG_safe_free( ctx );
-      return rc;
-   }
+   vector<char*> path_stack;
+   path_stack.push_back(root_path_dup);
 
-   // fail on callback failure, so we can take appropriate action (e.g. retry with exponential backoff)
-   fskit_detach_ctx_set_flags( ctx, FSKIT_DETACH_CTX_CB_FAIL );
-   
-   dent = fskit_entry_resolve_path( core, path, 0, 0, true, &rc );
-   if( dent == NULL ) {
-       fskit_detach_ctx_free( ctx );
-       SG_safe_free( ctx );
-       SG_error("fskit_entry_resolve_path(%s) rc = %d\n", path, rc ); 
-       return rc;
-   }
+   while( path_stack.size() > 0 ) {
 
-   // file?
-   if( fskit_entry_get_type(dent) == FSKIT_ENTRY_TYPE_FILE ) {
-    
-      // just unlink 
-      fskit_entry_unlock( dent );
-      fskit_detach_ctx_free( ctx );
-      SG_safe_free( ctx );
-      
-      return fskit_unlink( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ) );
-   }
-   
-   // swap out the children, and mark this directory as garbage-collectable
-   rc = fskit_entry_tag_garbage( dent, &dir_children );
-   if( rc != 0 ) {
-       fskit_detach_ctx_free( ctx );
-       SG_safe_free( ctx );
-       fskit_error("fskit_entry_tag_garbage('%" PRIX64 "') rc = %d\n", fskit_entry_get_file_id( dent ), rc );
-       fskit_entry_unlock( dent );
-       return rc;
-   }
-   
-   fskit_entry_unlock( dent );
+      path = path_stack.at( path_stack.size() - 1 );
 
-   // proceed to detach
-   while( true ) {
-      rc = fskit_detach_all_ex( core, path, &dir_children, ctx );
-      if( rc == 0 ) {
-         break;
+      rc = UG_stat( state, path, &sb );
+      if( rc != 0 ) {
+         SG_error("UG_stat('%s') rc = %d\n", path, rc );
+         goto UG_rmtree_cleanup;
       }
-      else if( rc == -ENOMEM || rc == -EFAULT ) {
-         // what was the error?
-         cbrc = fskit_detach_ctx_get_cbrc( ctx );
-         if( cbrc == -EREMOTEIO || cbrc == -EAGAIN || cbrc == -ETIMEDOUT || cbrc == -ENOMEM ) {
 
-             // try again later
-             timeout = timeout * 2.0 + (timeout * (double)(rand()) / RAND_MAX);
-             SG_debug("Exponential backoff, retrying in %lf seconds\n", timeout);
-             sleep(timeout);
+      if( S_ISREG(sb.st_mode) ) {
+         // file--unlink
+         rc = UG_unlink( state, path );
+         if( rc != 0 ) {
+            SG_error("UG_unlink('%s') rc = %d\n", path, rc );
+            goto UG_rmtree_cleanup;
+         } 
+      }
+      else if( S_ISDIR(sb.st_mode) ) {
+         // dir--expand 
+         dh = UG_opendir( state, path, &rc );
+         if( dh == NULL ) {
+            SG_error("UG_opendir('%s') rc = %d\n", path, rc );
+            goto UG_rmtree_cleanup;
+         }
+         
+         while( true ) {
+            // scan directory
+            rc = UG_readdir( state, &listing, 65536, dh ); 
+            if( rc < 0 ) {
+               UG_closedir(state, dh);
+               SG_error("UG_readdir('%s') rc = %d\n", path, rc );
+               goto UG_rmtree_cleanup;
+            }
+
+            if( rc == 0 ) {
+               // out of children  
+               UG_closedir(state, dh);
+               UG_free_dir_listing(listing);
+               break;
+            }
+
+            num_children = rc;
+            for( size_t i = 0; i < num_children; i++ ) {
+
+               // delete each file while we're still fresh
+               if( listing[i]->type != MD_ENTRY_FILE ) {
+                  continue;
+               }
+            
+               child_path = md_fullpath( path, listing[i]->name, NULL );
+               if( child_path == NULL ) {
+                  UG_free_dir_listing(listing);
+                  UG_closedir(state, dh);
+                  goto UG_rmtree_cleanup;
+               }
+
+               rc = UG_unlink( state, path );
+               if( rc != 0 ) {
+                  UG_free_dir_listing(listing);
+                  UG_closedir(state, dh);
+                  SG_error("UG_unlink('%s') rc = %d\n", path, rc );
+                  goto UG_rmtree_cleanup;
+               }
+            }
+
+            for( size_t i = 0; i < num_children; i++ ) {
+            
+               // push back each directory 
+               if( listing[i]->type != MD_ENTRY_DIR ) {
+                  continue;
+               }
+
+               child_path = md_fullpath( path, listing[i]->name, NULL );
+               if( child_path == NULL ) {
+                  UG_free_dir_listing(listing);
+                  UG_closedir(state, dh);
+                  goto UG_rmtree_cleanup;
+               }
+
+               try {
+                  path_stack.push_back(child_path);
+               }
+               catch( bad_alloc& ba ) {
+                  UG_closedir(state, dh);
+                  UG_free_dir_listing(listing);
+                  goto UG_rmtree_cleanup;
+               }
+            }
+
+            UG_free_dir_listing(listing);
          }
 
-         continue;
-      }
-      else {
-         SG_error("fskit_detach_all_ex('%s') rc = %d\n", path, rc );
-         break;
+         // done!
+         UG_closedir(state, dh);
+         path_stack.pop_back();
+         SG_safe_free(path);
       }
    }
-   
-   fskit_entry_set_free( dir_children );
-   fskit_detach_ctx_free( ctx );
-   SG_safe_free( ctx );
+
+UG_rmtree_cleanup:
+
+   for( size_t i = 0; i < path_stack.size(); i++ ) {
+      SG_safe_free(path_stack.at(i));
+   }
 
    return rc;
-
 }
+
 
 // rename(2)
 // forward to fskit, which will take care of communicating with the MS
