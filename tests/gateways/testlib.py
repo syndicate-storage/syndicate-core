@@ -320,7 +320,13 @@ def stop_gateway( proc, stdout_path, valgrind=False ):
     if @valgrind is True, then return ("valgrind error", output) if there were memory errors
     """
     global running_gateways
-    proc.send_signal( signal.SIGTERM )
+
+    if proc.poll() is None:
+        try:
+            proc.send_signal( signal.SIGTERM )
+        except:
+            pass
+
     exitcode = finish( proc )
     running_gateways.remove(proc)
    
@@ -349,13 +355,13 @@ def clear_cache( config_dir ):
     return True
 
 
-def make_tmp_file( size, pattern ):
+def make_tmp_file( size, pattern, dir="/tmp" ):
     """
     Make a temporary file with the given size and byte pattern.
     """
     assert len(pattern) > 0
 
-    fd, path = tempfile.mkstemp()
+    fd, path = tempfile.mkstemp( dir=dir )
     ffd = os.fdopen(fd, "w")
 
     suffix = pattern[0:size%len(pattern)]
