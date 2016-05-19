@@ -62,9 +62,11 @@ int SG_proc_group_stop( struct SG_proc_group* group, int timeout );
 int SG_proc_group_add( struct SG_proc_group* group, struct SG_proc* proc );
 int SG_proc_group_remove( struct SG_proc_group* group, struct SG_proc* proc );
 int SG_proc_group_size( struct SG_proc_group* group );
+struct SG_proc* SG_proc_group_next( struct SG_proc_group* group, int i );
 
 // acquisition/release
 struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group );
+struct SG_proc* SG_proc_group_timed_acquire( struct SG_proc_group* group, int wait_millis, int* ret );
 int SG_proc_group_release( struct SG_proc_group* group, struct SG_proc* proc );
 
 // locking 
@@ -76,7 +78,7 @@ int SG_proc_group_unlock( struct SG_proc_group* group );
 int SG_proc_read_int64( FILE* f, int64_t* result );
 int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk );
 int SG_proc_write_int64( int fd, int64_t value );
-int SG_proc_write_chunk( int out_fd, struct SG_chunk* chunk );
+int SG_proc_write_chunk( int fd, struct SG_chunk* chunk );
 int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, SG_messages::DriverRequest* dreq );
 int SG_proc_write_request( int fd, SG_messages::DriverRequest* dreq );
 bool SG_proc_is_dead( struct SG_proc* proc );

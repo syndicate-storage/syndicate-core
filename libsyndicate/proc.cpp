@@ -359,14 +359,11 @@ int SG_proc_group_tryjoin( struct SG_proc_group* group ) {
 }
 
 
-// stop a group of processes 
+// stop a group of processes, but don't lock the group 
 // wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
 // free up all processes once they die.
 // return 0 on success.
-// NOTE: the group must *not* be locked
-int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
-   
-   SG_proc_group_wlock( group );
+int SG_proc_group_stop_unlocked( struct SG_proc_group* group, int timeout ) {
    
    if( timeout > 0 ) {
       
@@ -382,13 +379,12 @@ int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
       sleep( timeout );
    }
    
-   // kill them 
+   // kill them and free them up 
    for( int i = 0; i < group->capacity; i++ ) {
       
       if( group->procs[i] != NULL ) {
          
          SG_proc_kill( group->procs[i], SIGKILL );
-         
          SG_proc_list_remove( &group->free, group->procs[i] );
             
          SG_proc_free( group->procs[i] );
@@ -396,9 +392,21 @@ int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
       }
    }
    
-   SG_proc_group_unlock( group );
-   
    return 0;
+}
+
+
+// stop a group of processes 
+// wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
+// free up all processes once they die.
+// return 0 on success.
+// NOTE: the group must *not* be locked
+int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
+   
+   SG_proc_group_wlock( group );
+   int rc = SG_proc_group_stop_unlocked( group, timeout );
+   SG_proc_group_unlock( group );
+   return rc;
 }
 
 
@@ -681,7 +689,7 @@ static int SG_proc_group_add_unlocked( struct SG_proc_group* group, struct SG_pr
 
        // insert into the free list, so it can be acquired later
        SG_proc_list_insert( &group->free, proc );
-
+       sem_post( &group->num_free );
        SG_debug("Process group %p has %p (%d procs)\n", group, proc, group->num_procs );
    }
 
@@ -763,6 +771,19 @@ int SG_proc_group_size( struct SG_proc_group* group ) {
 }
 
 
+// what's the next non-NULL process?
+// group must be at least read-locked!
+struct SG_proc* SG_proc_group_next( struct SG_proc_group* group, int i ) {
+
+   for( int j = i; j < group->capacity; j++ ) {
+       if( group->procs[j] != NULL ) {
+          return group->procs[j];
+       }
+   }
+
+   return NULL;
+}
+
 // test to see if a process is dead
 // return 0 on success 
 int SG_proc_test_dead( struct SG_proc* proc ) {
@@ -777,17 +798,31 @@ int SG_proc_test_dead( struct SG_proc* proc ) {
       return 0;
    }
 
-   int rc = kill( proc->pid, 0 );
-   if( rc != 0 ) {
-      // dead, or we don't have permissions
-      // either way, it's not ours
-      proc->dead = true;
-      rc = -errno;
-      SG_debug("Proc %p is dead (kill %d rc = %d)\n", proc, proc->pid, rc );
+   int wstatus = 0;
+   int rc = waitpid( proc->pid, &wstatus, WNOHANG );
+   if( rc == 0 ) {
+      // not exited
       return 0;
    }
+   else if( rc < 0 ) {
+      // error 
+      rc = -errno;
+      SG_debug("Proc %p would not be waited (waitpid %d rc = %d)\n", proc, proc->pid, rc );
+      proc->dead = true;
+      return 0;
+   }
+   else {
+      // exited 
+      proc->dead = true;
 
-   return 0;
+      if( WIFEXITED(wstatus) ) {
+         SG_debug("Proc %p (%d) exited with status %d\n", proc, proc->pid, WEXITSTATUS(wstatus));
+      }
+      else if( WIFSIGNALED(wstatus) ) {
+         SG_debug("Proc %p (%d) died with signal %d\n", proc, proc->pid, WTERMSIG(wstatus));
+      }
+      return 0;
+   }
 }
 
 
@@ -810,6 +845,7 @@ static int SG_proc_group_remove_dead_unlocked( struct SG_proc_group* group, stru
       return -EINVAL;
    }
 
+   // dead
    rc = SG_proc_group_remove_unlocked( group, proc );
    if( rc != 0 ) {
       final_rc = rc;
@@ -1516,16 +1552,23 @@ int SG_proc_tryjoin( struct SG_proc* proc, int* child_status ) {
 }
 
 
-// reload a process group--respawn any running workers, using the same arguments
-// NOTE: group must be write-locked
+// reload a process group--respawn any running workers, using the same arguments.
+// stop all workers, and then start all workers
 // return 0 on succss
 // return -ENOMEM on OOM
 // return -errno on failure to start the new process
+// NOTE: group must be write-locked
 int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str, struct SG_chunk* new_config, struct SG_chunk* new_secrets, struct SG_chunk* new_driver ) {
    
    int rc = 0;
    struct SG_proc* new_proc = NULL;
-   struct SG_proc* old_proc = NULL;
+
+   // stop the group 
+   rc = SG_proc_group_stop_unlocked( group, 1 );
+   if( rc != 0 ) {
+      SG_error("Failed to stop all processes in group %p\n", group);
+      return rc;
+   }
    
    for( int i = 0; i < group->capacity; i++ ) {
       
@@ -1535,21 +1578,13 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
      
       SG_debug("Reload process '%s %s' (index %d, pid %d)\n", group->procs[i]->exec_str, group->procs[i]->exec_arg, i, group->procs[i]->pid );
 
-      // start up the new process, and have it stand by to be swapped in...
       new_proc = SG_proc_alloc( 1 );
       if( new_proc == NULL ) {
-         
-         // OOM
-         // just stop this process instead
-         old_proc = group->procs[i]; 
-         SG_proc_stop( old_proc, 1 );
-         SG_proc_group_remove_unlocked( group, old_proc ); 
-         
-         SG_proc_free( old_proc );
          rc = -ENOMEM;
          break;
       }
-      
+     
+      // start it up... 
       rc = SG_proc_start( new_proc, new_exec_str, group->procs[i]->exec_arg, group->procs[i]->exec_env, new_config, new_secrets, new_driver );
       if( rc != 0 ) {
          
@@ -1558,33 +1593,17 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
          SG_proc_stop( new_proc, 0 );
          SG_proc_free( new_proc );
          new_proc = NULL;
-         
-         // stop this process instead
-         old_proc = group->procs[i]; 
-         SG_proc_stop( old_proc, 1 );
-         SG_proc_group_remove_unlocked( group, old_proc );
-
-         SG_proc_free( old_proc );
          break;
       }
-      else {
-         
-         // stop the old process
-         old_proc = group->procs[i];
-         SG_proc_stop( old_proc, 1 );
-         SG_proc_group_remove_unlocked( group, old_proc );
-         
-         SG_proc_free( old_proc );
-
-         // add in the new one 
-         rc = SG_proc_group_add_unlocked( group, new_proc );
-         if( rc != 0 ) {
-            SG_error("SG_proc_group_add_unlocked(exec_arg='%s') rc = %d\n", new_proc->exec_arg, rc );
-            SG_proc_stop( new_proc, 0 ) ;
-            SG_proc_free( new_proc );
-            new_proc = NULL;
-            break;
-         }
+        
+      // add it in
+      rc = SG_proc_group_add_unlocked( group, new_proc );
+      if( rc != 0 ) {
+         SG_error("SG_proc_group_add_unlocked(%p, exec_arg='%s') rc = %d\n", group, new_proc->exec_arg, rc );
+         SG_proc_stop( new_proc, 0 ) ;
+         SG_proc_free( new_proc );
+         new_proc = NULL;
+         break;
       }
    }
    
@@ -1593,19 +1612,85 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
 
 
 // get a free process, and prevent it from receiving I/O from anyone else (i.e. take it off the free list)
+// wait at most wait_millis milliseconds before bailing (wait forever if wait_millis is < 0; fail immediately if wait_millis is 0 and there are no free processes)
 // return the non-NULL proc on success
 // return NULL if there are no free processess
+// set *ret to the error value:
+// * -EAGAIN if we should try again 
+// * -EINTR on interrupted wait
+// * -ENODATA if the group is no longer active
+// * -EPERM on general error
 // NOTE: group must NOT be locked
 // NOTE; this call blocks if there are available processes
-struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group ) {
+struct SG_proc* SG_proc_group_timed_acquire( struct SG_proc_group* group, int wait_millis, int* ret ) {
    
    int rc = 0;
    bool active = true;
+   struct timespec deadline;
+
+   memset( &deadline, 0, sizeof(struct timespec) );
+   
+   if( wait_millis >= 0 ) {
+       clock_gettime( CLOCK_REALTIME, &deadline );
+   
+       int64_t nsec = (int64_t)(deadline.tv_nsec) + (((int64_t)wait_millis) * 100000) % 1000000000L;
+       int64_t sec = (int64_t)(deadline.tv_sec) + ((int64_t)wait_millis) / 1000;
+
+       if( nsec > 1000000000L ) {
+          nsec -= 1000000000L;
+          sec += 1;
+       }
+
+       deadline.tv_sec = sec;
+       deadline.tv_nsec = nsec;
+   }
+
    while( active ) {
-      
+     
+      if( wait_millis >= 0 ) {
+         // wait and possibly abort
+         rc = sem_timedwait( &group->num_free, &deadline );
+         if( rc < 0 ) {
+            rc = -errno;
+            if( rc == -EINVAL ) {
+               SG_error("BUG: invalid semaphore or timestamp %ld.%ld\n", (long)deadline.tv_sec, (long)deadline.tv_nsec );
+               exit(1);
+            }
+            else if( rc == -ETIMEDOUT ) {
+                *ret = -EAGAIN;
+            }
+            else if( rc == -EINTR ) {
+                *ret = -EINTR;
+            }
+
+            return NULL;
+         }
+      }
+      else {
+         // block
+         rc = sem_wait( &group->num_free );
+         if( rc < 0 ) {
+            rc = -errno;
+            if( rc == -EINVAL ) {
+               SG_error("%s", "BUG: invalid semaphore\n");
+               exit(1);
+            }
+            else {
+               SG_debug("sem_wait rc = %d\n", rc );
+            }
+            
+            if( rc == -EINTR ) {
+               *ret = rc;
+            }
+            return NULL;
+         }
+      }
+
       SG_proc_group_wlock( group );
       active = group->active;
       if( !active ) {
+         *ret = -ENODATA;
+         SG_proc_group_unlock( group );
          break;
       }
       
@@ -1630,10 +1715,12 @@ struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group ) {
          if( rc < 0 ) {
             SG_proc_group_unlock( group );
             SG_error("SG_proc_group_remove_if_dead_unlocked(%p, %p) rc = %d\n", group, proc, rc );
+
+            *ret = -EPERM;
             return NULL;
          }
          if( rc > 0 ) {
-            // dead 
+            // dead; try again 
             rc = 0;
             SG_proc_group_unlock( group );
             continue;
@@ -1645,12 +1732,19 @@ struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group ) {
       }
    }
 
-   if( !group->active ) {
+   if( !active ) {
       SG_warn("Inactive process group %p\n", group );
    }
    
    // if we reach here, then it means our process group is dead
    return NULL;
+}
+
+
+// acquire without blocking
+struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group ) {
+   int ret = 0;
+   return SG_proc_group_timed_acquire( group, 0, &ret );
 }
 
 
