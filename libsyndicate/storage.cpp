@@ -154,6 +154,7 @@ int md_init_local_storage( struct md_syndicate_conf* c ) {
       "logs",
       "syndicate",
       "certs",
+      "ipc",
       (char const*)NULL
    };
 
