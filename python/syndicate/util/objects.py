@@ -145,9 +145,9 @@ def load_driver_secrets( secrets_path, gateway_privkey_pem ):
 
 
 
-def load_driver( driver_path, gateway_privkey_pem ):
+def load_driver( driver_path, gateway_privkey_pem, include_secrets=True ):
    """
-   Load a driver.
+   Load a driver, given either a path on disk, or a python package name.
    
    Each file in the driver_path will be incorporated as a base64-encoded string
    in a JSON document, keyed by its filename.
@@ -158,6 +158,13 @@ def load_driver( driver_path, gateway_privkey_pem ):
    Returns a dict with the base64-encoded contents of each file in driver_path
    """
    
+   try:
+       # maybe a python module?  get the actual path on disk
+       driver_mod = __import__(driver_path)
+       driver_path = driver_mod.__path__
+   except ImportError:
+       pass
+
    driver = {}
    
    for filename in os.listdir( driver_path ):
@@ -165,7 +172,10 @@ def load_driver( driver_path, gateway_privkey_pem ):
       path = os.path.join( driver_path, filename )
       data = None
       if filename == 'secrets':
-         data = load_driver_secrets( path, gateway_privkey_pem )
+          if include_secrets:
+             data = load_driver_secrets( path, gateway_privkey_pem )
+          else:
+             data = "{}"
       
       else:
          with open( path, "r" ) as f:
@@ -2063,7 +2073,8 @@ class Gateway( StubObject ):
    @classmethod 
    def parse_gateway_driver( cls, driver_path, lib ):
       """
-      Store the driver path to lib.driver_path 
+      Store the driver path to lib.driver_path
+      Can be a path to a directory, or the name of a python package
       """
       lib.driver_path = driver_path
       return driver_path, {}
