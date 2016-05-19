@@ -571,6 +571,7 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       
       // replaced!
       // nothing more to do--the new inode has the right version, name, and size
+      UG_inode_set_refresh_time_now( inode );
       return 1;
    }
    
@@ -592,6 +593,8 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
 
          // nothing to do; our copy is fresh
          SG_debug("%" PRIX64 " is coordinated locally\n", inode_data->file_id );
+         UG_inode_set_refresh_time_now( inode );
+         UG_inode_set_read_stale( inode, false );
          return 0;
       }
    }
@@ -1675,7 +1678,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    need_request_refresh = (UG_inode_is_write_stale( inode, &now ) && coordinator_id != SG_gateway_id(gateway));
    if( !need_request_refresh && !UG_inode_is_read_stale( inode, &now ) ) {
 
-      // still fresh 
+      // still fresh
       fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
       SG_safe_free( fent_name );
       SG_safe_free( fs_dirpath );
@@ -1696,7 +1699,6 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
       }
    }
    
-   SG_debug("Refresh inode %" PRIX64 "\n", UG_inode_file_id( inode ) );
  
    rc = ms_client_getattr_request( &path_ent, volume_id, file_id, file_version, write_nonce, NULL);
    if( rc != 0 ) {
@@ -1723,6 +1725,18 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
       SG_safe_free( fs_dirpath );
       md_entry_free( &entry );
       SG_debug("Entry %" PRIX64 " is fresh\n", file_id );
+
+      // mark as such if not intermittently changed 
+      fskit_entry_wlock( UG_inode_fskit_entry(inode) );
+
+      if( UG_inode_file_version(inode) == file_version && UG_inode_write_nonce(inode) == write_nonce && UG_inode_coordinator_id(inode) == coordinator_id ) {
+         // no change
+         UG_inode_set_read_stale( inode, false );
+         UG_inode_set_refresh_time_now( inode );
+      }
+
+      fskit_entry_unlock( UG_inode_fskit_entry(inode) );
+
       return 0;
    }
 
@@ -1748,6 +1762,8 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
 
       return -ENOENT;
    } 
+
+   fskit_entry_wlock( fent );
 
    rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, fent_name, &entry );
 
