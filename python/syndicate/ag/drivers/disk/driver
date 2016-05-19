@@ -105,6 +105,9 @@ def next_dataset( driver_config, driver_secrets ):
     Return the next dataset command for the AG to process.
     Should block until there's data.
 
+    Runs in the same process as the 'refresh()' method,
+    but in a separate thread.
+
     Must call gateway.crawl() to feed the data into the AG.
     Return True if there are more datasets to process.
     Return False if not.
@@ -132,29 +135,35 @@ def next_dataset( driver_config, driver_secrets ):
             time.sleep(1.0)
             continue
 
-        full_path = os.path.join( dataset_dir, next_path )
-        sb = os.stat( full_path )
-        next_path = '/' + next_path     # do this here since os.path.join won't work with absolute paths
+        full_path = gateway.path_join( dataset_dir, next_path )
+        if os.path.exists( full_path ):
+            # creating!
+            try:
+                sb = os.stat( full_path )
+            except:
+                continue
 
-        cmd = None
+            next_path = '/' + next_path.strip("/")     # do this here since os.path.join won't work with absolute paths
 
-        gateway.log_error("Will '%s' '%s'" % (next_cmd, next_path) )
+            cmd = None
+            gateway.log_error("Will '%s' '%s'" % (next_cmd, next_path) )
 
-        if stat.S_ISDIR( sb.st_mode ):
-            # directory 
-            cmd = gateway.make_metadata_command( next_cmd, "directory", 0555, None, next_path, write_ttl=1000 )
+            if stat.S_ISDIR( sb.st_mode ):
+                # directory 
+                cmd = gateway.make_metadata_command( next_cmd, "directory", 0555, None, next_path, write_ttl=1000 )
 
-        elif stat.S_ISREG( sb.st_mode ):
-            # file 
-            cmd = gateway.make_metadata_command( next_cmd, "file", 0555, sb.st_size, next_path, write_ttl=1000 )
+            elif stat.S_ISREG( sb.st_mode ):
+                # file 
+                cmd = gateway.make_metadata_command( next_cmd, "file", 0555, sb.st_size, next_path, write_ttl=1000 )
 
-        if cmd is not None:
-            # have a command!
-            break
+            if cmd is not None:
+                # have a command!
+                gateway.log_error("next cmd: %s\n" % cmd)
+                break
 
-        else:
-            # try next path 
-            continue
+            else:
+                # try next path 
+                continue
 
     # send the command to the AG and get back the result
     if cmd is not None:
@@ -173,6 +182,8 @@ def next_dataset( driver_config, driver_secrets ):
 def read( request, chunk_fd, driver_config, driver_secrets ):
     """
     Read a chunk of data.
+    Runs in a separate process from 'next_dataset' and 'refresh'
+
     @request is a DriverRequest
     @chunk_fd is a file descriptor to which to write the data.
     @driver_config is a dict containing the driver's config
@@ -219,6 +230,9 @@ def refresh( request, driver_config, driver_secrets ):
     Request to refresh a particular path.
     Verify that it still exists, and if so, 
     queue it for republishing.
+
+    This runs in the same process as the 'next_dataset()' method,
+    but in a separate thread.
     """
     global path_queue
    
