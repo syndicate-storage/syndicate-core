@@ -411,6 +411,7 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    char envar_volume_id[100];
    char envar_gateway_id[100];
    char envar_config_path[PATH_MAX+100];
+   char envar_ipc_root[PATH_MAX+100];
 
    ms::ms_user_cert user_cert;
    ms::ms_user_cert volume_owner_cert;
@@ -492,6 +493,12 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
       exit(1);
    }
 
+   rc = snprintf( envar_ipc_root, PATH_MAX+100, "SYNDICATE_IPC_PATH=%s/%" PRIu64 "", c->ipc_root, c->gateway );
+   if( rc >= PATH_MAX+100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
    rc = md_conf_add_envar( c, envar_user_id );
    if( rc != 0 ) {
       return rc;
@@ -508,6 +515,11 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    }
 
    rc = md_conf_add_envar( c, envar_config_path );
+   if( rc != 0 ) {
+      return rc;
+   }
+
+   rc = md_conf_add_envar( c, envar_ipc_root );
    if( rc != 0 ) {
       return rc;
    }
@@ -785,6 +797,19 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
 
          conf->certs_root = SG_strdup_or_null( value );
          if( conf->certs_root == NULL ) {
+            return -ENOMEM;
+         }
+      }
+
+      else if( strcmp( key, SG_CONFIG_IPC_ROOT ) == 0 ) {
+
+         // path to IPC objects root 
+         if( conf->ipc_root != NULL ) {
+            SG_safe_free( conf->ipc_root );
+         }
+
+         conf->ipc_root = SG_strdup_or_null( value );
+         if( conf->ipc_root == NULL ) {
             return -ENOMEM;
          }
       }
@@ -1207,6 +1232,7 @@ int md_free_conf( struct md_syndicate_conf* conf ) {
       (void*)conf->content_url,
       (void*)conf->data_root,
       (void*)conf->certs_root,
+      (void*)conf->ipc_root,
       (void*)conf->certs_path,
       (void*)conf->syndicate_path,
       (void*)conf->ms_username,
@@ -2557,6 +2583,45 @@ int md_expand_path( char const* path, char** expanded, size_t* expanded_len ) {
     
     return 0;
 }
+
+
+// clear the IPC root (only do this on startup)
+// will clear gateway-specific state
+// return 0 on success
+// return -EPERM on failure
+static int md_ipc_root_clear( char const* ipc_root, uint64_t gateway_id ) {
+
+   int rc = 0;
+   char ipc_path[PATH_MAX];
+   char ipc_cmd[PATH_MAX+100];
+
+   rc = snprintf(ipc_path, PATH_MAX, "%s/%" PRIu64, ipc_root, gateway_id );
+   if( rc == PATH_MAX ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = snprintf(ipc_cmd, PATH_MAX+100, "/bin/rm -rf \"%s\"", ipc_path );
+   if( rc == PATH_MAX+100 ) {
+      SG_error("%s", "FATAL: overflow\n");
+      exit(1);
+   }
+
+   rc = system(ipc_cmd);
+   if( rc != 0 ) {
+      SG_error("Failed to clear IPC directory with '%s': exit %d\n", ipc_cmd, rc );
+      return -EPERM;
+   }
+
+   rc = md_mkdirs3( ipc_path, 0700 );
+   if( rc != 0 ) {
+      SG_error("Failed to re-create '%s': rc = %d\n", ipc_path, rc );
+      return -EPERM;
+   }
+
+   return 0;
+}
+
    
 // initialize Syndicate
 // return 0 on success 
@@ -2744,7 +2809,15 @@ static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* cli
    
    SG_debug("Running as Gateway %" PRIu64 "\n", conf->gateway );
    SG_debug("content URL is %s\n", conf->content_url );
-   
+  
+   // clear IPC objects 
+   SG_debug("Clearing IPC root '%s'\n", conf->ipc_root );
+   rc = md_ipc_root_clear( conf->ipc_root, conf->gateway );
+   if( rc != 0 ) {
+      SG_error("Failed to clear IPC root '%s'\n", conf->ipc_root );
+      return -EPERM;
+   }
+
    return rc;
 }
 
@@ -2796,6 +2869,11 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    }
 
    rc = md_expand_path( SG_DEFAULT_DATA_ROOT, &conf->data_root, &path_len );
+   if( rc != 0 ) {
+      exit(1);
+   }
+
+   rc = md_expand_path( SG_DEFAULT_IPC_ROOT, &conf->ipc_root, &path_len );
    if( rc != 0 ) {
       exit(1);
    }
@@ -3025,5 +3103,21 @@ int md_entry_to_string( struct md_entry* ent, char** data ) {
 // get data root directory
 char* md_conf_get_data_root( struct md_syndicate_conf* conf ) {
     return conf->data_root;
+}
+
+// get IPC root directory 
+char* md_conf_get_ipc_root( struct md_syndicate_conf* conf ) {
+   return conf->ipc_root;
+}
+
+// get IPC gateway-specific directory 
+char* md_conf_get_ipc_dir( struct md_syndicate_conf* conf, char* pathbuf, size_t pathbuf_len ) {
+   int rc = snprintf( pathbuf, pathbuf_len, "%s/%" PRIu64, conf->ipc_root, conf->gateway );
+   if( (unsigned)rc == pathbuf_len ) {
+      // overflow
+      return NULL; 
+   }
+
+   return pathbuf;
 }
 

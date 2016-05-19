@@ -112,26 +112,6 @@ struct md_entry {
 
 #define MD_ENTRY_INITIALIZED( ent ) ((ent).type != 0 && (ent).name != NULL)
 
-typedef list<struct md_entry*> md_entry_list;
-
-// metadata update operations
-#define MD_OP_ADD    'A'      // add/replace an entry
-#define MD_OP_RM     'R'      // remove an entry
-#define MD_OP_UP     'U'      // update an existing entry
-#define MD_OP_ERR    'E'      // (response only) error encountered in processing the entry
-#define MD_OP_VER    'V'      // write verification request
-#define MD_OP_USR    'S'      // special (context-specific) state
-#define MD_OP_NEWBLK 'B'      // new block written
-#define MD_OP_CHOWN  'C'
-
-// upload buffer
-struct md_upload_buf {
-   char const* text;
-   int offset;
-   int len;
-};
-
-
 // merge command-line options with the config....
 #define MD_SYNDICATE_CONF_OPT( conf, optname, value, result ) \
    do { \
@@ -162,6 +142,7 @@ struct md_syndicate_conf {
    char* data_root;                                   // root of the path where we store local file blocks
    char* certs_root;                                  // path to the *root* directory containing cached certs from other users, volumes, and gateways.
    char* certs_path;                                  // path to the *gateway-specific* directory containing cached certs.  Derived from certs_root; set at runtime.
+   char* ipc_root;                                    // path to any temporary driver state (IPC objects like UNIX domain sockets or named pipes)
    
    // command-line options 
    char* volume_name;                                 // name of the volume we're connected to
@@ -241,6 +222,7 @@ struct md_syndicate_conf {
 #define SG_CONFIG_DATA_ROOT               "data"
 #define SG_CONFIG_SYNDICATE_PATH          "syndicate"
 #define SG_CONFIG_CERTS_ROOT              "certs"
+#define SG_CONFIG_IPC_ROOT                "ipc"
 
 #define SG_CONFIG_CERTS_RELOAD_HELPER     "certs_reload"
 #define SG_CONFIG_DRIVER_RELOAD_HELPER    "driver_reload"
@@ -275,6 +257,7 @@ struct md_syndicate_conf {
 #define SG_DEFAULT_DATA_ROOT        "~/.syndicate/data"
 #define SG_DEFAULT_SYNDICATE_PATH   "~/.syndicate/syndicate"
 #define SG_DEFAULT_CERTS_ROOT       "~/.syndicate/certs"
+#define SG_DEFAULT_IPC_ROOT         "~/.syndicate/ipc"
 
 #ifdef _PACKAGED
 #define SG_DEFAULT_CERTS_RELOAD_HELPER     "/usr/lib/syndicate/certs_reload"
@@ -318,6 +301,8 @@ int md_default_conf( struct md_syndicate_conf* conf );
 int md_check_conf( struct md_syndicate_conf* conf );
 
 char* md_conf_get_data_root( struct md_syndicate_conf* conf );
+char* md_conf_get_ipc_root( struct md_syndicate_conf* conf );
+char* md_conf_get_ipc_dir( struct md_syndicate_conf* conf, char* pathbuf, size_t pathbuf_len );
 
 // md_entry
 struct md_entry* md_entry_dup( struct md_entry* src );
