@@ -54,7 +54,8 @@ OBJECT_DIR_NAMES = {
    "data": "data",
    "drivers": "drivers",
    "logs": "logs",
-   "amd": "amd"
+   "amd": "amd",
+   "ipc": "ipc"
 }
 
 CONFIG_SYNDICATE_KEYS = [
@@ -67,7 +68,8 @@ CONFIG_SYNDICATE_KEYS = [
    "drivers",
    "logs",
    "data",
-   "certs"
+   "certs",
+   "ipc"
 ]
    
 CONFIG_DEFAULTS = {
@@ -96,6 +98,7 @@ CONFIG_OPTIONS = {
    "user_keys":         ("-U", 1, "Path to the directory holding the User private keys."),
    "syndicate_keys":    ("-S", 1, "Path to the directory holding the Syndicate public keys."),
    "certs_dir":         ("-C", 1, "Path to the directory to store remotely-fetched certificates."),
+   "ipc_dir":           ("-i", 1, "Path to the directory to store IPC objects for gateways."),
    "config":            ("-c", 1, "Path to your config file (default is %s)." % CONFIG_FILENAME),
    "debug":             ("-d", 0, "Verbose debugging output"),
    "trust_public_key":  ("-t", 0, "If set, automatically trust the Syndicate public key if it is not yet trusted."),
