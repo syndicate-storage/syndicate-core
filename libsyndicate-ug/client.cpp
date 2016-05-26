@@ -543,6 +543,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
    char* path = NULL;
    char* child_path = NULL;
    size_t num_children = 0;
+   bool empty = true;
 
    char* root_path_dup = SG_strdup_or_null(root_path);
    if( root_path_dup == NULL ) {
@@ -550,7 +551,14 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
    }
 
    vector<char*> path_stack;
-   path_stack.push_back(root_path_dup);
+
+   try {
+       path_stack.push_back(root_path_dup);
+   }
+   catch( bad_alloc& ba ) {
+       SG_safe_free( root_path_dup );
+       return -ENOMEM;
+   }
 
    while( path_stack.size() > 0 ) {
 
@@ -564,14 +572,18 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
       if( S_ISREG(sb.st_mode) ) {
          // file--unlink
+         SG_debug("Remove file '%s'\n", path);
          rc = UG_unlink( state, path );
          if( rc != 0 ) {
             SG_error("UG_unlink('%s') rc = %d\n", path, rc );
             goto UG_rmtree_cleanup;
-         } 
+         }
+         path_stack.pop_back();
+         SG_safe_free(path);
       }
       else if( S_ISDIR(sb.st_mode) ) {
-         // dir--expand 
+
+         SG_debug("Remove children of directory '%s'\n", path);
          dh = UG_opendir( state, path, &rc );
          if( dh == NULL ) {
             SG_error("UG_opendir('%s') rc = %d\n", path, rc );
@@ -586,15 +598,20 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                SG_error("UG_readdir('%s') rc = %d\n", path, rc );
                goto UG_rmtree_cleanup;
             }
+            
+            num_children = 0;
+            if( listing != NULL ) { 
+                for( int i = 0; listing[i] != NULL; i++ ) {
+                   num_children++;
+                }
+            }
 
-            if( rc == 0 ) {
-               // out of children  
-               UG_closedir(state, dh);
-               UG_free_dir_listing(listing);
+            if( num_children == 0 ) {
+               SG_debug("No children in '%s'\n", path);
                break;
             }
 
-            num_children = rc;
+            SG_debug("Read %zu children\n", num_children );
             for( size_t i = 0; i < num_children; i++ ) {
 
                // delete each file while we're still fresh
@@ -609,14 +626,20 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                   goto UG_rmtree_cleanup;
                }
 
-               rc = UG_unlink( state, path );
+               SG_debug("Remove '%s'\n", child_path );
+               rc = UG_unlink( state, child_path );
                if( rc != 0 ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
-                  SG_error("UG_unlink('%s') rc = %d\n", path, rc );
+                  SG_error("UG_unlink('%s') rc = %d\n", child_path, rc );
+                  SG_safe_free(child_path);
                   goto UG_rmtree_cleanup;
                }
+
+               SG_safe_free(child_path);
             }
+
+            empty = true;
 
             for( size_t i = 0; i < num_children; i++ ) {
             
@@ -625,12 +648,26 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                   continue;
                }
 
+               // skip the current directory
+               if( listing[i]->file_id == sb.st_ino ) {
+                  continue;
+               }
+
+               // skip the parent 
+               if( listing[i]->parent_id == sb.st_ino ) {
+                  continue;
+               }
+
+               // have a child directory 
+               empty = false;
                child_path = md_fullpath( path, listing[i]->name, NULL );
                if( child_path == NULL ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
                   goto UG_rmtree_cleanup;
                }
+
+               SG_debug("Directory: '%s' ('%s', %" PRIX64 ", %" PRIX64 ")\n", child_path, listing[i]->name, listing[i]->file_id, sb.st_ino );
 
                try {
                   path_stack.push_back(child_path);
@@ -642,13 +679,34 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                }
             }
 
-            UG_free_dir_listing(listing);
+            UG_free_dir_listing(listing);                  
          }
 
          // done!
          UG_closedir(state, dh);
-         path_stack.pop_back();
-         SG_safe_free(path);
+            
+         if( empty ) {
+            // maybe empty now
+            SG_debug("Remove empty directory '%s'\n", path );
+            rc = UG_rmdir( state, path );
+            if( rc != 0 ) {
+               if( rc == -ENOTEMPTY ) {
+                  SG_error("Directory '%s' is still not empty\n", path);
+                  
+                  // try again 
+                  continue;
+               }
+               else {
+                   SG_error("UG_rmdir('%s') rc = %d\n", path, rc );
+                   goto UG_rmtree_cleanup;
+               }
+            }
+            path_stack.pop_back();
+            SG_safe_free(path);
+         }
+         else {
+            SG_debug("Not empty yet: '%s'\n", path );
+         }
       }
    }
 
@@ -1568,6 +1626,7 @@ UG_handle_t* UG_opendir( struct UG_state* state, char const* path, int* rc ) {
 }
 
 // readdir(3)
+// return 0 on sucess, and populate ***ret_listing (will be NULL-terminated)
 int UG_readdir( struct UG_state* state, struct md_entry*** ret_listing, size_t num_children, UG_handle_t *fi ) {
 
    size_t num_read = 0;
@@ -1584,7 +1643,8 @@ int UG_readdir( struct UG_state* state, struct md_entry*** ret_listing, size_t n
    char const* path = fskit_dir_handle_get_path( fi->dh );
    
    fskit_entry_rlock( dent );
-   
+
+   uint64_t dent_id = fskit_entry_get_file_id( dent );
    listing = fskit_readdir( UG_state_fs( state ), fi->dh, num_children, &num_read, &rc );
    
    if( listing != NULL && num_read > 0 ) {
@@ -1633,7 +1693,11 @@ int UG_readdir( struct UG_state* state, struct md_entry*** ret_listing, size_t n
          
          if( inode != NULL ) {
             
-            rc = UG_inode_export( md_listing[i], inode, 0 );
+            rc = UG_inode_export( md_listing[i], inode, dent_id );
+         }
+         else {
+            SG_error("BUG: no inode associated with %" PRIX64 "\n", fskit_entry_get_file_id(child) );
+            exit(1);
          }
          
          fskit_entry_unlock( child );
