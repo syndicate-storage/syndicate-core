@@ -370,6 +370,13 @@ def make_metadata_command( cmd, ftype, mode, size, path, read_ttl=5000, write_tt
    return ret
 
 
+def make_metadata_delete_command( path ):
+    """
+    Make a delete command (helpful wrapper around make_metadata_command)
+    """
+    return make_metadata_command( "delete", "file", 0555, 0, path )
+
+
 def check_metadata_command( cmd_dict ):
    """
    Given a metadata command structure, verify that it is well-formed.
