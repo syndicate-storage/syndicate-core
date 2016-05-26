@@ -585,16 +585,16 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version );
       SG_manifest_set_file_version( UG_inode_manifest( inode ), inode_data->version );
    }
-   else {
+   else if( fskit_entry_get_type(fent) == FSKIT_ENTRY_TYPE_FILE ) {
 
-      // if version matches and we're the coordinator, then no further action is necessary.
-      // we know the latest data already.
+      // if version matches and we're the coordinator, and this is a file, then no further action is necessary.
       if( SG_gateway_id( gateway ) == UG_inode_coordinator_id( inode ) ) {
 
-         // nothing to do; our copy is fresh
+         // our copy is fresh if it's a file... 
          SG_debug("%" PRIX64 " is coordinated locally\n", inode_data->file_id );
          UG_inode_set_refresh_time_now( inode );
          UG_inode_set_read_stale( inode, false );
+         
          return 0;
       }
    }
@@ -1929,6 +1929,7 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
    struct timespec children_refresh_time;
    
    struct ms_client_multi_result results;
+   memset( &results, 0, sizeof(struct ms_client_multi_result) );
    
    char const* method = NULL;
    
