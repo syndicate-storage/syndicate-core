@@ -136,17 +136,26 @@ def next_dataset( driver_config, driver_secrets ):
             continue
 
         full_path = gateway.path_join( dataset_dir, next_path )
+        
+        # sanity checks...
+        if next_cmd in ["create", "update"] and not os.path.exists(full_path):
+            gateway.log_error("ERROR: '%s' on non-existant path '%s'" % (next_cmd, full_path))
+            continue
+
+        elif next_cmd in ["delete"] and os.path.exists(full_path):
+            gateway.log_error("ERROR: '%s' on existant path '%s'" % (next_cmd, full_path))
+            continue
+
+        next_path = '/' + next_path.strip("/")     # do this here since os.path.join won't work with absolute paths
+        cmd = None
+        gateway.log_error("Will '%s' '%s'" % (next_cmd, next_path) )
+
         if os.path.exists( full_path ):
-            # creating!
+            # creating or updating
             try:
                 sb = os.stat( full_path )
             except:
                 continue
-
-            next_path = '/' + next_path.strip("/")     # do this here since os.path.join won't work with absolute paths
-
-            cmd = None
-            gateway.log_error("Will '%s' '%s'" % (next_cmd, next_path) )
 
             if stat.S_ISDIR( sb.st_mode ):
                 # directory 
@@ -164,6 +173,12 @@ def next_dataset( driver_config, driver_secrets ):
             else:
                 # try next path 
                 continue
+
+        else:
+            # deleting
+            cmd = gateway.make_metadata_delete_command( next_path )
+            break
+
 
     # send the command to the AG and get back the result
     if cmd is not None:
