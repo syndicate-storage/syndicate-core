@@ -293,6 +293,9 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
    size_t num_children_fetched = 0;
    int64_t max_generation_fetched = 0;
    int query_count = 0;
+   int num_downloads_finished = 0;
+   CURL* curl = NULL;
+   bool aborted = false;
 
    int i = 0;
    
@@ -300,13 +303,20 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
    
    // sanity check 
    if( least_unknown_generation < 0 && dir_capacity < 0 ) {
+      SG_error("Invalid args: %" PRId64 " < 0 and %" PRId64 " < 0\n", least_unknown_generation, dir_capacity );
       return -EINVAL;
    }
    
    if( least_unknown_generation >= 0 && dir_capacity >= 0 ) {
+      SG_error("Invalid args: %" PRId64 " >= 0 and %" PRId64 " >= 0\n", least_unknown_generation, dir_capacity );
       return -EINVAL;
    }
-   
+
+   if( num_children < 0 && dir_capacity < 0 ) {
+      SG_error("Invalid args: %" PRId64 " < 0 and %" PRId64 " < 0\n", num_children, dir_capacity);
+      return -EINVAL;
+   }
+
    memset( results, 0, sizeof(struct ms_client_multi_result) );
    
    SG_debug("listdir %" PRIX64 ", num_children = %" PRId64 ", l.u.g. = %" PRId64 ", dir_capacity = %" PRId64 "\n", parent_id, num_children, least_unknown_generation, dir_capacity );
@@ -390,6 +400,8 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          break;
       }
       
+      num_downloads_finished = 0;
+
       // process all completed downloads 
       while( true ) {
          
@@ -397,10 +409,10 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          rc = md_download_loop_finished( dlloop, &dlctx );
          if( rc != 0 ) {
             
-            // out of downloads?
+            // finished all downloads?
             if( rc == -EAGAIN ) {
               
-               SG_debug("Out of downloads (rc = %d)\n", rc); 
+               SG_debug("Finished %d downloads (rc = %d)\n", num_downloads_finished, rc); 
                rc = 0;
                break;
             }
@@ -417,6 +429,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
             break;
          }
          
+         num_downloads_finished ++;
          num_children_downloaded += num_children_fetched;
          max_known_generation = MAX( max_generation_fetched, max_known_generation );
 
@@ -430,12 +443,14 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
                 break;
             }
          }
+
+         SG_debug("Fetched %" PRIu64 " (%" PRIu64 " downloaded total)\n", num_children_fetched, num_children_downloaded );
          
          // do we need to switch over to LISTDIR?
-         if( batch_queue.size() == 0 && num_children_downloaded < (unsigned)num_children ) {
+         if( batch_queue.size() == 0 && num_children > 0 && num_children_downloaded < (unsigned)num_children ) {
             
             // yup
-            SG_debug("Fetched %" PRIu64 " children (%" PRId64 " total); l.u.g. is now %" PRIu64 "\n", num_children_downloaded, num_children, max_known_generation + 1 );
+            SG_debug("Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 "\n", num_children_downloaded, num_children, max_known_generation + 1 );
             least_unknown_generation = max_known_generation + 1;
             batch_queue.push( least_unknown_generation );
          }
@@ -450,7 +465,9 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
    if( rc != 0 ) {
       
       // download stopped prematurely
+      // manually unref and free downloads.
       md_download_loop_abort( dlloop );
+      aborted = true;
    } 
    
    // free all ms_client_get_dir_download_state
@@ -467,6 +484,14 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       if( dlstate != NULL ) { 
           ms_client_get_dir_download_state_free( dlstate );
           dlstate = NULL;
+      }
+
+      if( aborted ) {
+         // unref downloads 
+         md_download_context_unref_free( dlctx, &curl );
+         if( curl != NULL ) {
+             curl_easy_cleanup( curl );
+         }
       }
    }
    
