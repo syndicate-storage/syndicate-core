@@ -2096,7 +2096,11 @@ int md_download_loop_cleanup( struct md_download_loop* dlloop, md_download_curl_
          continue;
       }
       
+      // remove from parent set
       md_download_context_clear_set( dlctx );
+
+      // wait to finish  
+      md_download_context_wait( dlctx, -1 );
 
       // unref 
       rc = md_download_context_unref( dlctx );
