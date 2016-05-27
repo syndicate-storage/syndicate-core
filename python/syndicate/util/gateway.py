@@ -544,7 +544,15 @@ def log_error( msg ):
     """
     Synchronously log an error message
     """
-    print >> sys.stderr, "[Driver %s] %s" % (os.getpid(), msg)
+    print >> sys.stderr, "[Driver %s ERROR] %s" % (os.getpid(), msg)
+    sys.stderr.flush()
+
+
+def log_debug( msg ):
+    """
+    Synchronously log a debug message
+    """
+    print >> sys.stderr, "[Driver %s DEBUG] %s" % (os.getpid(), msg)
     sys.stderr.flush()
 
 
