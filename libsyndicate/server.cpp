@@ -1871,6 +1871,7 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t blocksize = ms_client_get_volume_blocksize( ms );
    int64_t io_context = md_random64();
+   uint64_t* block_vec = NULL;
    
    // sanity check 
    if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
@@ -1981,6 +1982,17 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    
    lseek( chunks_fd, 0, SEEK_SET );
 
+   // block vector as an I/O hint 
+   block_vec = SG_CALLOC( uint64_t, request_msg->blocks_size() - 1 );
+   if( block_vec == NULL ) {
+      rc = -ENOMEM;
+      goto SG_server_HTTP_POST_PUTCHUNKS_finish;
+   }
+
+   for( int i = 1; i < request_msg->blocks_size(); i++ ) {
+      block_vec[i-1] = request_msg->blocks(i).block_id();
+   }
+
    // it all checks out.
    // feed manifests and blocks to the driver
    chunks_mmap = (char*)mmap( NULL, sb.st_size, PROT_READ, MAP_PRIVATE, chunks_fd, 0 );
@@ -2024,7 +2036,8 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
          reqdat->block_version = request_msg->blocks(i).block_version();
 
          SG_IO_hints_init( &io_hints, SG_IO_WRITE, reqdat->block_id * blocksize, blocksize );
-         io_hints.io_context = io_context;
+         SG_IO_hints_set_context( &io_hints, io_context );
+         SG_IO_hints_set_block_vec( &io_hints, block_vec, request_msg->blocks_size() - 1 );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
 
          // pass along
@@ -2048,7 +2061,8 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
          reqdat->block_version = 0;
          
          SG_IO_hints_init( &io_hints, SG_IO_WRITE, 0, 0 );
-         io_hints.io_context = io_context;
+         SG_IO_hints_set_context( &io_hints, io_context );
+         SG_IO_hints_set_block_vec( &io_hints, block_vec, request_msg->blocks_size() - 1 );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
 
          // put into the gateway 
@@ -2076,6 +2090,10 @@ SG_server_HTTP_POST_PUTCHUNKS_finish:
            unmap_rc = -errno;
            SG_error("munmap rc = %d\n", unmap_rc );
        }
+   }
+
+   if( block_vec != NULL ) {
+      SG_safe_free( block_vec );
    }
     
    return rc;
