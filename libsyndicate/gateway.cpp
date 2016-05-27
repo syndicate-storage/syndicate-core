@@ -45,6 +45,27 @@ int SG_IO_hints_init( struct SG_IO_hints* io_hints, int io_type, uint64_t offset
    return 0;
 }
 
+// set io context
+int SG_IO_hints_set_context( struct SG_IO_hints* io_hints, int context ) {
+   io_hints->io_context = context;
+   return 0;
+}
+
+// set block vector
+// NOTE: not copied
+int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec, int num_blocks ) {
+   io_hints->block_vec = block_vec;
+   io_hints->num_blocks = num_blocks;
+   return 0;
+}
+
+// get a reference to the block vector
+// NOTE: caller must not modify
+uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* num_blocks ) {
+   *num_blocks = io_hints->num_blocks;
+   return io_hints->block_vec;
+}
+
 // initialize an empty request data structure 
 // always succeeds 
 int SG_request_data_init( struct SG_request_data* reqdat ) {

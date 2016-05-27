@@ -33,6 +33,8 @@ struct SG_IO_hints {
    uint64_t io_context;     // unique identifier that is consistent across a series of related reads or writes
    uint64_t offset;         // logical offset of the read/write
    uint64_t len;            // logical length of the read/write
+   uint64_t* block_vec;     // which blocks are affected
+   int num_blocks;
 };
 
 // values for SG_IO_hints.io_type 
@@ -234,8 +236,11 @@ void SG_request_data_free( struct SG_request_data* reqdat );
 
 // I/O hints
 int SG_IO_hints_init( struct SG_IO_hints* io_hints, int io_type, uint64_t offset, uint64_t len );
+int SG_IO_hints_set_context( struct SG_IO_hints* io_hints, int context );
+int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec, int num_blocks );
 int SG_request_data_get_IO_hints( struct SG_request_data* gateway, struct SG_IO_hints* hints );
 int SG_request_data_set_IO_hints( struct SG_request_data* gateway, struct SG_IO_hints* hints );
+uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* len );
 
 // getters for gateway fields 
 void* SG_gateway_cls( struct SG_gateway* gateway );
