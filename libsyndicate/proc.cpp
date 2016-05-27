@@ -1149,6 +1149,12 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
           dreq->set_len( reqdat->io_hints.len );
           dreq->set_io_context( reqdat->io_hints.io_context );
       }
+
+      if( reqdat->io_hints.block_vec != NULL ) {
+          for( int i = 0; i < reqdat->io_hints.num_blocks; i++ ) {
+             dreq->add_block_vec( reqdat->io_hints.block_vec[i] );
+          } 
+      }
    }
    catch( bad_alloc& ba ) {
       return -ENOMEM;
