@@ -186,5 +186,6 @@ message DriverRequest {
    repeated bool cached_blocks = 16;     // vector of true|false where cached_blocks[i] is true if it's locally present in the cache
    optional Manifest manifest = 17;      // for whole-file operations
    optional uint64 block_size = 18;      // block size for this volume
+   repeated uint64 block_vec = 19;       // vector of block IDs affected by the (logical) write (for RG)
 }
 
