@@ -30,6 +30,12 @@ PUT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-put")
 CAT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-cat")
 RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
+NUM_FILES = 10
+
+def stop_and_save( output_dir, proc, out_path, save_name ):
+    exitcode, out = testlib.stop_gateway( proc, out_path )
+    testlib.save_output( output_dir, save_name, out )
+    return exitcode, out
 
 if __name__ == "__main__":
 
@@ -44,7 +50,7 @@ if __name__ == "__main__":
     RG_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "RG", caps="NONE", email=testconf.SYNDICATE_ADMIN )
     testlib.update_gateway( config_dir, RG_gateway_name, "port=31112", "driver=%s" % RG_DRIVER )
 
-    rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name )
+    rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name, valgrind=True )
     time.sleep(1)
     if rg_proc.poll() is not None:
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
@@ -54,30 +60,35 @@ if __name__ == "__main__":
     cat_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
     random_part = hex(random.randint(0, 2**32-1))[2:]
-    output_path = "/put-%s" % random_part
-    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
+    output_paths = []
 
-    testlib.save_output( output_dir, "syndicate-put", out )
+    for i in xrange(0, NUM_FILES):
+        output_path = "/put-%s-%s" % (random_part, i)
+        output_paths.append(output_path)
 
-    if exitcode != 0:
-        raise Exception("%s exited %s" % (PUT_PATH, exitcode))
+        exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
+        testlib.save_output( output_dir, "syndicate-put-%s" % i, out )
 
-    exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, output_path )
+        if exitcode != 0:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+            raise Exception("%s exited %s" % (PUT_PATH, exitcode))
 
-    testlib.save_output( output_dir, 'syndicate-cat', out )
+    for i in xrange(0, NUM_FILES):
+        path = output_paths[i]
+        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path )
+        testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
+        
+        if exitcode != 0:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+            raise Exception("%s exited %s" % (PUT_PATH, exitcode)) 
 
-    if exitcode != 0:
-        raise Exception("%s exited %s" % (CAT_PATH, exitcode))
+        # check for correctnes 
+        if expected_data not in out:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+            raise Exception("data not found in output")
 
-    rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )
-
-    testlib.save_output( output_dir, "syndicate-rg", rg_out )
-
+    rg_exitcode, rg_out = stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
     if rg_exitcode != 0:
         raise Exception("%s exited %s" % (RG_PATH, rg_exitcode))
-   
-    # check for correctnes 
-    if expected_data not in out:
-        raise Exception("data not found in output")
 
     sys.exit(0)
