@@ -110,6 +110,7 @@ class MSEntryIndex( storagetypes.Object ):
       else:
          if idx.file_id != file_id:
             # wrong node
+            logging.error("%s: %s != %s" % (index_key_name, idx.file_id, file_id))
             storagetypes.concurrent_return( -errno.EINVAL )
          
          old_alloced = idx.alloced
@@ -804,7 +805,7 @@ class MSEntryIndex( storagetypes.Object ):
          
       else:
          
-         logging.debug("Directory /%s/%s: failed to swap /%s/%s from %s to %s, num_children = %s" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index, free_gap, parent_num_children))
+         logging.info("Directory /%s/%s: failed to swap /%s/%s from %s to %s, num_children = %s" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index, free_gap, parent_num_children))
          
          # maybe we failed to swap, but are we now in range?
          if new_dir_index < parent_num_children:
