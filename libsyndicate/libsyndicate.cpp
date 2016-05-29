@@ -1136,20 +1136,10 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
          }
       }
       
-      else if( strcmp( key, SG_CONFIG_CACHE_SOFT_LIMIT ) == 0 ) {
+      else if( strcmp( key, SG_CONFIG_CACHE_SIZE_LIMIT ) == 0 ) {
          rc = md_conf_parse_long( value, &val );
          if( rc == 0 ) {
-            conf->cache_soft_limit = val;
-         }
-         else {
-            return -EINVAL;
-         }
-      }
-      
-      else if( strcmp( key, SG_CONFIG_CACHE_HARD_LIMIT ) == 0 ) {
-         rc = md_conf_parse_long( value, &val );
-         if( rc == 0 ) {
-            conf->cache_hard_limit = val;
+            conf->cache_size_limit = val;
          }
          else {
             return -EINVAL;
@@ -2919,8 +2909,7 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    conf->cert_bundle_version = -1;
    conf->volume_version = -1;
    
-   conf->cache_soft_limit = MD_CACHE_DEFAULT_SOFT_LIMIT;
-   conf->cache_hard_limit = MD_CACHE_DEFAULT_HARD_LIMIT;
+   conf->cache_size_limit = MD_CACHE_DEFAULT_SIZE_LIMIT;
 
    conf->certs_reload_helper = SG_strdup_or_die( SG_DEFAULT_CERTS_RELOAD_HELPER );
    conf->driver_reload_helper = SG_strdup_or_die( SG_DEFAULT_DRIVER_RELOAD_HELPER );

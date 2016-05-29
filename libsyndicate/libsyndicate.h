@@ -139,7 +139,7 @@ struct md_syndicate_conf {
    char* drivers_path;                                // path to the directory containing drivers
    char* syndicate_path;                              // path to the directory containing Syndicate public keys
    char* logs_path;                                   // path to the logfile directory to store gateway logs
-   char* data_root;                                   // root of the path where we store local file blocks
+   char* data_root;                                   // root of the path where we store local file blocks.  $data_root/staging is a special directory for holding dirty blocks yet to be replicated.
    char* certs_root;                                  // path to the *root* directory containing cached certs from other users, volumes, and gateways.
    char* certs_path;                                  // path to the *gateway-specific* directory containing cached certs.  Derived from certs_root; set at runtime.
    char* ipc_root;                                    // path to any temporary driver state (IPC objects like UNIX domain sockets or named pipes)
@@ -160,8 +160,7 @@ struct md_syndicate_conf {
    int connect_timeout;                               // number of seconds to wait to connect for data
    int transfer_timeout;                              // how long a manifest/block transfer is allowed to take (in seconds)
    bool verify_peer;                                  // whether or not to verify the gateway server's SSL certificate with peers (if using HTTPS to talk to them)
-   uint64_t cache_soft_limit;                         // soft limit on the size in bytes of the cache 
-   uint64_t cache_hard_limit;                         // hard limit on the size in bytes of the cache
+   uint64_t cache_size_limit;                         // soft limit on the size in bytes of the cache 
    char* metadata_url;                                // MS url
    uint64_t config_reload_freq;                       // how often do we check for a new configuration from the MS?
    
@@ -240,8 +239,7 @@ struct md_syndicate_conf {
 #define SG_CONFIG_DEBUG_LEVEL             "debug_level"
 #define SG_CONFIG_DEBUG_LOCK              "debug_lock"
 #define SG_CONFIG_TRANSFER_TIMEOUT        "transfer_timeout"
-#define SG_CONFIG_CACHE_SOFT_LIMIT        "cache_soft_limit"
-#define SG_CONFIG_CACHE_HARD_LIMIT        "cache_hard_limit"
+#define SG_CONFIG_CACHE_SIZE_LIMIT        "cache_size_limit"
 #define SG_CONFIG_MAX_READ_RETRY          "max_read_retry"
 #define SG_CONFIG_MAX_WRITE_RETRY         "max_write_retry"
 #define SG_CONFIG_MAX_METADATA_READ_RETRY "max_metadata_read_retry"
