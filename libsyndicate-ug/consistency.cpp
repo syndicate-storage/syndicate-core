@@ -471,7 +471,7 @@ static int UG_consistency_fskit_entry_replace( struct SG_gateway* gateway, char 
    
    // blow away the inode's cached data
    // (NOTE: don't care if this fails--it'll get reaped eventually)
-   md_cache_evict_file( cache, fskit_entry_get_file_id( fent ), UG_inode_file_version( inode ) );
+   md_cache_evict_file( cache, fskit_entry_get_file_id( fent ), UG_inode_file_version( inode ), 0 );
    
    UG_inode_free( inode );
    inode = NULL;
@@ -578,11 +578,12 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
    // versions don't match?
    if( !UG_inode_export_match_version( inode, inode_data ) ) {
       
-      // reversion--both metadata, and cached data
+      // reversion--both metadata, and cached data, and staged data
       SG_debug("%" PRIX64 ": old version = %" PRId64 ", new version = %" PRId64 "\n", inode_data->file_id, UG_inode_file_version( inode ), inode_data->version );
       
       // NOTE: don't really care if cache reversioning fails--it'll get reaped eventually
-      md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version );
+      md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version, 0 );
+      md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version, SG_CACHE_FLAG_MANAGED );
       SG_manifest_set_file_version( UG_inode_manifest( inode ), inode_data->version );
    }
    else if( fskit_entry_get_type(fent) == FSKIT_ENTRY_TYPE_FILE ) {
