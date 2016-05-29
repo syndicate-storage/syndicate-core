@@ -168,6 +168,7 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
    int listing_error = 0;
    struct md_entry* children = NULL;
    size_t num_children = 0;
+   size_t num_unique_children = 0;
    CURL* curl = NULL;
    
    int64_t biggest_generation = 0;
@@ -252,12 +253,14 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
          
          biggest_generation = children[i].generation;
       }
+
+      num_unique_children ++;
    }
    
    // NOTE: shallow free--we've copied the children into dir_listing
    SG_safe_free( children );
    
-   *ret_num_children = num_children;
+   *ret_num_children = num_unique_children;
    *max_gen = biggest_generation;
    
    return 0;
@@ -330,7 +333,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       else {
          
          // get all batches in parallel
-         for( int64_t batch_id = 0; batch_id * client->page_size < dir_capacity; batch_id++ ) {
+         for( int64_t batch_id = 0; batch_id * client->page_size < num_children; batch_id++ ) {
             
             batch_queue.push( batch_id );
          }
@@ -457,6 +460,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       }
       
       if( rc != 0 ) { 
+         SG_debug("Breaking loop on rc = %d\n", rc );
          break;
       }
       
@@ -503,6 +507,8 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       rc = 0;
    }
    
+   SG_debug("Downloaded %" PRId64 " children (out of %" PRId64 ")\n", num_children_downloaded, num_children );
+
    // coalesce what we have into results
    ents = SG_CALLOC( struct md_entry, children.size() );
    if( ents == NULL ) {
