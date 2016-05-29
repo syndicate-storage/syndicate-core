@@ -2373,6 +2373,7 @@ class MSEntry( storagetypes.Object ):
       
       if least_unknown_generation is not None:
          # want the next batch of entries created 
+         logging.info("Query up to l.u.g. %s" % least_unknown_generation )
          index_query = MSEntryIndex.GenerationQuery( dirent.volume_id, dirent.file_id, least_unknown_generation, -1 )
          
          @storagetypes.concurrent 
@@ -2394,6 +2395,7 @@ class MSEntry( storagetypes.Object ):
       elif page_id is not None:
          
          # want a page 
+         logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE) )
          dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE )
             
          # resolve an index node into the MSEntry, and cache both 
