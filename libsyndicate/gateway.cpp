@@ -787,7 +787,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    int rc = 0;
    struct ms_client* ms = SG_CALLOC( struct ms_client, 1 );
    struct md_syndicate_conf* conf = SG_CALLOC( struct md_syndicate_conf, 1 );
-   struct md_syndicate_cache* cache = SG_CALLOC( struct md_syndicate_cache, 1 );
+   struct md_syndicate_cache* cache = md_cache_new();
    struct md_HTTP* http = SG_CALLOC( struct md_HTTP, 1 );
    struct SG_driver* driver = SG_driver_alloc();
    struct md_downloader* dl = md_downloader_new();
@@ -929,7 +929,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    block_size = ms_client_get_volume_blocksize( ms );
    
    // initialize cache
-   rc = md_cache_init( cache, conf, conf->cache_soft_limit / block_size, conf->cache_hard_limit / block_size );
+   rc = md_cache_init( cache, conf, conf->cache_size_limit / block_size );
    if( rc != 0 ) {
       
       SG_error("md_cache_init rc = %d\n", rc );
@@ -1111,7 +1111,7 @@ SG_gateway_init_error:
    
    if( cache_inited ) {
       
-      if( cache->running ) {
+      if( md_cache_is_running( cache ) ) {
          md_cache_stop( cache );
       }
       
@@ -1905,7 +1905,7 @@ static int SG_gateway_cache_get_raw( struct SG_gateway* gateway, struct SG_reque
    int block_fd = 0;
    
    // stored on disk?
-   block_fd = md_cache_open_block( gateway->cache, reqdat->file_id, reqdat->file_version, block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, O_RDONLY );
+   block_fd = md_cache_open_block( gateway->cache, reqdat->file_id, reqdat->file_version, block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, O_RDONLY, 0 );
    
    if( block_fd < 0 ) {
       
@@ -1966,9 +1966,15 @@ static int SG_gateway_cache_put_raw_async( struct SG_gateway* gateway, struct SG
    memset( prefix, 0, 21 );
    memcpy( prefix, chunk->data, MIN( 20, chunk->len ) );
    
-   SG_debug("CACHE PUT %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) %zu bytes, data: '%s'...\n",
-            reqdat->file_id, reqdat->file_version, (SG_request_is_block( reqdat ) ? "block" : "manifest"), block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, chunk->len, prefix );
-   
+   if( cache_flags & SG_CACHE_FLAG_MANAGED ) {
+       SG_debug("STAGING PUT %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) %zu bytes, data: '%s'...\n",
+               reqdat->file_id, reqdat->file_version, (SG_request_is_block( reqdat ) ? "block" : "manifest"), block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, chunk->len, prefix );
+   }
+   else { 
+       SG_debug("CACHE PUT %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) %zu bytes, data: '%s'...\n",
+               reqdat->file_id, reqdat->file_version, (SG_request_is_block( reqdat ) ? "block" : "manifest"), block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, chunk->len, prefix );
+   }
+
    *cache_fut = f;
    
    return rc;
