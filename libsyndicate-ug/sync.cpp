@@ -325,7 +325,7 @@ static int UG_sync_dirty_blocks_restore( struct SG_gateway* gateway, struct UG_i
 
 
 // fsync an inode.
-// flush all dirty blocks to cache, and replicate both the dirty blocks and the manifest to each RG.
+// flush all dirty blocks to disk, and replicate both the dirty blocks and the manifest to each RG.
 // fent must not be locked
 int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_entry* fent ) {
    
