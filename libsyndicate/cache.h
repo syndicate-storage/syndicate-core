@@ -43,11 +43,11 @@
 
 #include "libsyndicate/libsyndicate.h"
 
-#define MD_CACHE_DEFAULT_SOFT_LIMIT        50000000        // 50 MB
-#define MD_CACHE_DEFAULT_HARD_LIMIT       100000000        // 100 MB
+#define MD_CACHE_DEFAULT_SIZE_LIMIT        50000000        // 50 MB
 
 #define SG_CACHE_FLAG_DETACHED          0x1             // caller won't wait for a future to finish (so the cache should reap it)
 #define SG_CACHE_FLAG_UNSHARED          0x2             // cache can free the block data when it frees the block future--it's unshared from the caller
+#define SG_CACHE_FLAG_MANAGED           0x4             // caller will be responsible for evicting the block.  It will be kept in a separate top-level directory in the cache.
 
 using namespace std;
 
@@ -61,21 +61,6 @@ struct md_cache_entry_key {
    int64_t block_version;
 };
 
-// "lexigraphic" comparison between cache_entry_keys
-bool md_cache_entry_key_comp_func( const struct md_cache_entry_key& c1, const struct md_cache_entry_key& c2 );
-
-struct md_cache_entry_key_comp {
-   
-   bool operator()( const struct md_cache_entry_key& c1, const struct md_cache_entry_key& c2 ) {
-      return md_cache_entry_key_comp_func( c1, c2 );
-   }
-   
-   // equality test
-   static bool equal( const struct md_cache_entry_key& c1, const struct md_cache_entry_key& c2 ) {
-      return c1.file_id == c2.file_id && c1.file_version == c2.file_version && c1.block_id == c2.block_id && c1.block_version == c2.block_version;
-   }
-};
-
 // ongoing cache write for a file
 struct md_cache_block_future;
 
@@ -84,85 +69,18 @@ typedef md_cache_block_buffer_t md_cache_completion_buffer_t;
 typedef set<struct md_cache_block_future*> md_cache_ongoing_writes_t;
 typedef list<struct md_cache_entry_key> md_cache_lru_t;
 
-struct md_syndicate_cache {
-   
-   // size limits (in blocks, not bytes!)
-   size_t hard_max_size;
-   size_t soft_max_size;
-   
-   // reference to global configuration 
-   struct md_syndicate_conf* conf;
-   
-   int num_blocks_written;                  // how many blocks have been successfully written to disk?
-   
-   // data to cache that is scheduled to be written to disk 
-   md_cache_block_buffer_t* pending;
-   pthread_rwlock_t pending_lock;
-   
-   // pending refers to one of these...
-   md_cache_block_buffer_t* pending_1;
-   md_cache_block_buffer_t* pending_2;
-   
-   // data that is being asynchronously written to disk
-   md_cache_ongoing_writes_t* ongoing_writes;
-   pthread_rwlock_t ongoing_writes_lock;
-   
-   // completed writes, to be reaped 
-   md_cache_completion_buffer_t* completed;
-   pthread_rwlock_t completed_lock;
-   
-   // completed refers to one of these
-   md_cache_completion_buffer_t* completed_1;
-   md_cache_completion_buffer_t* completed_2;
-   
-   // order in which blocks were added
-   md_cache_lru_t* cache_lru;
-   pthread_rwlock_t cache_lru_lock;
-   
-   // blocks to be promoted in the current lru 
-   md_cache_lru_t* promotes;
-   pthread_rwlock_t promotes_lock;
-   
-   // promotes refers to one of these
-   md_cache_lru_t* promotes_1;
-   md_cache_lru_t* promotes_2;
-   
-   // blocks to be evicted  (guarded by promotes_lock)
-   md_cache_lru_t* evicts;
-   
-   // evicts refers to one of these 
-   md_cache_lru_t* evicts_1;
-   md_cache_lru_t* evicts_2;
-   
-   // thread for processing writes and evictions
-   pthread_t thread;
-   bool running;
-   
-   // semaphore to block writes once the hard limit is met
-   sem_t sem_write_hard_limit;
-   
-   // semaphore to indicate that there is work to be done
-   sem_t sem_blocks_writing;
-   
-};
-
-// arguments to the main thread 
-struct md_syndicate_cache_thread_args {
-   struct md_syndicate_cache* cache;
-};
-
-// arguments to the write callback
-struct md_syndicate_cache_aio_write_args {
-   struct md_syndicate_cache* cache;
-   struct md_cache_block_future* future;
-};
+struct md_syndicate_cache;
+struct md_syndicate_cache_thread_args;
+struct md_syndicate_cache_aio_write_args;
 
 extern "C" {
 
-int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t soft_max_blocks, size_t hard_max_blocks );
+struct md_syndicate_cache* md_cache_new(void);
+int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t max_blocks );
 int md_cache_start( struct md_syndicate_cache* cache );
 int md_cache_stop( struct md_syndicate_cache* cache );
 int md_cache_destroy( struct md_syndicate_cache* cache );
+bool md_cache_is_running( struct md_syndicate_cache* cache );
 
 // asynchronous writes
 struct md_cache_block_future* md_cache_write_block_async( struct md_syndicate_cache* cache,
@@ -182,23 +100,21 @@ int md_cache_flush_writes( vector<struct md_cache_block_future*>* futs );
 
 // synchronous block I/O
 int md_cache_is_block_readable( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
-int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int flags );
+int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int flags, uint64_t cache_flags );
 ssize_t md_cache_read_block( int block_fd, char** buf );
-
-int md_cache_stat_block_by_id( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, struct stat* sb );
 
 // allow external client to evict data
 int md_cache_evict_all( struct md_syndicate_cache* cache );
-int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version );
-int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version );
-int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
+int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags );
+int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags );
+int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags );
 int md_cache_evict_block_async( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
 
 // allow external client to promote data in the cache (i.e. move it up the LRU)
 int md_cache_promote_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
 
 // allow external client to reversion a file 
-int md_cache_reversion_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t old_file_version, int64_t new_file_version );
+int md_cache_reversion_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t old_file_version, int64_t new_file_version, uint64_t cache_flags );
 
 // allow external client to scan a file's cached blocks
 int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char const*, void* ), void* cls );
