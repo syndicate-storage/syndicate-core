@@ -602,21 +602,19 @@ int UG_vacuum_run( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx 
          rc = UG_vacuumer_peek_vacuum_log( vacuumer, vctx, old_write_delta );
          if( rc != 0 ) {
          
-             SG_error("UG_vacuumer_peek_vacuum_log( %" PRIX64 ".%" PRId64 " ) rc = %d\n",
-                      vctx->inode_data.file_id, vctx->inode_data.version, rc );
+             if( rc != -EPROTO && rc != -ENODATA ) {
+                 SG_error("UG_vacuumer_peek_vacuum_log( %" PRIX64 ".%" PRId64 " ) rc = %d\n",
+                          vctx->inode_data.file_id, vctx->inode_data.version, rc );
+             }
+             else {
+                // not our place to vacuum
+                vctx->result_clean = true;
+                rc = 0;
+             }
          
              SG_safe_free( old_write_delta );
              SG_safe_delete( vacuum_request );
-
-             if( rc != -EPROTO && rc != -ENODATA ) {
-                return rc;
-             }
-             else {
-                // not our place to vacuum in the first place,
-                // or we're up-to-date
-                vctx->result_clean = true;
-                return 0;
-             }
+             return rc;
           }
 
           // skip if this is the current manifest, and if we're not unlinking 
