@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
         # list them 
         exitcode, out = testlib.run( LS_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, '/' )
-        testlib.save_output( output_dir, "syndicate-ls-full", out )
+        testlib.save_output( output_dir, "syndicate-ls-full-%s" % rep, out )
         if exitcode != 0:
             stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
             raise Exception("%s exited %s" % (LS_PATH, exitcode))
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
         # list them; should be nothing 
         exitcode, out = testlib.run( LS_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, '/' )
-        testlib.save_output( output_dir, "syndicate-ls-empty", out )
+        testlib.save_output( output_dir, "syndicate-ls-empty-%s" % rep, out )
         if exitcode != 0:
             stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
             raise Exception("%s exited %s" % (LS_PATH, exitcode))
