@@ -81,20 +81,22 @@ if __name__ == "__main__":
 
     expected_data_error = False
     for i in xrange(0,len(local_paths)):
-        local_path = local_paths[i]
-        expected_data = expected_datas[i]
+        # do each file twice 
+        for j in xrange(0, 2):
+            local_path = local_paths[i]
+            expected_data = expected_datas[i]
 
-        output_path = "/" + os.path.basename(local_path)
-        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, output_path, valgrind=True )
+            output_path = "/" + os.path.basename(local_path)
+            exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, output_path, valgrind=True )
 
-        testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
+            testlib.save_output( output_dir, 'syndicate-cat-%s-%s' % (i,j), out )
 
-        if exitcode != 0:
-            raise Exception("%s exited %s" % (CAT_PATH, exitcode))
+            if exitcode != 0:
+                raise Exception("%s exited %s" % (CAT_PATH, exitcode))
 
-        if expected_data not in out:
-            expected_data_error = True
-            break
+            if expected_data not in out:
+                expected_data_error = True
+                break
 
     ag_exitcode, ag_out = testlib.stop_gateway( ag_proc, ag_out_path )
     testlib.save_output(output_dir, "syndicate-ag", ag_out)
