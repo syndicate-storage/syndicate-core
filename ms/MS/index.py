@@ -35,8 +35,7 @@ import pickle
 import base64
 
 from common.msconfig import *
-   
-   
+
 class MSEntryIndexNode( storagetypes.Object ):
    """
    Directory entry index node.
@@ -79,7 +78,8 @@ class MSEntryIndex( storagetypes.Object ):
    """
    
    """
-   
+  
+   # TODO: should be the number of gateways in this volume
    NUM_COUNTER_SHARDS = 20
    
    @classmethod 
@@ -142,22 +142,16 @@ class MSEntryIndex( storagetypes.Object ):
       
       index_key_name = MSEntryDirEntIndex.make_key_name( volume_id, parent_id, dir_index )
       
-      idx = None
       nonce = random.randint( -2**63, 2**63 - 1 )
       result = True
-      
-      if idx is None:
-         idx = yield MSEntryDirEntIndex.get_or_insert_async( index_key_name, volume_id=volume_id, parent_id=parent_id, file_id=file_id, dir_index=dir_index, generation=generation, alloced=alloced, nonce=nonce )
+      idx = yield MSEntryDirEntIndex.get_or_insert_async( index_key_name, volume_id=volume_id, parent_id=parent_id, file_id=file_id, dir_index=dir_index, generation=generation, alloced=alloced, nonce=nonce )
       
       if idx.nonce == nonce:
          # created.
-         
-         """
          if alloced:
             logging.info("Directory /%s/%s: allocated index slot for /%s/%s at %s" % (volume_id, parent_id, volume_id, file_id, dir_index))
          else:
             logging.info("Directory /%s/%s: freed index slot at %s" % (volume_id, parent_id, dir_index))
-         """
          
          # need to create an entry index node as well.
          entry_key_name = MSEntryEntDirIndex.make_key_name( volume_id, file_id )
@@ -166,8 +160,6 @@ class MSEntryIndex( storagetypes.Object ):
          
          yield entry_idx.put_async()
          
-         # storagetypes.memcache.set( entry_key_name, entry_idx )
-      
       else:
          
          # already exists.  changing allocation status?
@@ -186,7 +178,7 @@ class MSEntryIndex( storagetypes.Object ):
          else:
             
             if alloced and idx.file_id != file_id:
-               # collision
+               # collision on insertion
                logging.error("Directory /%s/%s: collision inserting /%s/%s at %s (occupied by /%s/%s)" % (volume_id, parent_id, volume_id, file_id, dir_index, volume_id, idx.file_id))
                result = False
                
@@ -194,10 +186,6 @@ class MSEntryIndex( storagetypes.Object ):
                # created/set correctly
                result = True
       
-      """
-      if result:
-         storagetypes.memcache.set( index_key_name, idx )
-      """
       storagetypes.concurrent_return( result )
    
    
@@ -380,10 +368,13 @@ class MSEntryIndex( storagetypes.Object ):
       alloced_entry_idx_key_name = MSEntryEntDirIndex.make_key_name( volume_id, alloced_file_id )
       
       free_idx_key_name = MSEntryDirEntIndex.make_key_name( volume_id, parent_id, free_dir_index )
+      free_entry_idx_key_name = MSEntryEntDirIndex.make_key_name( volume_id, free_file_id )
       
       alloced_entry_idx_key = storagetypes.make_key( MSEntryEntDirIndex, alloced_entry_idx_key_name )
       free_idx_key = storagetypes.make_key( MSEntryDirEntIndex, free_idx_key_name )
       
+      storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name, free_entry_idx_key_name] )
+
       # if the free file ID is not known, get it 
       if free_file_id is None:
          
@@ -410,8 +401,6 @@ class MSEntryIndex( storagetypes.Object ):
                   
                   logging.error("/%s/%s: free index (/%s/%s, %s) is allocated" % (volume_id, parent_id, volume_id, free_idx.file_id, free_dir_index) )
                   
-                  storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name] )
-                  
                   if async:
                      return storagetypes.FutureWrapper( -errno.ESTALE )
                   else:
@@ -436,7 +425,8 @@ class MSEntryIndex( storagetypes.Object ):
          if free_file_id is None:
             check_free_file_id = False 
             
-         alloced_idx_data, free_idx_data = yield cls.__read_dirent_node( volume_id, parent_id, alloced_file_id, alloced_dir_index, async=True ), cls.__read_dirent_node( volume_id, parent_id, free_file_id, free_dir_index, async=True, check_file_id=check_free_file_id )
+         alloced_idx_data, free_idx_data = yield cls.__read_dirent_node( volume_id, parent_id, alloced_file_id, alloced_dir_index, async=True ), \
+                                                 cls.__read_dirent_node( volume_id, parent_id, free_file_id, free_dir_index, async=True, check_file_id=check_free_file_id )
          
          alloced_idx_rc, alloced_idx = alloced_idx_data
          
@@ -491,11 +481,9 @@ class MSEntryIndex( storagetypes.Object ):
          new_dir_idx.dir_index = free_dir_index
          new_entry_dir_idx.dir_index = free_dir_index 
          
-         logging.debug( "swap index slot of /%s/%s: slot %s --> slot %s (overwrites %s)" % (volume_id, alloced_file_id, alloced_dir_index, free_dir_index, free_file_id) )
+         logging.info( "swap index slot of /%s/%s: slot %s --> slot %s (overwrites %s)" % (volume_id, alloced_file_id, alloced_dir_index, free_dir_index, free_file_id) )
          
          yield new_dir_idx.put_async(), new_entry_dir_idx.put_async(), alloced_idx.key.delete_async()
-         
-         storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name] )
          
          storagetypes.concurrent_return( (0, alloced_idx, free_idx_file_id) )
       
@@ -504,7 +492,7 @@ class MSEntryIndex( storagetypes.Object ):
       def swap( free_file_id ):
          
          rc, alloced_idx, free_idx_file_id = yield storagetypes.transaction_async( lambda: do_swap( free_file_id ), xg=True )
-         
+
          if rc < 0:
             storagetypes.concurrent_return( rc )
          
@@ -526,9 +514,10 @@ class MSEntryIndex( storagetypes.Object ):
          
          storagetypes.concurrent_return( old_dir_index )
          
-      
+       
       rc_fut = swap( free_file_id )
-      
+      storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name, free_entry_idx_key_name] )
+
       if async:
          return rc_fut
       
@@ -650,13 +639,7 @@ class MSEntryIndex( storagetypes.Object ):
             # directory doesn't exist anymore...nothing to compactify 
             logging.info("Index node /%s/%s does not exist" % (volume_id, parent_id) )
             return 0
-         
-         if parent_max_cutoff == 0:
-            
-            # nothing left to compactify!
-            logging.info("Directory /%s/%s appears to be empty" % (volume_id, parent_id))
-            return 0
-         
+                 
          if old_max_cutoff is not None:
             
             # choose the smallest parent size seen so far as the cutoff, since it maimizes the number of entries
@@ -677,7 +660,13 @@ class MSEntryIndex( storagetypes.Object ):
             rc_fut = cls.__compactify_remove_index_async( volume_id, parent_id, free_file_id, free_dir_index )
             storagetypes.wait_futures( [rc_fut] )
             return 0
-         
+          
+         if parent_max_cutoff == 0:
+            
+            # nothing left to compactify!
+            logging.info("Directory /%s/%s appears to be empty" % (volume_id, parent_id))
+            return 0
+
          old_max_cutoff = parent_max_cutoff 
          
          replaced_dir_index, child_idx = cls.__compactify_child_delete( volume_id, parent_id, free_file_id, free_dir_index, parent_max_cutoff )
@@ -811,14 +800,14 @@ class MSEntryIndex( storagetypes.Object ):
          if new_dir_index < parent_num_children:
             
             # success
-            logging.debug("Directory /%s/%s: inserted /%s/%s at %s, since directory size is %s" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index, parent_num_children))
+            logging.info("Directory /%s/%s: inserted /%s/%s at %s, since directory size is %s" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index, parent_num_children))
             
             return (0, new_dir_index)
          
          elif rc == -errno.ENOENT:
             
             # someone else swapped us 
-            logging.debug("Directory /%s/%s: swapped /%s/%s out of %s by another process" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index))
+            logging.info("Directory /%s/%s: swapped /%s/%s out of %s by another process" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index))
             
             return (0, -1)
          
@@ -1101,12 +1090,13 @@ class MSEntryIndex( storagetypes.Object ):
       """
       Cache a node
       """
+      logging.info("Cache /%s/%s file_id=%s dir_index=%s" % (dir_index_node.volume_id, dir_index_node.parent_id, dir_index_node.file_id, dir_index_node.dir_index))
       idx_key_name = MSEntryDirEntIndex.make_key_name( dir_index_node.volume_id, dir_index_node.parent_id, dir_index_node.dir_index )
       ent_key_name = MSEntryEntDirIndex.make_key_name( dir_index_node.volume_id, dir_index_node.file_id )
       
       storagetypes.memcache.set_multi( {idx_key_name: dir_index_node, ent_key_name: dir_index_node} )
-   
-   
+ 
+
    @classmethod 
    def GenerationQuery( cls, volume_id, parent_id, generation_begin, generation_end ):
       """
@@ -1123,4 +1113,4 @@ class MSEntryIndex( storagetypes.Object ):
          qry = qry.filter( MSEntryDirEntIndex.generation < generation_end )
          
       return qry
-   
+
