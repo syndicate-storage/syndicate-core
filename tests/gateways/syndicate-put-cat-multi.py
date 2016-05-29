@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
         put_args += [local_path, output_path]
 
-    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, *put_args )
+    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, *put_args, valgrind=True )
     testlib.save_output( output_dir, "syndicate-put-%s" % i, out )
 
     if exitcode != 0:
@@ -78,12 +78,12 @@ if __name__ == "__main__":
 
     # cat each file multiple times
     for i in xrange(0, 10):
-        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, *output_paths )
-        testlib.save_output( output_dir, 'syndicate-cat-%s-%s' % (i,j), out )
+        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, *output_paths, valgrind=True )
+        testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
     
         if exitcode != 0:
             stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-            raise Exception("%s exited %s" % (PUT_PATH, exitcode)) 
+            raise Exception("%s exited %s" % (CAT_PATH, exitcode)) 
 
         # check for correctnes 
         if expected_data not in out:
