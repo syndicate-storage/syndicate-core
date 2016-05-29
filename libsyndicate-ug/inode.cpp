@@ -1068,7 +1068,7 @@ int UG_inode_manifest_merge_blocks( struct SG_gateway* gateway, struct UG_inode*
       
       // clear cached block (idempotent)
       if( existing_block != NULL ) {
-          md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), block_id, existing_block_version );
+          md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), block_id, existing_block_version, 0 );
       }
       
       // clear dirty block (idempotent)
@@ -1550,7 +1550,7 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
       }
       
       // clear cached block 
-      md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), dead_block_id, SG_manifest_block_version( block_info ) );
+      md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), dead_block_id, SG_manifest_block_version( block_info ), 0 );
    }
    
    if( new_version != 0 ) {
@@ -1558,8 +1558,9 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
       // next version 
       SG_manifest_set_file_version( UG_inode_manifest( inode ), new_version );
       
-      // reversion 
-      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version );
+      // reversion--both pending writes and cached data 
+      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
+      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, SG_CACHE_FLAG_MANAGED );
    }
   
    // drop extra manifest blocks 
