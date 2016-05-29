@@ -61,33 +61,38 @@ if __name__ == "__main__":
 
     random_part = hex(random.randint(0, 2**32-1))[2:]
     output_paths = []
+    put_args = []
 
     for i in xrange(0, NUM_FILES):
         output_path = "/put-%s-%s" % (random_part, i)
         output_paths.append(output_path)
 
-        exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
-        testlib.save_output( output_dir, "syndicate-put-%s" % i, out )
+        put_args += [local_path, output_path]
 
-        if exitcode != 0:
-            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-            raise Exception("%s exited %s" % (PUT_PATH, exitcode))
+    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, *put_args )
+    testlib.save_output( output_dir, "syndicate-put-%s" % i, out )
+
+    if exitcode != 0:
+        stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+        raise Exception("%s exited %s" % (PUT_PATH, exitcode))
 
     # cat each file multiple times
-    for i in xrange(0, NUM_FILES):
-        for j in xrange(0, 10):
-            path = output_paths[i]
-            exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path )
-            testlib.save_output( output_dir, 'syndicate-cat-%s-%s' % (i,j), out )
-        
-            if exitcode != 0:
-                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-                raise Exception("%s exited %s" % (PUT_PATH, exitcode)) 
+    for i in xrange(0, 10):
+        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, *output_paths )
+        testlib.save_output( output_dir, 'syndicate-cat-%s-%s' % (i,j), out )
+    
+        if exitcode != 0:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+            raise Exception("%s exited %s" % (PUT_PATH, exitcode)) 
 
-            # check for correctnes 
-            if expected_data not in out:
-                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-                raise Exception("data not found in output")
+        # check for correctnes 
+        if expected_data not in out:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+            raise Exception("data not found in output")
+
+        if out.count(expected_data) != len(output_paths):
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg") 
+            raise Exception("data occurs only %s times (expected %s)" % (out.count(expected_data), len(output_paths)))
 
     rg_exitcode, rg_out = stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
     if rg_exitcode != 0:
