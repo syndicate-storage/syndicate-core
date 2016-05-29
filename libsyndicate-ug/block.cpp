@@ -78,84 +78,6 @@ int UG_dirty_block_init_ram_nocopy( struct UG_dirty_block* dirty_block, struct S
 }
 
 
-// init dirty block from open file descriptor 
-// return 0 on success
-// return -ENOMEM on OOM 
-int UG_dirty_block_init_fd( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, int block_fd ) {
-   
-   int rc = 0;
-   
-   memset( dirty_block, 0, sizeof(struct UG_dirty_block) );
-   
-   rc = SG_manifest_block_dup( &dirty_block->info, info );
-   if( rc != 0 ) {
-      
-      return rc;
-   }
-   
-   dirty_block->block_fd = block_fd;
-   
-   return 0;
-}
-
-
-// make a deep copy of a dirty block's memory 
-// if dupfd is true, then duplicate the file descriptor as well if it is defined.
-// return 0 on success 
-// return -ENOMEM on OOM 
-int UG_dirty_block_deepcopy( struct UG_dirty_block* dest, struct UG_dirty_block* src, bool dupfd ) {
-
-   int rc = 0;
-   
-   memset( dest, 0, sizeof(struct UG_dirty_block) );
-   
-   rc = SG_manifest_block_dup( &dest->info, &src->info );
-   if( rc != 0 ) {
-      
-      return rc;
-   }
-   
-   // mark dirty 
-   SG_manifest_block_set_dirty( &dest->info, SG_manifest_block_is_dirty( &src->info ) );
-   
-   if( src->buf.data != NULL ) {
-      
-      char* buf_dup = SG_CALLOC( char, src->buf.len );
-      if( buf_dup == NULL ) {
-         
-         SG_manifest_block_free( &dest->info );
-         return -ENOMEM;
-      }
-      
-      memcpy( buf_dup, src->buf.data, src->buf.len );
-      
-      SG_chunk_init( &dest->buf, buf_dup, src->buf.len );
-   }
-   
-   if( src->block_fd >= 0 && dupfd ) {
-      
-      dest->block_fd = dup( src->block_fd );
-      if( dest->block_fd < 0 ) {
-         
-         rc = -errno;
-         
-         SG_manifest_block_free( &dest->info );
-         
-         if( dest->buf.data ) {
-            
-            SG_chunk_free( &dest->buf );
-         }
-         
-         return rc;
-      }
-   }
-   
-   clock_gettime( CLOCK_MONOTONIC, &dest->load_time );
-   
-   return rc;
-}
-
-
 // set a dirty block's buffer.  Use with care.
 // only works if the block is *not* shared/RAM-allocated.  If unshared, frees the buffer first.
 int UG_dirty_block_set_buf( struct UG_dirty_block* dest, struct SG_chunk* new_buf ) {
@@ -506,8 +428,8 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
       return -ENODATA;
    }
     
-   // gift the serialized data to the cache
-   rc = SG_gateway_cached_block_put_raw_async( gateway, &reqdat, &serialized_data, SG_CACHE_FLAG_UNSHARED, &fut );
+   // gift the serialized data to the cache, but tell the cache not to evict it (we'll do that ourselves)
+   rc = SG_gateway_cached_block_put_raw_async( gateway, &reqdat, &serialized_data, SG_CACHE_FLAG_UNSHARED | SG_CACHE_FLAG_MANAGED, &fut );
    SG_request_data_free( &reqdat );
    
    if( rc != 0 ) {
@@ -521,6 +443,7 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
    else {
       
       dirty_block->block_fut = fut;
+      dirty_block->managed = true;
    }
    
    return rc;
@@ -702,9 +625,14 @@ int UG_dirty_block_aligned( off_t offset, size_t buf_len, uint64_t block_size, u
 // evict and free a dirty block 
 // always succeeds
 int UG_dirty_block_evict_and_free( struct md_syndicate_cache* cache, struct UG_inode* inode, struct UG_dirty_block* block ) {
-   
+  
+   uint64_t flags = 0;
+   if( block->managed ) {
+      flags |= SG_CACHE_FLAG_MANAGED;
+   }
+
    // evict, if needed
-   md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), UG_dirty_block_id( block ), UG_dirty_block_version( block ) );
+   md_cache_evict_block( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), UG_dirty_block_id( block ), UG_dirty_block_version( block ), flags );
    
    // free up
    UG_dirty_block_free( block );

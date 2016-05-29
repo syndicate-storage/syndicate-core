@@ -35,6 +35,9 @@ struct UG_dirty_block {
    
    // is the buf owned by this object?
    bool unshared;
+
+   // is this block managed by us, or by the cache?
+   bool managed;
    
    ///// for writing ///////
    
@@ -63,8 +66,6 @@ int UG_IO_hints_init( struct UG_IO_hints* io_hints, int io_type, uint64_t offset
 // init dirty block 
 int UG_dirty_block_init_ram( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, char const* buf, size_t buflen );
 int UG_dirty_block_init_ram_nocopy( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, char* buf, size_t buflen );
-int UG_dirty_block_init_fd( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, int block_fd );
-int UG_dirty_block_deepcopy( struct UG_dirty_block* dest, struct UG_dirty_block* src, bool dupfd );
 
 // mark dirty 
 int UG_dirty_block_set_dirty( struct UG_dirty_block* dirty_block, bool dirty );
