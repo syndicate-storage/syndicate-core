@@ -888,6 +888,7 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
       }
    
       *block_data_offset = 0;
+      SG_safe_free( block_hash );
    }
 
    return 0;
