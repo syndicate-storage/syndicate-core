@@ -17,10 +17,19 @@
 """
 
 import logging
+import os
 
 logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s' )
 global_log = logging.getLogger()
-global_log.setLevel( logging.ERROR )
+
+
+if os.environ.get('SERVER_SOFTWARE','').startswith('Development'):
+    # full debug 
+    global_log.setLevel( logging.DEBUG )
+
+else:
+    # only errors
+    global_log.setLevel( logging.ERROR )
 
 #-------------------------
 def get_logger():
