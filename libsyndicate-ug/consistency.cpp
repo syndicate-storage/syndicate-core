@@ -583,7 +583,6 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       
       // NOTE: don't really care if cache reversioning fails--it'll get reaped eventually
       md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version, 0 );
-      md_cache_reversion_file( cache, inode_data->file_id, UG_inode_file_version( inode ), inode_data->version, SG_CACHE_FLAG_MANAGED );
       SG_manifest_set_file_version( UG_inode_manifest( inode ), inode_data->version );
    }
    else if( fskit_entry_get_type(fent) == FSKIT_ENTRY_TYPE_FILE ) {
