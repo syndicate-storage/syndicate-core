@@ -27,6 +27,10 @@
 // maximum length of a gateway reply: 1MB
 #define SG_CLIENT_MAX_REPLY_LEN         1024000
 
+// asynchronous upload 
+struct SG_client_request_async;
+typedef size_t (*SG_client_read_callback_t)( char*, size_t, size_t, void* );
+
 extern "C" {
     
 // extra data to include in a write
@@ -69,8 +73,11 @@ int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::R
 int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name );
 
 // gateway-to-gateway messaging.  The corresponding driver methods will be run 
+struct SG_client_request_async* SG_client_request_async_new(void);
+void SG_client_request_async_init( struct SG_client_request_async* req, SG_client_read_callback_t read_callback, size_t maxlen, void* cls );
+void* SG_client_request_async_cls( struct SG_client_request_async* datareq );
 int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_chunk* data_plane, SG_messages::Reply* reply );
-int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_chunk* data_plane, struct md_download_loop* dlloop, struct md_download_context* dlctx );
+int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct md_download_loop* dlloop, struct md_download_context* dlctx );
 int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_download_context* dlctx, SG_messages::Reply* reply );
 
 // low-level download logic 

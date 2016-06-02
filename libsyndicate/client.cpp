@@ -69,6 +69,91 @@ struct SG_client_request_cls {
 };
 
 
+// asynchronous upload state
+struct SG_client_request_async {
+
+   void* cls;
+   size_t len;
+   SG_client_read_callback_t read_callback;
+};
+
+// structure for synchronous uploads 
+struct SG_client_request_sync_state {
+   struct SG_chunk dataplane_message;
+   off_t offset;
+};
+
+// allocate an asynchronous request 
+// return NULL on OOM
+struct SG_client_request_async* SG_client_request_async_new(void) {
+   return SG_CALLOC( struct SG_client_request_async, 1 );
+}
+
+
+// get the user-given state from an async request 
+void* SG_client_request_async_cls( struct SG_client_request_async* datareq ) {
+   return datareq->cls;
+}
+
+// set up an asynchronous request 
+void SG_client_request_async_init( struct SG_client_request_async* req, SG_client_read_callback_t read_callback, size_t maxlen, void* cls ) {
+   req->read_callback = read_callback;
+   req->cls = cls;
+   req->len = maxlen;
+}
+
+
+// default read callback for synchronous requests 
+// returns number of bytes copied
+static size_t SG_client_request_sync_read_callback( char* buf, size_t len, size_t nitems, void* cls ) {
+   
+   struct SG_client_request_async* datareq = (struct SG_client_request_async*)cls;
+   struct SG_client_request_sync_state* sync_state = (struct SG_client_request_sync_state*)datareq->cls;
+
+   off_t max_copy = MIN( len * nitems, (unsigned)sync_state->dataplane_message.len - (unsigned)sync_state->offset );
+   if( max_copy < 0 ) {
+      // overflow 
+      SG_error("%s", "FATAL: overflow in copy\n");
+      exit(1);
+   }
+
+   memcpy( buf, sync_state->dataplane_message.data + sync_state->offset, max_copy );
+   return max_copy;
+}
+
+// make an async request closure for a RAM chunk 
+// the chunk will be ref'ed, not copied
+static struct SG_client_request_async* SG_client_request_sync( struct SG_chunk* dataplane_message ) {
+   struct SG_client_request_async* req = SG_client_request_async_new();
+   if( req == NULL ) {
+      return NULL;
+   }
+
+   struct SG_client_request_sync_state* sync_state = SG_CALLOC( struct SG_client_request_sync_state, 1 );
+   if( sync_state == NULL ) {
+      SG_safe_free( req );
+      return NULL;
+   }
+
+   sync_state->dataplane_message = *dataplane_message;
+   sync_state->offset = 0;
+
+   SG_client_request_async_init( req, SG_client_request_sync_read_callback, dataplane_message->len, sync_state );
+   return req;
+}
+
+
+// free an async request used for synchronous communication 
+// the dataplane message chunk will not be touched.
+static void SG_client_request_sync_free( struct SG_client_request_async* datareq ) {
+   if( datareq->cls != NULL ) {
+      struct SG_client_request_sync_state* sync_state = (struct SG_client_request_sync_state*)datareq->cls;
+      SG_safe_free( sync_state );
+   }
+   SG_safe_free( datareq );
+}
+
+
 // free a request cls.  always succeeds 
 void SG_client_request_cls_free( struct SG_client_request_cls* cls ) {
    
@@ -2041,7 +2126,7 @@ int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages
 // return 0 on success, and set up *reqcls
 // return -ENOMEM on OOM 
 // return -EAGAIN if the destination gateway is not known to us, but could become known if we reloaded our volumeconfiguration
-static int SG_client_request_begin( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_chunk* data_plane, struct SG_client_request_cls* reqcls ) {
+static int SG_client_request_begin( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct SG_client_request_cls* reqcls ) {
    
    int rc = 0;
    char* gateway_url = NULL;
@@ -2092,11 +2177,11 @@ static int SG_client_request_begin( struct SG_gateway* gateway, uint64_t dest_ga
    }
    
    // do we have a data plane?
-   if( data_plane != NULL ) {
+   if( datareq != NULL ) {
       
       rc = curl_formadd( &form_begin, &form_end, CURLFORM_PTRNAME, SG_post_field_data,
-                                                 CURLFORM_CONTENTSLENGTH, data_plane->len,
-                                                 CURLFORM_PTRCONTENTS, data_plane->data,
+                                                 CURLFORM_CONTENTSLENGTH, datareq->len,
+                                                 CURLFORM_STREAM, datareq,
                                                  CURLFORM_CONTENTTYPE, "application/octet-stream",
                                                  CURLFORM_END );
       
@@ -2198,6 +2283,7 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
    
    struct SG_client_request_cls reqcls;
    struct SG_chunk serialized_reply;
+   struct SG_client_request_async* datareq = NULL;
    
    struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
    
@@ -2207,11 +2293,19 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
       
       return -ENOMEM;
    }
-   
-   rc = SG_client_request_begin( gateway, dest_gateway_id, control_plane, data_plane, &reqcls );
+  
+   // set up a synchronous in-RAM request stream
+   datareq = SG_client_request_sync( data_plane );
+   if( datareq == NULL ) {
+      curl_easy_cleanup( curl );
+      return -ENOMEM;
+   }
+
+   rc = SG_client_request_begin( gateway, dest_gateway_id, control_plane, datareq, &reqcls );
    if( rc != 0 ) {
       
       curl_easy_cleanup( curl );
+      SG_client_request_sync_free( datareq );
       SG_error("SG_client_request_begin( %" PRIu64 " ) rc = %d\n", dest_gateway_id, rc );
       return rc;
    }
@@ -2221,6 +2315,7 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
    
    curl_easy_setopt( curl, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL );    // force POST on redirect
    curl_easy_setopt( curl, CURLOPT_HTTPPOST, reqcls.form_begin );
+   curl_easy_setopt( curl, CURLOPT_READFUNCTION, datareq->read_callback );
    
    // run the transfer 
    rc = md_download_run( curl, SG_CLIENT_MAX_REPLY_LEN, &serialized_reply.data, &serialized_reply.len );
@@ -2231,7 +2326,7 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
       SG_error("md_download_run('%s') HTTP status %d\n", reqcls.url, -rc );
       
       curl_easy_cleanup( curl );
-      
+      SG_client_request_sync_free( datareq );
       SG_client_request_cls_free( &reqcls );
 
       if( rc == -404 ) {
@@ -2259,7 +2354,7 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
       SG_error("md_download_run('%s') rc = %d\n", reqcls.url, rc );
       
       curl_easy_cleanup( curl );
-      
+      SG_client_request_sync_free( datareq );
       SG_client_request_cls_free( &reqcls );
       
       return rc;
@@ -2274,6 +2369,7 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
    }
    
    curl_easy_cleanup( curl );
+   SG_client_request_sync_free( datareq );
    SG_client_request_cls_free( &reqcls );
    SG_chunk_free( &serialized_reply );
    
@@ -2282,11 +2378,11 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
 
 
 // send a message asynchronously to another gateway 
-// NOTE: the caller must NOT free *data_plane until freeing the download context!
+// NOTE: the caller must NOT free *datareq until freeing the download context!
 // NOTE: the download context takes ownership of control_plane for the duration of the download!
 // return 0 on success, and set up *dlctx as an upload future
 // return -ENOMEM on OOM
-int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_chunk* data_plane, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
+int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
    
    int rc = 0;
    
@@ -2308,7 +2404,7 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
       return -ENOMEM;
    }
    
-   rc = SG_client_request_begin( gateway, dest_gateway_id, control_plane, data_plane, reqcls );
+   rc = SG_client_request_begin( gateway, dest_gateway_id, control_plane, datareq, reqcls );
    if( rc != 0 ) {
       
       SG_error("SG_client_request_begin( %" PRIu64 " ) rc = %d\n", dest_gateway_id, rc );
@@ -2323,6 +2419,10 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
    
    curl_easy_setopt( curl, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL );    // force POST on redirect
    curl_easy_setopt( curl, CURLOPT_HTTPPOST, reqcls->form_begin );
+
+   if( datareq != NULL ) {
+       curl_easy_setopt( curl, CURLOPT_READFUNCTION, datareq->read_callback );
+   }
    
    // set up the download handle 
    rc = md_download_context_init( dlctx, curl, SG_CLIENT_MAX_REPLY_LEN, reqcls );
