@@ -1004,6 +1004,10 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
       }
    }
    
+   // clear cache 
+   SG_debug("Clearing old gateway cache state in '%s'\n", conf->data_root );
+   md_cache_evict_all( cache );
+
    // start cache 
    rc = md_cache_start( cache );
    if( rc != 0 ) {

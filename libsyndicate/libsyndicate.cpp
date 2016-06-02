@@ -2796,10 +2796,10 @@ static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* cli
       }
       sprintf(conf->content_url, "http://%s:%d/", conf->hostname, conf->portnum );
    }
-   
+  
    SG_debug("Running as Gateway %" PRIu64 "\n", conf->gateway );
    SG_debug("content URL is %s\n", conf->content_url );
-  
+ 
    // clear IPC objects 
    SG_debug("Clearing IPC root '%s'\n", conf->ipc_root );
    rc = md_ipc_root_clear( conf->ipc_root, conf->gateway );
