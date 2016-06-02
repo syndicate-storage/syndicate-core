@@ -1872,6 +1872,8 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    uint64_t blocksize = ms_client_get_volume_blocksize( ms );
    int64_t io_context = md_random64();
    uint64_t* block_vec = NULL;
+   int block_vec_len = 0;
+   int next_block_vec = 0;
    
    // sanity check 
    if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
@@ -1982,15 +1984,26 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    
    lseek( chunks_fd, 0, SEEK_SET );
 
+   block_vec_len = 0;
+   next_block_vec = 0;
+   for( int i = 0; i < request_msg->blocks_size(); i++ ) {
+      if( request_msg->blocks(i).chunk_type() == SG_messages::ManifestBlock::BLOCK ) {
+         block_vec_len++;
+      }
+   }
+
    // block vector as an I/O hint 
-   block_vec = SG_CALLOC( uint64_t, request_msg->blocks_size() - 1 );
+   block_vec = SG_CALLOC( uint64_t, block_vec_len );
    if( block_vec == NULL ) {
       rc = -ENOMEM;
       goto SG_server_HTTP_POST_PUTCHUNKS_finish;
    }
 
-   for( int i = 1; i < request_msg->blocks_size(); i++ ) {
-      block_vec[i-1] = request_msg->blocks(i).block_id();
+   for( int i = 0; i < request_msg->blocks_size(); i++ ) {
+      if( request_msg->blocks(i).chunk_type() == SG_messages::ManifestBlock::BLOCK ) {
+          block_vec[next_block_vec] = request_msg->blocks(i).block_id();
+          next_block_vec++;
+      }
    }
 
    // it all checks out.
@@ -2037,7 +2050,7 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
 
          SG_IO_hints_init( &io_hints, SG_IO_WRITE, reqdat->block_id * blocksize, blocksize );
          SG_IO_hints_set_context( &io_hints, io_context );
-         SG_IO_hints_set_block_vec( &io_hints, block_vec, request_msg->blocks_size() - 1 );
+         SG_IO_hints_set_block_vec( &io_hints, block_vec, block_vec_len );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
 
          // pass along
@@ -2062,7 +2075,7 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
          
          SG_IO_hints_init( &io_hints, SG_IO_WRITE, 0, 0 );
          SG_IO_hints_set_context( &io_hints, io_context );
-         SG_IO_hints_set_block_vec( &io_hints, block_vec, request_msg->blocks_size() - 1 );
+         SG_IO_hints_set_block_vec( &io_hints, block_vec, block_vec_len );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
 
          // put into the gateway 
