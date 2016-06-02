@@ -43,21 +43,21 @@ int UG_sync_blocks_flush_async( struct SG_gateway* gateway, char const* fs_path,
       if( !UG_dirty_block_dirty( &itr->second ) ) {
          
          // no need to flush
-         SG_debug("Skip non-dirty block %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
+         SG_debug("Skip non-dirty block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, file_version, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
          continue;
       }
       
       if( UG_dirty_block_is_flushing( &itr->second ) ) {
          
          // already flushing
-         SG_debug("Skip already-flushing block %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
+         SG_debug("Skip already-flushing block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, file_version, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
          continue;
       }
 
       if( UG_dirty_block_is_flushed( &itr->second ) ) {
 
          // already flushed  
-         SG_debug("Skip already-flushed block %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
+         SG_debug("Skip already-flushed block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, file_version, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
          continue;
       }
       
@@ -182,7 +182,7 @@ int UG_sync_blocks_flush( struct SG_gateway* gateway, char const* fs_path, struc
    }
 
    return 0;
-}        
+}
 
 
 // set up a sync context.
