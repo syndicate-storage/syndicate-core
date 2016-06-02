@@ -210,7 +210,7 @@ int UG_RG_context_set_status( struct UG_RG_context* rctx, int i, int status ) {
 // individual RG statuses will be recorded in rctx.
 // return 0 if all requests succeeded
 // return -EPERM if at least one request failed.
-int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_messages::Request* controlplane_request, struct SG_chunk* dataplane_request ) {
+int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_messages::Request* controlplane_request, struct SG_client_request_async* datareq ) {
 
    int rc = 0;
    size_t i = 0;
@@ -261,7 +261,7 @@ int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_m
                      break;
                   }
 
-                  rc = SG_client_request_send_async( gateway, rctx->rg_ids[i], controlplane_request, dataplane_request, dlloop, dlctx );
+                  rc = SG_client_request_send_async( gateway, rctx->rg_ids[i], controlplane_request, datareq, dlloop, dlctx );
                   if( rc != 0 ) {
 
                      SG_error("SG_client_request_send_async(to %" PRIu64 ") rc = %d\n", rctx->rg_ids[i], rc );
@@ -270,7 +270,7 @@ int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_m
 
                   rctx->rg_status[i] = UG_RG_REQUEST_IN_PROGRESS;
                   num_started++;
-                  break;
+                  continue;
                }
                else if( rc == -EAGAIN ) {
                   rc = 0;

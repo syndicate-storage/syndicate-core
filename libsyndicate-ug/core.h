@@ -53,7 +53,7 @@ uint64_t* UG_RG_context_RG_ids( struct UG_RG_context* rctx );
 size_t UG_RG_context_num_RGs( struct UG_RG_context* rctx );
 int UG_RG_context_get_status( struct UG_RG_context* rctx, int i );
 int UG_RG_context_set_status( struct UG_RG_context* rctx, int i, int status );
-int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_messages::Request* controlplane_request, struct SG_chunk* dataplane_request );
+int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_messages::Request* controlplane_request, struct SG_client_request_async* dataplane_request );
 
 int UG_state_rlock( struct UG_state* state );
 int UG_state_wlock( struct UG_state* state );
