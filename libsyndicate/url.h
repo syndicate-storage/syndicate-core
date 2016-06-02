@@ -23,16 +23,18 @@
 extern "C" {
 
 // URLs to chunk data in this gateway
-char* md_url_local_block_url( char const* data_root, uint64_t volume_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
+char* md_url_local_block_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
+char* md_url_local_block_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
 char* md_url_public_block_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version );
 
 // generate a URL to a block
 int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t gateway_id, uint64_t file_id, int64_t version, uint64_t block_id, int64_t block_version, char** url );
 
-// URLs to file data in this gateway
-char* md_url_local_file_url( char const* data_root, uint64_t volume_id, uint64_t file_id, int64_t file_version );
-char* md_url_local_volume_root_url( char const* data_root, uint64_t volume_id );
-char* md_url_public_file_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version );
+// URLs to cached file data for this gateway
+char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version );
+char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version );
+char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id );
+char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id );
 
 // URLs to manifest data in this gateway
 char* md_url_public_manifest_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t version, struct timespec* ts );

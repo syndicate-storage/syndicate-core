@@ -437,16 +437,10 @@ static char* md_cache_file_url( struct md_syndicate_cache* cache, uint64_t file_
 
    if( cache_flags & SG_CACHE_FLAG_MANAGED ) {
       // store to "staging" directory 
-      char* root_dir = md_fullpath( cache->conf->data_root, "staging/", NULL );
-      if( root_dir == NULL ) {
-         return NULL;
-      }
-
-      local_file_url = md_url_local_file_url( root_dir, cache->conf->volume, file_id, version );
-      SG_safe_free( root_dir );
+      local_file_url = md_url_local_file_staging_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway, file_id, version );
    }
    else {
-      local_file_url = md_url_local_file_url( cache->conf->data_root, cache->conf->volume, file_id, version );
+      local_file_url = md_url_local_file_data_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway, file_id, version );
    }
 
    if( local_file_url == NULL ) {
@@ -464,17 +458,10 @@ static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file
    char* local_block_url = NULL;
 
    if( cache_flags & SG_CACHE_FLAG_MANAGED ) {
-      // store to "staging" directory
-      char* root_dir = md_fullpath( cache->conf->data_root, "staging/", NULL );
-      if( root_dir == NULL ) {
-         return NULL;
-      }
-
-      local_block_url = md_url_local_block_url( root_dir, cache->conf->volume, file_id, file_version, block_id, block_version );
-      SG_safe_free( root_dir );
+      local_block_url = md_url_local_block_staging_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway, file_id, file_version, block_id, block_version );
    }
    else {
-      local_block_url = md_url_local_block_url( cache->conf->data_root, cache->conf->volume, file_id, file_version, block_id, block_version );
+      local_block_url = md_url_local_block_data_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway, file_id, file_version, block_id, block_version );
    }
 
    if( local_block_url == NULL ) {
@@ -736,33 +723,34 @@ int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char 
 }
 
 
-// clear the entire cache 
-// not thread-safe
+// clear the entire cache state for a particular gateway 
+// not thread-safe; only do during initialization.
 // return 0 on success 
 int md_cache_evict_all( struct md_syndicate_cache* cache ) {
     
-    char* volume_root_path = NULL;
+    char* gateway_root_path = NULL;
     char* rmtree_cmd = NULL;
-    char* volume_root_url = md_url_local_volume_root_url( cache->conf->data_root, cache->conf->volume );
-    if( volume_root_url == NULL ) {
+    char* gateway_root_url = md_url_local_gateway_data_root_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway );
+    if( gateway_root_url == NULL ) {
        return -ENOMEM;
     }
 
-    volume_root_path = SG_URL_LOCAL_PATH( volume_root_url );
-    rmtree_cmd = SG_CALLOC( char, strlen("rm -rf ") + strlen(volume_root_path) + 10 );
+    gateway_root_path = SG_URL_LOCAL_PATH( gateway_root_url );
+    rmtree_cmd = SG_CALLOC( char, strlen("rm -rf ") + strlen(gateway_root_path) + 10 );
     if( rmtree_cmd == NULL ) {
-       SG_safe_free( volume_root_url );
+       SG_safe_free( gateway_root_url );
        return -ENOMEM;
     }
 
-    sprintf(rmtree_cmd, "rm -rf \"%s\"/*", volume_root_path);
+    sprintf(rmtree_cmd, "rm -rf \"%s\"/*", gateway_root_path);
 
-    SG_debug("Clearing cache '%s'\n", volume_root_path);
+    SG_debug("Clearing cache state '%s'\n", gateway_root_path);
     system( rmtree_cmd );
 
     SG_safe_free( rmtree_cmd );
-    SG_safe_free( volume_root_url );
-    cache->num_blocks_written = 0;
+    SG_safe_free( gateway_root_url );
+
+
     return 0;
 }
 
@@ -964,17 +952,20 @@ struct md_syndicate_cache* md_cache_new(void) {
 }
 
 // initialize the cache 
+// size_limit is the number of *blocks*
 // return 0 on success
 // return -ENOMEM if OOM 
 // return -EINVAL if size limit is 0
 int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t size_limit ) {
    
    int rc = 0;
-   
+  
+   /* 
    if( size_limit == 0 ) {
       return -EINVAL;
    }
-   
+   */
+
    memset( cache, 0, sizeof(struct md_syndicate_cache) );
    
    pthread_rwlock_t* locks[] = {

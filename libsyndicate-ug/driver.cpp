@@ -305,7 +305,7 @@ int UG_driver_chunk_serialize( struct SG_gateway* gateway, struct SG_request_dat
    }
    else {
    
-      // no-op serializer 
+      // no-op serializer
       rc = SG_chunk_copy_or_dup( out_chunk, in_chunk );   
    }
    

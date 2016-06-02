@@ -177,6 +177,7 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    uint64_t volume_id = ms_client_get_volume_id( ms );
+   uint64_t gateway_id = SG_gateway_id( gateway );
    
    off_t num_blocks = (fskit_entry_get_size( fent ) / block_size) + ((fskit_entry_get_size( fent ) % block_size) == 0 ? 0 : 1);
    SG_debug("%" PRIX64 " has %jd blocks\n", UG_inode_file_id(inode), num_blocks);
@@ -193,7 +194,7 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    char* cached_file_path = NULL;
    ssize_t rc = 0;
    
-   char* cached_file_url = md_url_local_file_url( conf->data_root, volume_id, UG_inode_file_id( inode ), UG_inode_file_version( inode ) );
+   char* cached_file_url = md_url_local_file_data_url( conf->data_root, volume_id, gateway_id, UG_inode_file_id( inode ), UG_inode_file_version( inode ) );
    if( cached_file_url == NULL ) {
       
       return -ENOMEM;
@@ -249,8 +250,9 @@ static ssize_t UG_xattr_get_cached_file_path( struct fskit_core* core, struct fs
    struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    uint64_t volume_id = ms_client_get_volume_id( ms );
+   uint64_t gateway_id = SG_gateway_id( gateway );
    
-   char* cached_file_url = md_url_local_file_url( conf->data_root, volume_id, UG_inode_file_id( inode ), UG_inode_file_version( inode ) );
+   char* cached_file_url = md_url_local_file_data_url( conf->data_root, volume_id, gateway_id, UG_inode_file_id( inode ), UG_inode_file_version( inode ) );
    if( cached_file_url == NULL ) {
       
       return -ENOMEM;

@@ -50,20 +50,31 @@ static char* md_url_path_from_file_id( uint64_t file_id ) {
 // if local is false, then prefix should be the content url
 // return the URL on success
 // return NULL on OOM
-static char* md_url_block_url( char const* prefix, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, bool local ) {
+static char* md_url_block_url( char const* prefix, uint64_t volume_id, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, bool local, bool staging ) {
 
-   int base_len = 25 + 1 + 25 + 1 + strlen(fs_path) + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1;
+   int base_len = 25 + 1 + 25 + 1 + strlen(fs_path) + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1;
    char* ret = NULL;
 
    if( local ) {
       // local
+      if( staging ) {
+         // extra "/staging/"
+         base_len += 10;
+      }
+
       ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + 1 + strlen(prefix) + 1 + base_len );
       if( ret == NULL ) {
          return NULL;
       }
       
-      sprintf(ret, "%s%s%" PRIu64 "%s.%" PRIX64 ".%" PRId64 "/%" PRIu64 ".%" PRId64,
-                   SG_LOCAL_PROTO, prefix, volume_id, fs_path, file_id, file_version, block_id, block_version );
+      if( staging ) {
+         sprintf(ret, "%s%s%" PRIu64 "/staging/%" PRIu64 "/%s.%" PRIX64 ".%" PRId64 "/%" PRIu64 ".%" PRId64,
+                SG_LOCAL_PROTO, prefix, volume_id, gateway_id, fs_path, file_id, file_version, block_id, block_version );
+      }
+      else {
+         sprintf(ret, "%s%s%" PRIu64 "/%" PRIu64 "%s.%" PRIX64 ".%" PRId64 "/%" PRIu64 ".%" PRId64,
+                SG_LOCAL_PROTO, prefix, volume_id, gateway_id, fs_path, file_id, file_version, block_id, block_version );
+      }
    }
    else {
       // remote data block
@@ -80,10 +91,10 @@ static char* md_url_block_url( char const* prefix, uint64_t volume_id, char cons
 }
 
 
-// generate a locally-resolvable URL to a block in this UG
+// generate a locally-resolvable URL to a cached block 
 // return the URL on success
 // return NULL on OOM
-char* md_url_local_block_url( char const* data_root, uint64_t volume_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
+char* md_url_local_block_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    
    // file:// URL to a locally-hosted block in a locally-coordinated file
    char* fs_path = md_url_path_from_file_id( file_id );
@@ -91,7 +102,24 @@ char* md_url_local_block_url( char const* data_root, uint64_t volume_id, uint64_
       return NULL;
    }
    
-   char* ret = md_url_block_url( data_root, volume_id, fs_path, file_id, file_version, block_id, block_version, true );
+   char* ret = md_url_block_url( data_root, volume_id, gateway_id, fs_path, file_id, file_version, block_id, block_version, true, false );
+   SG_safe_free( fs_path );
+   return ret;
+}
+
+
+// generate a locally-resolvable URL to a write-staging block 
+// return the URL on success
+// return NULL on OOM
+char* md_url_local_block_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
+   
+   // file:// URL to a locally-hosted block in a locally-coordinated file
+   char* fs_path = md_url_path_from_file_id( file_id );
+   if( fs_path == NULL ) {
+      return NULL;
+   }
+   
+   char* ret = md_url_block_url( data_root, volume_id, gateway_id, fs_path, file_id, file_version, block_id, block_version, true, true );
    SG_safe_free( fs_path );
    return ret;
 }
@@ -102,7 +130,7 @@ char* md_url_local_block_url( char const* data_root, uint64_t volume_id, uint64_
 // return NULL on OOM
 char* md_url_public_block_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    // http:// URL to a locally-hosted block in a locally-coordinated file
-   return md_url_block_url( base_url, volume_id, fs_path, file_id, file_version, block_id, block_version, false );
+   return md_url_block_url( base_url, volume_id, 0, fs_path, file_id, file_version, block_id, block_version, false, false );
 }
 
 // generate a publicly-routable block URL, based on what gateway hosts it.
@@ -126,7 +154,7 @@ int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t g
       return -ENOMEM;
    }
    
-   char* ret = md_url_block_url( base_url, volume_id, fs_path, file_id, version, block_id, block_version, false );
+   char* ret = md_url_block_url( base_url, volume_id, 0, fs_path, file_id, version, block_id, block_version, false, false );
    
    SG_safe_free( base_url );
    
@@ -140,80 +168,85 @@ int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t g
 }
 
 
-// generate a URL to a file, either locally available or remotely available
-// if local is true, then prefix should be the data root path
-// if local is false, then prefix should be the base URL
+// generate a locally-resolvable URL to cached file data on this gateway
 // return the URL on success
 // return NULL on OOM
-char* md_url_file_url( char const* prefix, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, bool local ) {
+char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
    
-   int base_len = 25 + 1 + 25 + 1 + strlen(fs_path) + 25 + 1 + 25 + 1 + 1;
-   char* ret = NULL;
-
-   if( local ) {
-      // local block
-      ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + 1 + strlen(prefix) + 1 + base_len );
-      if( ret == NULL ) {
-         return NULL;
-      }
-      
-      sprintf(ret, "%s%s/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
-                   SG_LOCAL_PROTO, prefix, volume_id, fs_path, file_id, file_version );
-   }
-   else {
-      // remote data block
-      ret = SG_CALLOC( char, strlen(prefix) + 1 + strlen(SG_DATA_PREFIX) + 1 + base_len );
-      if( ret == NULL ) {
-         return NULL;
-      }
-      
-      sprintf(ret, "%s%s/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
-                   prefix, SG_DATA_PREFIX, volume_id, fs_path, file_id, file_version );
-   }
-   
-   return ret;
-}
-
-
-// generate a locally-resolvable URL to a file on this gateway
-// return the URL on success
-// return NULL on OOM
-char* md_url_local_file_url( char const* data_root, uint64_t volume_id, uint64_t file_id, int64_t file_version ) {
-   
+   int base_len = 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 1;
    char* fs_path = md_url_path_from_file_id( file_id );
    if( fs_path == NULL ) {
       return NULL;
    }
    
-   char* ret = md_url_file_url( data_root, volume_id, fs_path, file_id, file_version, true );
+   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + 1 + strlen(data_root) + 1 + strlen(fs_path) + 1 + base_len + 1 );
+   if( ret == NULL ) {
+      SG_safe_free( fs_path );
+      return NULL;
+   }
    
+   sprintf(ret, "%s%s/%" PRIu64 "/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
+                 SG_LOCAL_PROTO, data_root, volume_id, gateway_id, fs_path, file_id, file_version );
+
    SG_safe_free( fs_path );
    return ret;
 }
 
-// generate a locally-resolvable URL to the volume's data root
+
+// generate a locally-resolvable URL to staging file data on this gateway
 // return the URL on success
 // return NULL on OOM
-char* md_url_local_volume_root_url( char const* data_root, uint64_t volume_id ) {
+char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
+   
+   int base_len = 25 + 1 + 25 + 1 + 25 + 1 + 10 + 1 + 25 + 1 + 25 + 1 + 1;
+   char* fs_path = md_url_path_from_file_id( file_id );
+   if( fs_path == NULL ) {
+      return NULL;
+   }
+   
+   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + 1 + strlen(fs_path) + 1 + strlen(data_root) + 1 + strlen(fs_path) + 1 + base_len + 1 );
+   if( ret == NULL ) {
+      SG_safe_free( fs_path );
+      return NULL;
+   }
+   
+   sprintf(ret, "%s%s/%" PRIu64 "/staging/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
+                 SG_LOCAL_PROTO, data_root, volume_id, gateway_id, fs_path, file_id, file_version );
 
-   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 50 );
+   SG_safe_free( fs_path );
+   return ret;
+}
+
+
+// generate a locally-resolvable URL to the gateway's cached data root
+// return the URL on success
+// return NULL on OOM
+char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
+
+   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 100 );
    if( ret == NULL ) {
       return NULL;
    }
 
-   sprintf(ret, "%s%s/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id );
+   sprintf(ret, "%s%s/%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
    return ret;
 }
 
 
-// generate a publicly-resolvable URL to a file on this gateway
+// generate a locally-resolvable URL to the gateway's staging data root
 // return the URL on success
 // return NULL on OOM
-char* md_url_public_file_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version ) {
-   
-   char* ret = md_url_file_url( base_url, volume_id, fs_path, file_id, file_version, false );
+char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
+
+   char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 110 );
+   if( ret == NULL ) {
+      return NULL;
+   }
+
+   sprintf(ret, "%s%s/staging/%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
    return ret;
 }
+
 
 // manifest URL generator
 // return the URL on success
