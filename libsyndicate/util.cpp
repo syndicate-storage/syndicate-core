@@ -158,15 +158,18 @@ unsigned char* sha256_hash_data( char const* input, size_t len ) {
    if( obuf == NULL ) {
       return NULL;
    }
-   
-   SHA256( (unsigned char*)input, len, obuf );
+
+   sha256_hash_buf( input, len, obuf ); 
    return obuf;
 }
 
 // hash a string, and put the output in an already-allocated buf 
 // output needs at least SHA256_DIGEST_LENGTH bytes
-void sha256_hash_buf( char const* input, size_t len, unsigned char* output ) {
-   SHA256( (unsigned char*)input, len, output );
+void sha256_hash_buf( char const* input, size_t len, unsigned char* output ) { 
+   SHA256_CTX sha256;
+   SHA256_Init(&sha256); 
+   SHA256_Update(&sha256,(unsigned char*)input, len);
+   SHA256_Final(output, &sha256);
 }
 
 size_t sha256_len(void) {
@@ -198,7 +201,7 @@ int sha256_cmp( unsigned char const* hash1, unsigned char const* hash2 ) {
    if( hash2 == NULL ) {
       return 1;
    }
-   return strncasecmp( (char*)hash1, (char*)hash2, SHA256_DIGEST_LENGTH );
+   return memcmp( hash1, hash2, SHA256_DIGEST_LENGTH );
 }
 
 
