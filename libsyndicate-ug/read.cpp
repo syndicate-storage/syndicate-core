@@ -642,8 +642,8 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       rc = -EIO;
    }
     
-   // SG_client_get_block_cleanup_loop( dlloop );
    SG_client_download_async_cleanup_loop( dlloop );
+   md_download_loop_cleanup( dlloop, NULL, NULL );
    md_download_loop_free( dlloop );
    SG_safe_free( dlloop );
    
@@ -856,7 +856,7 @@ int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struc
 }
 
 
-// read remotely-available blocks, trying first the remote coordinator (if needed), and then all replica gateways.
+// read remotely-available blocks from RGs
 // NOTE: this consumes the contents of blocks_not_local.  the caller can call this method repeatedly to retry on failure.
 // return 0 on success 
 // return -ENOMEM on OOM 
