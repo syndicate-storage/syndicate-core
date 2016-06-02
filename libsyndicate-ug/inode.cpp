@@ -1194,9 +1194,20 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
       }
       else {
 
-         // evict old dirty block 
-         old_dirty_block_itr->second = *dirty_block;
+         // evict old dirty block
+         SG_debug("Replace dirty block %" PRIu64 ".%" PRId64 " with %" PRIu64 ".%" PRId64 "\n", 
+               UG_dirty_block_id( old_dirty_block ), UG_dirty_block_version( old_dirty_block ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+
          UG_dirty_block_evict_and_free( cache, inode, old_dirty_block );
+         UG_inode_dirty_blocks(inode)->erase( old_dirty_block_itr );
+
+         try {
+            (*UG_inode_dirty_blocks(inode))[ UG_dirty_block_id( dirty_block ) ] = *dirty_block;
+         }
+         catch( bad_alloc& ba ) {
+            exit(1);
+         }
+
          return 0;
       }
    }
@@ -1204,6 +1215,9 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
    // not present.  put in place.
    try {
       
+      SG_debug("Insert dirty block %" PRIu64 ".%" PRId64 "\n",
+            UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+
       (*UG_inode_dirty_blocks( inode ))[ UG_dirty_block_id( dirty_block ) ] = *dirty_block;
    }
    catch( bad_alloc& ba ) {
@@ -1558,9 +1572,8 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
       // next version 
       SG_manifest_set_file_version( UG_inode_manifest( inode ), new_version );
       
-      // reversion--both pending writes and cached data 
+      // reversion only cached data 
       md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
-      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, SG_CACHE_FLAG_MANAGED );
    }
   
    // drop extra manifest blocks 
