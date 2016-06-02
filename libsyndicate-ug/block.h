@@ -41,17 +41,19 @@ struct UG_dirty_block {
    
    ///// for writing ///////
    
-   // serialized block data, if on disk (== -1 if not)
-   int block_fd;
-   
+   // volume, file ID and version 
+   uint64_t volume_id;
+   uint64_t file_id;
+   int64_t file_version;
+
    // flushing block future, if this block is flushing 
    struct md_cache_block_future* block_fut;
    
    // time loaded into RAM 
    struct timespec load_time;
-   
-   // did we mmap the on-disk data into buf?
-   bool mmaped;
+  
+   // did we flush? 
+   bool flushed;
 };
 
 
@@ -87,15 +89,12 @@ int UG_dirty_block_flush_finish_keepbuf( struct UG_dirty_block* dirty_block );
 // free dirty block 
 int UG_dirty_block_free( struct UG_dirty_block* dirty_block );
 int UG_dirty_block_free_keepbuf( struct UG_dirty_block* dirty_block );
+int UG_dirty_block_evict( struct md_syndicate_cache* cache, struct UG_inode* inode, struct UG_dirty_block* block );
 int UG_dirty_block_evict_and_free( struct md_syndicate_cache* cache, struct UG_inode* inode, struct UG_dirty_block* block );
 
 // free dirty block map 
 int UG_dirty_block_map_free( UG_dirty_block_map_t* dirty_blocks );
 int UG_dirty_block_map_free_keepbuf( UG_dirty_block_map_t* dirty_blocks );
-
-// mmap 
-int UG_dirty_block_mmap( struct UG_dirty_block* dirty_block );
-int UG_dirty_block_munmap( struct UG_dirty_block* dirty_block );
 
 // alignment 
 int UG_dirty_block_aligned( off_t offset, size_t buf_len, uint64_t block_size, uint64_t* aligned_start_id, uint64_t* aligned_end_id, off_t* aligned_start_offset, off_t* last_block_len );
@@ -105,7 +104,6 @@ uint64_t UG_dirty_block_id( struct UG_dirty_block* blk );
 int64_t UG_dirty_block_version( struct UG_dirty_block* blk );
 int UG_dirty_block_hash_buf( struct UG_dirty_block* blk, unsigned char* hash_buf );
 struct SG_chunk* UG_dirty_block_buf( struct UG_dirty_block* blk );
-int UG_dirty_block_fd( struct UG_dirty_block* blk );
 struct SG_manifest_block* UG_dirty_block_info( struct UG_dirty_block* blk );
 
 // checks
@@ -113,7 +111,6 @@ bool UG_dirty_block_unshared( struct UG_dirty_block* blk );
 bool UG_dirty_block_dirty( struct UG_dirty_block* blk );
 bool UG_dirty_block_is_flushing( struct UG_dirty_block* blk );
 bool UG_dirty_block_is_flushed( struct UG_dirty_block* blk );
-bool UG_dirty_block_mmaped( struct UG_dirty_block* blk );
 bool UG_dirty_block_in_RAM( struct UG_dirty_block* blk );
 
 // setters 
@@ -125,6 +122,9 @@ int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data
 
 // hash 
 int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_data, size_t serialized_data_len );
+
+// access
+int UG_dirty_block_open( struct SG_gateway* gateway, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int open_flags, uint64_t cache_flags );
 
 }
 
