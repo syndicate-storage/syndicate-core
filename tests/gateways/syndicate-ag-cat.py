@@ -57,7 +57,7 @@ if __name__ == "__main__":
     local_paths = []
     expected_datas = []
     for i in xrange(0, 3):
-        local_path = testlib.make_tmp_file(16384, "abcdef%s\n" % i, dir=testdir)
+        local_path = testlib.make_random_file(16384, dir=testdir)
         local_fd = open(local_path, "r")
         expected_data = local_fd.read()
         local_fd.close()

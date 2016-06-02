@@ -59,7 +59,7 @@ if __name__ == "__main__":
     # put a file to publish
     local_paths = []
     for i in xrange(0, 1):
-        local_path = testlib.make_tmp_file(16384, "abcdef%s\n" % i, dir=inner_dir)
+        local_path = testlib.make_random_file(16384, dir=inner_dir)
         local_paths.append(local_path)
 
     # start AG

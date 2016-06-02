@@ -378,6 +378,30 @@ def make_tmp_file( size, pattern, dir="/tmp" ):
     return path
 
 
+def make_random_file( size, dir="/tmp" ):
+    """
+    Make a temporary file with a random byte pattern
+    """
+    fd, path = tempfile.mkstemp( dir=dir )
+    ffd = os.fdopen(fd, "w")
+
+    pattern = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    random.shuffle(pattern)
+    suffix = pattern[0:size%len(pattern)]
+    l = 0
+
+    while l + len(pattern) < size:
+        random.shuffle(pattern)
+        ffd.write("".join(pattern))
+        l += len(pattern)
+
+    ffd.write("".join(suffix))
+    ffd.flush()
+    os.fsync(fd)
+    print "$ # Temporary %s-byte random file at %s" % (size, path)
+    return path
+
+
 def get_benchmark_data( out ):
     """
     Find benchmark data in stdout.

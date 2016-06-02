@@ -33,7 +33,7 @@ RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/d
 
 if __name__ == "__main__":
 
-    local_path = testlib.make_tmp_file(16384, "abcdef\n")
+    local_path = testlib.make_random_file(16384)
     local_fd = open(local_path, "r")
     expected_data = local_fd.read()
     local_fd.close()
@@ -80,6 +80,7 @@ if __name__ == "__main__":
 
     for (start, end) in ranges:
 
+        testlib.clear_cache( config_dir )
         exitcode, out = testlib.run( READ_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
                                     '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', read_gateway_name,
                                     output_path, start, end - start )

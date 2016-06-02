@@ -39,7 +39,7 @@ def stop_and_save( output_dir, proc, out_path, save_name ):
 
 if __name__ == "__main__":
 
-    local_path = testlib.make_tmp_file(16384, "abcdef\n")
+    local_path = testlib.make_random_file(16384)
     local_fd = open(local_path, "r")
     expected_data = local_fd.read()
     local_fd.close()
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         output_path = "/put-%s-%s" % (random_part, i)
         output_paths.append(output_path)
 
-        exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
+        exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path, valgrind=True )
         testlib.save_output( output_dir, "syndicate-put-%s" % i, out )
 
         if exitcode != 0:
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     for i in xrange(0, NUM_FILES):
         path = output_paths[i]
-        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path )
+        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path, valgrind=True )
         testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
         
         if exitcode != 0:

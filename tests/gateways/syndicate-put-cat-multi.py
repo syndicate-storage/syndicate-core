@@ -39,7 +39,7 @@ def stop_and_save( output_dir, proc, out_path, save_name ):
 
 if __name__ == "__main__":
 
-    local_path = testlib.make_tmp_file(16384, "abcdef\n")
+    local_path = testlib.make_random_file(16384)
     local_fd = open(local_path, "r")
     expected_data = local_fd.read()
     local_fd.close()
