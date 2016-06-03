@@ -116,8 +116,15 @@ static size_t SG_client_request_sync_read_callback( char* buf, size_t len, size_
       SG_error("%s", "FATAL: overflow in copy\n");
       exit(1);
    }
+   if( max_copy > 0 ) {
+       if( sync_state->dataplane_message.data == NULL ) {
+          SG_error("BUG: no data plane, but expect %jd bytes\n", max_copy);
+          exit(1);
+       }
 
-   memcpy( buf, sync_state->dataplane_message.data + sync_state->offset, max_copy );
+       memcpy( buf, sync_state->dataplane_message.data + sync_state->offset, max_copy );
+   }
+
    return max_copy;
 }
 
@@ -135,10 +142,19 @@ static struct SG_client_request_async* SG_client_request_sync( struct SG_chunk* 
       return NULL;
    }
 
-   sync_state->dataplane_message = *dataplane_message;
-   sync_state->offset = 0;
+   size_t len = 0;
 
-   SG_client_request_async_init( req, SG_client_request_sync_read_callback, dataplane_message->len, sync_state );
+   if( dataplane_message != NULL ) {
+       sync_state->dataplane_message = *dataplane_message;
+       len = dataplane_message->len;
+   }
+   else {
+       sync_state->dataplane_message.data = NULL;
+       sync_state->dataplane_message.len = 0;
+   }
+
+   sync_state->offset = 0;
+   SG_client_request_async_init( req, SG_client_request_sync_read_callback, len, sync_state );
    return req;
 }
 
