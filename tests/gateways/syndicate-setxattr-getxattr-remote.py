@@ -96,7 +96,7 @@ if __name__ == "__main__":
     if exitcode != 0:
         coord_exitcode, coord_out = testlib.stop_gateway( coord_proc, coord_out_path )
         testlib.save_output( output_dir, "syndicate-coord-xattr", coord_out )
-        raise Exception("%s exited %s" % (LISTXATTR_PATH, exitcode))
+        raise Exception("%s exited %s" % (GETXATTR_PATH, exitcode))
 
     # did we get it?
     if attr_value_base + '-1attr' not in out_get1xattr:
