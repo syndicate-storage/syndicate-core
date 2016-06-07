@@ -169,6 +169,7 @@ int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t g
 
 
 // generate a locally-resolvable URL to cached file data on this gateway
+// data_root must end in /
 // return the URL on success
 // return NULL on OOM
 char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
@@ -185,7 +186,7 @@ char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uin
       return NULL;
    }
    
-   sprintf(ret, "%s%s/%" PRIu64 "/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
+   sprintf(ret, "%s%s%" PRIu64 "/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
                  SG_LOCAL_PROTO, data_root, volume_id, gateway_id, fs_path, file_id, file_version );
 
    SG_safe_free( fs_path );
@@ -194,6 +195,7 @@ char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uin
 
 
 // generate a locally-resolvable URL to staging file data on this gateway
+// data_root must end in /
 // return the URL on success
 // return NULL on OOM
 char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
@@ -210,7 +212,7 @@ char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, 
       return NULL;
    }
    
-   sprintf(ret, "%s%s/%" PRIu64 "/staging/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
+   sprintf(ret, "%s%s%" PRIu64 "/staging/%" PRIu64 "%s.%" PRIX64 ".%" PRId64,
                  SG_LOCAL_PROTO, data_root, volume_id, gateway_id, fs_path, file_id, file_version );
 
    SG_safe_free( fs_path );
@@ -219,6 +221,7 @@ char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, 
 
 
 // generate a locally-resolvable URL to the gateway's cached data root
+// data_root must end in /
 // return the URL on success
 // return NULL on OOM
 char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
@@ -228,12 +231,13 @@ char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume
       return NULL;
    }
 
-   sprintf(ret, "%s%s/%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
+   sprintf(ret, "%s%s%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
    return ret;
 }
 
 
 // generate a locally-resolvable URL to the gateway's staging data root
+// data_root must end in /
 // return the URL on success
 // return NULL on OOM
 char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
@@ -243,7 +247,7 @@ char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t vol
       return NULL;
    }
 
-   sprintf(ret, "%s%s/staging/%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
+   sprintf(ret, "%s%sstaging/%" PRIu64 "/%" PRIu64, SG_LOCAL_PROTO, data_root, volume_id, gateway_id );
    return ret;
 }
 
