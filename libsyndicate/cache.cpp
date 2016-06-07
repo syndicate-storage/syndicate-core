@@ -722,12 +722,51 @@ int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char 
    return worst_rc;
 }
 
+// clear staging data for a particular gateway
+// not thread-safe; only do during initialization 
+// return 0 on success
+// return -EINVAL if the cache is running 
+int md_cache_evict_staging( struct md_syndicate_cache* cache ) {
+   
+    if( cache->running ) {
+      return -EINVAL;
+    }
+
+    char* gateway_root_path = NULL;
+    char* rmtree_cmd = NULL;
+    char* gateway_root_url = md_url_local_gateway_staging_root_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway );
+    if( gateway_root_url == NULL ) {
+       return -ENOMEM;
+    }
+
+    gateway_root_path = SG_URL_LOCAL_PATH( gateway_root_url );
+    rmtree_cmd = SG_CALLOC( char, strlen("rm -rf ") + strlen(gateway_root_path) + 10 );
+    if( rmtree_cmd == NULL ) {
+       SG_safe_free( gateway_root_url );
+       return -ENOMEM;
+    }
+
+    sprintf(rmtree_cmd, "rm -rf \"%s\"/*", gateway_root_path);
+
+    SG_debug("Clearing cache state '%s'\n", gateway_root_path);
+    system( rmtree_cmd );
+
+    SG_safe_free( rmtree_cmd );
+    SG_safe_free( gateway_root_url );
+    return 0;
+}
+
 
 // clear the entire cache state for a particular gateway 
 // not thread-safe; only do during initialization.
 // return 0 on success 
-int md_cache_evict_all( struct md_syndicate_cache* cache ) {
+// return -EINVAL if the cache is running
+int md_cache_evict_data( struct md_syndicate_cache* cache ) {
     
+    if( cache->running ) {
+       return -EINVAL;
+    }
+
     char* gateway_root_path = NULL;
     char* rmtree_cmd = NULL;
     char* gateway_root_url = md_url_local_gateway_data_root_url( cache->conf->data_root, cache->conf->volume, cache->conf->gateway );
@@ -1862,17 +1901,6 @@ int md_cache_block_future_release_fd( struct md_cache_block_future* f ) {
    int fd = f->block_fd;
    f->block_fd = -1;
    return fd;
-}
-
-// extract the data from a future, and return it
-// the caller must free it
-char* md_cache_block_future_release_data( struct md_cache_block_future* f ) {
-   char* ret = f->block_data;
-   
-   // data is no longer detached
-   f->flags &= ~(SG_CACHE_FLAG_DETACHED);
-   f->block_data = NULL;
-   return ret;
 }
 
 // unshare data from a cache future 

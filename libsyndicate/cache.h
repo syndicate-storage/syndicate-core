@@ -91,7 +91,6 @@ struct md_cache_block_future* md_cache_write_block_async( struct md_syndicate_ca
 int md_cache_block_future_wait( struct md_cache_block_future* f );
 int md_cache_block_future_free( struct md_cache_block_future* f );
 int md_cache_block_future_release_fd( struct md_cache_block_future* f );
-char* md_cache_block_future_release_data( struct md_cache_block_future* f );
 int md_cache_block_future_unshare_data( struct md_cache_block_future* f );
 
 // flushes
@@ -104,7 +103,8 @@ int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int
 ssize_t md_cache_read_block( int block_fd, char** buf );
 
 // allow external client to evict data
-int md_cache_evict_all( struct md_syndicate_cache* cache );
+int md_cache_evict_data( struct md_syndicate_cache* cache );
+int md_cache_evict_staging( struct md_syndicate_cache* cache );
 int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags );
 int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags );
 int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags );
