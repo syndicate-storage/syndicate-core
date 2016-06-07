@@ -24,6 +24,7 @@ import random
 import signal
 import shutil
 import atexit
+import json
 
 import testconf
 import syndicate.util.config as conf
@@ -216,7 +217,31 @@ def add_test_volume( config_dir, email=testconf.SYNDICATE_ADMIN, blocksize=4096,
     return random_name
 
 
-def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, email=testconf.SYNDICATE_ADMIN, prefix='testgateway-' ):
+def read_volume( config_dir, volume_name ):
+    """
+    Read a volume
+    Return a dict with the volume attributes on success
+    Raise on error
+    """
+    exitcode, out = run(testconf.SYNDICATE_TOOL,
+                        '-c', os.path.join(config_dir, 'syndicate.conf'),
+                        'read_volume',
+                        volume_name)
+
+    if exitcode != 0:
+        print >> sys.stderr, out
+        raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
+
+    try:
+        ret = json.loads(out.strip())
+    except:
+        raise Exception("Invalid output:\n%s\n" % out)
+
+    return ret
+
+
+
+def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, email=testconf.SYNDICATE_ADMIN, prefix='testgateway-', port=31111 ):
     """
     Create a gateway of a given type with a random way.
     Does both a create_gateway and update_gateway (which forces a volume-reload), so we test reloads each time.
@@ -230,6 +255,7 @@ def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, 
                         'volume=%s' % volume_name,
                         'name=%s' % random_name,
                         'private_key=auto',
+                        'port=%s' % port,
                         'type=%s' % gwtype)
 
     if exitcode != 0:
@@ -266,6 +292,29 @@ def update_gateway( config_dir, gateway_name, *args ):
         raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
 
     return True
+
+
+def read_gateway( config_dir, gateway_name ):
+    """
+    Read a gateway
+    Return a dict with the gateway attributes on success
+    Raise on error
+    """
+    exitcode, out = run(testconf.SYNDICATE_TOOL,
+                        '-c', os.path.join(config_dir, 'syndicate.conf'),
+                        'read_gateway',
+                        gateway_name)
+
+    if exitcode != 0:
+        print >> sys.stderr, out
+        raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
+
+    try:
+        ret = json.loads(out)
+    except:
+        raise Exception("Invalid output:\n%s\n" % out)
+
+    return ret
 
 
 def provision_volume( config_dir, volume_name, description, blocksize, email, **attrs ):
@@ -341,6 +390,20 @@ def stop_gateway( proc, stdout_path, valgrind=False ):
             return ("valgrind error", out )
 
     return (exitcode, out)
+
+
+def cache_dir( config_dir, volume_id, gateway_id ):
+    """
+    Get gateway-specific cache dir
+    """
+    return os.path.join(config_dir, "data", "%s" % volume_id, "%s" % gateway_id)
+
+
+def staging_dir( config_dir, volume_id, gateway_id ):
+    """
+    Get gateway-specific staging dir
+    """
+    return os.path.join(config_dir, "data", "%s" % volume_id, "staging", "%s" % gateway_id )
 
 
 def clear_cache( config_dir ):
