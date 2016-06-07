@@ -1012,6 +1012,8 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
 
    struct SG_request_data* reqdat = NULL;
    struct SG_chunk block_chunk;
+   struct SG_chunk block_data_chunk;
+   char* data_chunk = NULL;
    
    // get the data; recover the original reqdat
    rc = SG_client_download_async_wait( dlctx, block_id, &block_buf, &block_len, (void**)&reqdat );
@@ -1046,23 +1048,40 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
    }
 
    // does the actual block data start somewhere else?
-   block_chunk.data = block_chunk.data + block_data_offset;
-   block_chunk.len -= block_data_offset; 
+   data_chunk = SG_CALLOC( char, block_chunk.len - block_data_offset );
+   if( data_chunk == NULL ) {
+      SG_safe_free( block_buf );
+      memset( &block_chunk, 0, sizeof(struct SG_chunk));
+      SG_request_data_free( reqdat );
+      SG_safe_free( reqdat );
+      return -ENOMEM;
+   }
+
+   memcpy( data_chunk, block_chunk.data + block_data_offset, block_chunk.len - block_data_offset );
+   SG_chunk_init( &block_data_chunk, data_chunk, block_chunk.len - block_data_offset );
 
    // deserialize
-   SG_debug("Deserialize block %p (%" PRIu64 ") to block %p (%" PRIu64 ")\n", block_chunk.data, block_chunk.len, deserialized_block->data, deserialized_block->len);
-   rc = SG_gateway_impl_deserialize( gateway, reqdat, &block_chunk, deserialized_block );
+   SG_debug("Deserialize block %p (%" PRIu64 ") to block %p (%" PRIu64 ")\n", block_data_chunk.data, block_data_chunk.len, deserialized_block->data, deserialized_block->len);
+   rc = SG_gateway_impl_deserialize( gateway, reqdat, &block_data_chunk, deserialized_block );
+
+   if( rc == 0 ) {
+    
+      // gift to cache 
+      int cache_rc = SG_gateway_cached_block_put_raw_async( gateway, reqdat, &block_data_chunk, SG_CACHE_FLAG_DETACHED | SG_CACHE_FLAG_UNSHARED, NULL );
+      if( cache_rc != 0 ) {
+         SG_warn("SG_gateway_cached_block_put_raw_async rc = %d\n", rc );
+         SG_chunk_free( &block_data_chunk );
+      }
+   }
 
    SG_safe_free( block_buf );
-   memset( &block_chunk, 0, sizeof(struct SG_chunk) );
+   memset( &block_data_chunk, 0, sizeof(struct SG_chunk) );
 
    SG_request_data_free( reqdat );
    SG_safe_free( reqdat );
 
    if( rc != 0 ) {
-    
-       SG_error("SG_gateway_impl_deserialize( %" PRIu64 " ) rc = %d\n", *block_id, rc );
-       // memset( deserialized_block, 0, sizeof(struct SG_chunk) );
+      SG_error("SG_gateway_impl_deserialize( %" PRIu64 " ) rc = %d\n", *block_id, rc );
    }
 
    return rc;
