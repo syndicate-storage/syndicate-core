@@ -683,6 +683,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
 // refresh the manifest before writing.
 // return 0 on success
 // return -ENOMEM on OOM
+// return -EROFS if there are no replica gateways known to us
 // return -errno on failure to read unaligned blocks or flush data to cache
 // NOTE: fent should not be locked
 int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len, off_t offset, void* handle_data ) {
@@ -693,6 +694,12 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    struct UG_file_handle* fh = (struct UG_file_handle*)handle_data;
    struct UG_inode* inode = NULL;
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( core );
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+
+   // basic sanity check: there must be at least one RG 
+   if( UG_state_num_replica_gateways( ug ) == 0 ) {
+       return -EROFS;
+   } 
    
    UG_dirty_block_map_t write_blocks;                   // all the blocks we'll write.
    
@@ -943,6 +950,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 // return 0 on success 
 // return -ENOMEM on OOM 
 // return -EPERM if we're not the coordinator
+// return -EROFS if there are no known replica gateways
 // NOTE: inode->entry must be write-locked and ref'ed; it will be unlocked intermittently
 int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_inode* inode, struct SG_manifest* write_delta ) {
    
@@ -960,6 +968,11 @@ int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data*
    if( SG_manifest_get_coordinator( write_delta ) != SG_gateway_id( gateway ) ) {
        return -EPERM;
    }
+
+   // basic sanity check: there must be at least one RG 
+   if( UG_state_num_replica_gateways( ug ) == 0 ) {
+       return -EROFS;
+   } 
    
    rc = SG_manifest_dup( &new_manifest, UG_inode_manifest( inode ) );
    if( rc != 0 ) {
