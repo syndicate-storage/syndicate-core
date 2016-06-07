@@ -1006,7 +1006,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    
    // clear cache 
    SG_debug("Clearing old gateway cache state in '%s'\n", conf->data_root );
-   md_cache_evict_all( cache );
+   md_cache_evict_staging( cache );
 
    // start cache 
    rc = md_cache_start( cache );
@@ -1953,6 +1953,12 @@ static int SG_gateway_cache_put_raw_async( struct SG_gateway* gateway, struct SG
    
    int rc = 0;
    struct md_cache_block_future* f = NULL;
+
+   // sanity check 
+   if( cache_fut == NULL && !(cache_flags & SG_CACHE_FLAG_DETACHED)) {
+      SG_error("BUG: cache_flags = %" PRIX64 ", but no future given\n", cache_flags);
+      return -EINVAL;
+   } 
    
    // cache the new chunk.  Get back the future (caller will manage it).
    f = md_cache_write_block_async( gateway->cache, reqdat->file_id, reqdat->file_version, block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, chunk->data, chunk->len, cache_flags, &rc );
@@ -1979,7 +1985,9 @@ static int SG_gateway_cache_put_raw_async( struct SG_gateway* gateway, struct SG
                reqdat->file_id, reqdat->file_version, (SG_request_is_block( reqdat ) ? "block" : "manifest"), block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, chunk->len, prefix );
    }
 
-   *cache_fut = f;
+   if( cache_fut != NULL ) {
+       *cache_fut = f;
+   }
    
    return rc;
 }
