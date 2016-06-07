@@ -900,9 +900,10 @@ if __name__ == "__main__":
    ret = main( sys.argv )
    if ret is None:
        sys.exit(1)
-       
-   pp = pprint.PrettyPrinter()
-   pp.pprint( ret )
+      
+   output = json.dumps(ret, indent=4, sort_keys=True)
+   print output.replace("\\n", "\\\\n")
+   
    
    
    
