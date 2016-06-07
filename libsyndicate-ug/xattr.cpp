@@ -217,7 +217,7 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    else if( rc == -ENOENT ) {
       
       // no cached data--all 0's
-      SG_debug("No data cached for %" PRIX64 ".%" PRId64 "\n", UG_inode_file_id( inode ), UG_inode_file_version( inode ) );
+      SG_debug("No data cached for %" PRIX64 ".%" PRId64 " (%s)\n", UG_inode_file_id( inode ), UG_inode_file_version( inode ), cached_file_path );
       
       memset( buf, '0', buf_len );
       buf[buf_len - 1] = '\0';
@@ -514,7 +514,14 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
 
    char* value_buf = NULL;
    size_t xattr_buf_len = 0;
-   
+ 
+   // built-in? 
+   rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
+   if( rc != 0 ) {
+       // handled!
+       return rc;
+   }
+    
    if( coordinator_id == SG_gateway_id( gateway ) ) {
        // local (built-in or otherwise)
        rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
@@ -765,24 +772,23 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
       return -EPERM;
    }
 
-   // if we're the coordinator, then preserve old xattr, in case we have to replace it on failure 
-   if( coordinator_id == SG_gateway_id( gateway ) ) {
-       
-       // built-in?
-       rc = UG_xattr_fsetxattr_builtin( gateway, path, fent, name, value, size, flags );
-       if( rc <= 0 ) {
-          // handled-built-in or error
-          if( rc < 0 ) {
-             SG_error("UG_xattr_fsetxattr_builtin(%s, '%s') rc = %d\n", path, name, rc);
-          }
-          else {
-             SG_debug("UG_xattr_fsetxattr_builtin(%s, '%s'): handled\n", path, name );
-          }
-
-          goto UG_xattr_fsetxattr_out;
+   // built-in?
+   rc = UG_xattr_fsetxattr_builtin( gateway, path, fent, name, value, size, flags );
+   if( rc <= 0 ) {
+       // handled-built-in or error
+       if( rc < 0 ) {
+          SG_error("UG_xattr_fsetxattr_builtin(%s, '%s') rc = %d\n", path, name, rc);
+       }
+       else {
+          SG_debug("UG_xattr_fsetxattr_builtin(%s, '%s'): handled\n", path, name );
        }
 
-       // not handled---set the xattr on the MS, and tell caller to do the set locally
+       goto UG_xattr_fsetxattr_out;
+   }
+
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+      
+       // set the xattr on the MS, and tell caller to do the set locally
        rc = UG_xattr_setxattr_local( gateway, path, inode, name, value, size, flags );
        if( rc < 0 ) {
            SG_error("UG_xattr_setxattr_local('%s' (%" PRIX64 ".%" PRId64 ".%" PRId64 ") '%s') rc = %d\n", path, file_id, file_version, xattr_nonce, name, rc );
@@ -1222,21 +1228,22 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
    int64_t file_version = UG_inode_file_version( inode );
    int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
    
-   if( coordinator_id == SG_gateway_id( gateway ) ) {
-      // built-in?
-      rc = UG_xattr_fremovexattr_builtin( gateway, path, fent, name );
-      if( rc <= 0 ) {
-         if( rc < 0 ) {
-            SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') rc = %d\n", path, name, rc );
-         }
-         else {
-            SG_debug("UG_xattr_fremovexattr_builtin(%s, '%s') handled\n", path, name );
-         }
-
-         // handled or error 
-         goto UG_xattr_fremovexattr_out;
+   // built-in?
+   rc = UG_xattr_fremovexattr_builtin( gateway, path, fent, name );
+   if( rc <= 0 ) {
+      if( rc < 0 ) {
+         SG_error("UG_xattr_fremovexattr_builtin(%s, '%s') rc = %d\n", path, name, rc );
+      }
+      else {
+         SG_debug("UG_xattr_fremovexattr_builtin(%s, '%s') handled\n", path, name );
       }
 
+      // handled or error 
+      goto UG_xattr_fremovexattr_out;
+   }
+
+   if( coordinator_id == SG_gateway_id( gateway ) ) {
+      
       // not built-in. remove from MS
       rc = UG_xattr_removexattr_local( gateway, path, inode, name );
       if( rc != 0 ) {
