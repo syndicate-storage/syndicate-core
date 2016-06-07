@@ -44,6 +44,7 @@ struct UG_RG_context;
 extern "C" {
    
 int UG_state_list_replica_gateway_ids( struct UG_state* state, uint64_t** replica_gateway_ids, size_t* num_replica_gateway_ids );
+size_t UG_state_num_replica_gateways( struct UG_state* state );
 int UG_state_reload_replica_gateway_ids( struct UG_state* state );
 
 struct UG_RG_context* UG_RG_context_new();

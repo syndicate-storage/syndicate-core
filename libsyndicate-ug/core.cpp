@@ -103,6 +103,15 @@ int UG_state_list_replica_gateway_ids( struct UG_state* state, uint64_t** replic
 }
 
 
+// how many RGs do we know about?
+size_t UG_state_num_replica_gateways( struct UG_state* state ) {
+   UG_state_rlock(state);
+   size_t ret = state->num_replica_gateway_ids;
+   UG_state_unlock(state);
+   return ret;
+}
+
+
 // reload the set of replica gateway IDs from the MS
 // return 0 on success
 // return -ENOMEM on OOM 
