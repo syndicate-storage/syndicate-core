@@ -2983,6 +2983,7 @@ int md_entry_to_string( struct md_entry* ent, char** data ) {
     buf_size += strlen("type:     \n") + 16 + 1;
     buf_size += strlen("name:     \n" ) + SG_strlen_or_zero( ent->name );
     buf_size += strlen("file_id:  \n" ) + 16 + 1;      // file ID 
+    buf_size += strlen("version:  \n" ) + 16 + 1;      // file ID 
     buf_size += strlen("ctime_s:  \n" ) + 21 + 1;      // ctime_sec 
     buf_size += strlen("ctime_ns: \n" ) + 21 + 1;      // ctime_nsec 
     buf_size += strlen("mtime_s:  \n" ) + 11 + 1;      // mtime_sec
@@ -3035,6 +3036,7 @@ int md_entry_to_string( struct md_entry* ent, char** data ) {
              "type:     %X\n"
              "name:     %s\n"
              "file_id:  %" PRIX64 "\n"
+             "version:  %" PRId64 "\n"
              "ctime_s:  %" PRId64 "\n"
              "ctime_ns: %" PRId32 "\n"
              "mtime_s:  %" PRId64 "\n"
@@ -3060,6 +3062,7 @@ int md_entry_to_string( struct md_entry* ent, char** data ) {
              ent->type,
              ent->name,
              ent->file_id,
+             ent->version,
              ent->ctime_sec,
              ent->ctime_nsec,
              ent->mtime_sec,
