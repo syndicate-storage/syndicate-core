@@ -70,6 +70,13 @@ ext_modules=[
               language="c++"),
 ]
 
+def make_driver_paths( driver_relpath ):
+    ret = []
+    for com in ['config', 'driver', 'secrets']:
+        ret.append( os.path.join(ext_source_root, build_dir, driver_relpath + '/' + com) )
+
+    return ret
+
 setup(name='syndicate',
       version='0.1',
       description='Syndicate Python library',
@@ -112,6 +119,12 @@ setup(name='syndicate',
                   'syndicate.rg.drivers.disk': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/disk'),
                   'syndicate.rg.drivers.s3': os.path.join(ext_source_root, build_dir, 'syndicate/rg/drivers/s3'),
                   'syndicate.util': os.path.join(ext_source_root, build_dir, 'syndicate/util'),
+      },
+      package_data = {
+                  'syndicate.ag.drivers.disk': make_driver_paths( 'syndicate/ag/drivers/disk' ),
+                  'syndicate.ag.drivers.fs': make_driver_paths( 'syndicate/ag/drivers/fs' ),
+                  'syndicate.rg.drivers.disk': make_driver_paths( 'syndicate/rg/drivers/disk' ),
+                  'syndicate.rg.drivers.s3': make_driver_paths( 'syndicate/rg/drivers/s3' )
       },
       cmdclass = {"build_ext": build_ext},
       )
