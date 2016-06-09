@@ -3,7 +3,11 @@
 ROOTDIR="$(pwd)"
 TESTOUT="$(mktemp -d /tmp/syndicate-tap-XXXXXX)"
 
-source ./subr-ms.sh
+if [ -n "$SYNDICATE_MS_LOCAL" ]; then 
+    source ./subr-ms.sh
+
+    # TODO: set up MS
+fi
 
 # run tests and output in TAP format
 DIRS=
