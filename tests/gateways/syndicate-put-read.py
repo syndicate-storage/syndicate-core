@@ -31,6 +31,11 @@ READ_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-read")
 RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
 
+def stop_and_save( output_dir, proc, out_path, save_name ):
+    exitcode, out = testlib.stop_gateway( proc, out_path )
+    testlib.save_output( output_dir, save_name, out )
+    return exitcode, out
+
 if __name__ == "__main__":
 
     local_path = testlib.make_random_file(16384)
@@ -86,10 +91,12 @@ if __name__ == "__main__":
                                     output_path, start, end - start )
         testlib.save_output( output_dir, 'syndicate-read-%s-%s' % (start, end), out )
         if exitcode != 0:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
             raise Exception("%s exited %s" % (READ_PATH, exitcode))
 
         # correctness 
         if expected_data[start:end] not in out:
+            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
             raise Exception("Missing data for %s-%s" % (start, end))
 
     rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )

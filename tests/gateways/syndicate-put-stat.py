@@ -31,6 +31,11 @@ STAT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-stat")
 RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
 
+def stop_and_save( output_dir, proc, out_path, save_name ):
+    exitcode, out = testlib.stop_gateway( proc, out_path )
+    testlib.save_output( output_dir, save_name, out )
+    return exitcode, out
+
 if __name__ == "__main__":
 
     local_path = testlib.make_tmp_file(16384, "abcdef\n")
@@ -60,6 +65,7 @@ if __name__ == "__main__":
     testlib.save_output( output_dir, "syndicate-put", out )
 
     if exitcode != 0:
+        stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
         raise Exception("%s exited %s" % (PUT_PATH, exitcode))
 
     exitcode, out = testlib.run( STAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, output_path )
@@ -67,6 +73,7 @@ if __name__ == "__main__":
     testlib.save_output( output_dir, 'syndicate-stat', out )
 
     if exitcode != 0:
+        stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
         raise Exception("%s exited %s" % (STAT_PATH, exitcode))
 
     rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )
