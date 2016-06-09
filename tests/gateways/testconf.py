@@ -18,7 +18,28 @@
 
 import os
 
-SYNDICATE_ADMIN="jcnelson@cs.princeton.edu"
+ENV_DEFAULTS = {
+    "SYNDICATE_ADMIN": "jcnelson@cs.princeton.edu",
+    "SYNDICATE_MS": "http://localhost:8080",
+    "SYNDICATE_MS_ROOT": "./ms_root/",
+    "SYNDICATE_RG_ROOT": "/usr/local/bin/",
+    "SYNDICATE_UG_ROOT": "/usr/local/bin/",
+    "SYNDICATE_AG_ROOT": "/usr/local/bin/",
+    "SYNDICATE_PYTHON_ROOT": "/usr/local/lib/python2.7/dist-packages/",
+    "SYNDICATE_TOOL": "/usr/local/bin/syndicate",
+    "SYNDICATE_MS_KEYDIR": "./ms_src",
+    "SYNDICATE_PRIVKEY_PATH": "./ms_src/admin.pem"
+}
+
+for envar in ENV_DEFAULTS.keys():
+    if os.environ.get(envar, None) is not None:
+        ENV_DEFAULTS[envar] = os.environ[envar]
+
+# export as local variables
+for envar in ENV_DEFAULTS.keys():
+    globals()[envar] = ENV_DEFAULTS[envar]
+
+"""
 SYNDICATE_MS="http://localhost:8080"
 
 # I usually symlink the following paths into the current directory.
@@ -32,3 +53,4 @@ SYNDICATE_TOOL="./syndicate"
 
 SYNDICATE_MS_KEYDIR="./ms_src"
 SYNDICATE_PRIVKEY_PATH=os.path.join(SYNDICATE_MS_KEYDIR, "admin.pem")
+"""
