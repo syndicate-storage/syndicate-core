@@ -2,11 +2,30 @@
 
 ROOTDIR="$(pwd)"
 TESTOUT="$(mktemp -d /tmp/syndicate-tap-XXXXXX)"
+CONFIG_VARS="$1"
 
+if [ -n "$CONFIG_VARS" ]; then 
+   source "$CONFIG_VARS"
+
+   # make available to subprocesses
+   while IFS= read ENVAR_STMT; do
+      eval "export $ENVAR_STMT"
+   done <<EOF
+$(cat "$CONFIG_VARS")
+EOF
+fi
+
+# local MS?
+MS_PID=
 if [ -n "$SYNDICATE_MS_LOCAL" ]; then 
     source ./subr-ms.sh
 
     # TODO: set up MS
+    MS_PID="$(ms_dev_start)"
+    if [ $? -ne 0 ]; then 
+       echo >&2 "Failed to start MS"
+       exit 1
+    fi
 fi
 
 # run tests and output in TAP format
@@ -35,13 +54,6 @@ for TESTDIR in $DIRS; do
 $(ls "$TESTDIR")
 EOF
 done
-
-# start MS 
-MS_PID="$(ms_dev_start)"
-if [ $? -ne 0 ]; then 
-   echo >&2 "Failed to start MS"
-   exit 1
-fi
 
 # begin run 
 echo "1..$TESTCOUNT"
@@ -74,11 +86,13 @@ $(ls "$TESTDIR")
 EOF
 done
 
-# stop the MS 
-ms_dev_stop "$MS_PID"
-if [ $? -ne 0 ]; then 
-   echo >&2 "Failed to stop MS"
-   exit 1
+# stop the MS, if need be 
+if [ -n "$MS_PID" ]; then 
+   ms_dev_stop "$MS_PID"
+   if [ $? -ne 0 ]; then 
+      echo >&2 "Failed to stop MS"
+      exit 1
+   fi
 fi
 
 exit 0 
