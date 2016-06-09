@@ -35,22 +35,8 @@ for envar in ENV_DEFAULTS.keys():
     if os.environ.get(envar, None) is not None:
         ENV_DEFAULTS[envar] = os.environ[envar]
 
-# export as local variables
+# export as module variables
 for envar in ENV_DEFAULTS.keys():
     globals()[envar] = ENV_DEFAULTS[envar]
+    print "$ export %s=\"%s\"" % (envar, ENV_DEFAULTS[envar])
 
-"""
-SYNDICATE_MS="http://localhost:8080"
-
-# I usually symlink the following paths into the current directory.
-# TODO: the driver sandboxes still need to be installed to /usr/local/lib.  Fix this.
-SYNDICATE_MS_ROOT="./ms_root/"
-SYNDICATE_RG_ROOT="./rg_bin/"
-SYNDICATE_UG_ROOT="./ug_bin/"
-SYNDICATE_AG_ROOT="./ag_bin/"
-SYNDICATE_PYTHON_ROOT="./python/"
-SYNDICATE_TOOL="./syndicate"
-
-SYNDICATE_MS_KEYDIR="./ms_src"
-SYNDICATE_PRIVKEY_PATH=os.path.join(SYNDICATE_MS_KEYDIR, "admin.pem")
-"""
