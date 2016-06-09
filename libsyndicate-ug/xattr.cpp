@@ -208,8 +208,6 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
    
    rc = md_cache_file_blocks_apply( cached_file_path, local::xattr_stat_block, buf );
    
-   free( cached_file_url );
-   
    if( rc == 0 ) {
       
       rc = num_blocks + 1;
@@ -230,6 +228,7 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
 
    SG_debug("block vector: %s (%zd)\n", buf, rc);
 
+   SG_safe_free( cached_file_url );
    return rc;
 }
 
