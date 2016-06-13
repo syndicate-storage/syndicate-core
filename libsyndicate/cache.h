@@ -78,6 +78,7 @@ extern "C" {
 struct md_syndicate_cache* md_cache_new(void);
 int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t max_blocks );
 int md_cache_start( struct md_syndicate_cache* cache );
+int md_cache_flush( struct md_syndicate_cache* cache );
 int md_cache_stop( struct md_syndicate_cache* cache );
 int md_cache_destroy( struct md_syndicate_cache* cache );
 bool md_cache_is_running( struct md_syndicate_cache* cache );
