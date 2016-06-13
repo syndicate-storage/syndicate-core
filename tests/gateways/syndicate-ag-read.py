@@ -76,6 +76,12 @@ if __name__ == "__main__":
     # should cause the AG to get updated that there's a new gateway 
     read_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
+    read_gateway_info = testlib.read_gateway( config_dir, read_gateway_name )
+    read_gateway_id = read_gateway_info['g_id']
+
+    volume_info = testlib.read_volume( config_dir, volume_name )
+    volume_id = volume_info['volume_id']
+
     # try reading various ranges (these are (start, end) absolute ranges, not offset/length)
     ranges = [
         (1, 200),
@@ -95,7 +101,8 @@ if __name__ == "__main__":
 
     for (start, end) in ranges:
 
-        testlib.clear_cache( config_dir )
+        # only clear reader's cache
+        testlib.clear_cache( config_dir, volume_id=volume_id, gateway_id=read_gateway_id )
 
         # do each read twice--once uncached, and one cached 
         for i in xrange(0, 2):
