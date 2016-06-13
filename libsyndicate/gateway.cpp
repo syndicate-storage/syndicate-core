@@ -1268,6 +1268,7 @@ int SG_gateway_shutdown( struct SG_gateway* gateway ) {
    }
    
    if( gateway->cache != NULL ) {
+       md_cache_flush( gateway->cache );
        md_cache_stop( gateway->cache );
        md_cache_destroy( gateway->cache );
        SG_safe_free( gateway->cache );
