@@ -184,7 +184,74 @@ void SG_client_request_cls_free( struct SG_client_request_cls* cls ) {
 }
 
 
-// download a manifest (from the caches) using an initialized curl handle.  verify it came from remote_gateway_id.
+// verify and load a manifest from a chunk
+// return 0 on success
+// return -EPERM if the data is invalid
+// return -EINVAL if the args are invalid
+// return -ENOMEM on OOM 
+int SG_client_parse_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_gateway_id, struct SG_chunk* serialized_manifest_chunk, struct SG_manifest* manifest ) {
+
+   int rc = 0;
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   SG_messages::Manifest mmsg;
+   uint64_t volume_id = ms_client_get_volume_id( ms );
+   struct SG_chunk manifest_chunk;
+   char* manifest_str = NULL;
+   size_t manifest_strlen = 0;
+
+   memset( &manifest_chunk, 0, sizeof(struct SG_chunk));
+
+   // deserialize 
+   rc = SG_gateway_impl_deserialize( gateway, reqdat, serialized_manifest_chunk, &manifest_chunk );
+   if( rc != 0 ) {
+
+      // error 
+      SG_error("SG_gateway_impl_deserialize rc = %d\n", rc );
+      return rc;
+   }
+
+   manifest_str = manifest_chunk.data;
+   manifest_strlen = manifest_chunk.len;
+
+   // parse 
+   rc = md_parse< SG_messages::Manifest >( &mmsg, manifest_str, manifest_strlen );
+   
+   if( rc != 0 ) {
+      
+      // failed to parse 
+      SG_error("md_parse rc = %d\n", rc );
+      SG_chunk_free( &manifest_chunk );
+      if( rc != -ENOMEM ) {
+          rc = -EPERM;
+      }
+      return rc;
+   }
+   
+   // is this message from that gateway?
+   rc = ms_client_verify_gateway_message< SG_messages::Manifest >( ms, volume_id, coordinator_gateway_id, &mmsg );
+   if( rc != 0 ) {
+      
+      SG_error("ms_client_verify_gateway_message( from=%" PRIu64 " ) rc = %d\n", coordinator_gateway_id, rc );
+      SG_chunk_free( &manifest_chunk );
+      if( rc != -ENOMEM ) {
+         rc = -EPERM;
+      }
+      return rc;
+   }
+   
+   // deserialize 
+   rc = SG_manifest_load_from_protobuf( manifest, &mmsg );
+   SG_chunk_free( &manifest_chunk );
+   if( rc != 0 ) {
+      
+      SG_error("SG_manifest_load_from_protobuf rc = %d\n", rc );
+      rc = -EPERM;
+   }
+
+   return rc;
+}
+
+// download a manifest (from the caches) using an initialized curl handle.  verify it came from coordinator_gateway_id.
 // return 0 on success
 // return -ENOMEM on OOM
 // return -EAGAIN if the remote gateway is not known to us (i.e. we can't make a manifest url, and we should reload)
@@ -197,22 +264,16 @@ void SG_client_request_cls_free( struct SG_client_request_cls* cls ) {
 // return -ESTALE on HTTP 410
 // return -EPROTO on any other HTTP 400-level error
 // return -errno on socket- and recv-related errors
-// NOTE: does *not* check if the manifest came from a different gateway than the one given here (remote_gateway_id)
-static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_request_data* reqdat, CURL* curl, uint64_t remote_gateway_id, struct SG_manifest* manifest ) {
+static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_request_data* reqdat, CURL* curl, uint64_t coordinator_gateway_id, struct SG_manifest* manifest ) {
    
    int rc = 0;
-   struct ms_client* ms = SG_gateway_ms( gateway );
    char* serialized_manifest = NULL;
    off_t serialized_manifest_len = 0;
-   char* manifest_str = NULL;
-   off_t manifest_strlen = 0;
-   uint64_t volume_id = ms_client_get_volume_id( ms );
    
    SG_messages::Manifest mmsg;
    struct SG_chunk serialized_manifest_chunk;
-   struct SG_chunk manifest_chunk;
+   int cache_rc = 0;
 
-   memset( &manifest_chunk, 0, sizeof(struct SG_chunk) );
    memset( &serialized_manifest_chunk, 0, sizeof(struct SG_chunk) );
    
    // download!
@@ -242,67 +303,32 @@ static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_re
       return rc;
    }
    
-   // deserialize 
    serialized_manifest_chunk.data = serialized_manifest;
    serialized_manifest_chunk.len = serialized_manifest_len;
-   
-   rc = SG_gateway_impl_deserialize( gateway, reqdat, &serialized_manifest_chunk, &manifest_chunk );
-   SG_safe_free( serialized_manifest );
-
-   if( rc == -ENOSYS ) {
-
-      SG_warn("%s", "No deserialize method defined\n");
-
-      // no effect
-      serialized_manifest_chunk.data = NULL;
-      serialized_manifest_chunk.len = 0;
-
-      manifest_chunk.data = serialized_manifest;
-      manifest_chunk.len = serialized_manifest_len;
-      rc = 0;
-   }
-   else if( rc != 0 ) {
-
-      // error 
-      SG_error("SG_gateway_impl_deserialize rc = %d\n", rc );
-      return rc;
-   }
-
-   manifest_str = manifest_chunk.data;
-   manifest_strlen = manifest_chunk.len;
-
-   // parse 
-   rc = md_parse< SG_messages::Manifest >( &mmsg, manifest_str, manifest_strlen );
-   SG_safe_free( manifest_str );
-   
+  
+   rc = SG_client_parse_manifest( gateway, reqdat, coordinator_gateway_id, &serialized_manifest_chunk, manifest );
    if( rc != 0 ) {
-      
-      // failed to parse 
-      SG_error("md_parse rc = %d\n", rc );
-      
+      SG_error("SG_client_parse_manifest rc = %d\n", rc );
+      SG_safe_free( serialized_manifest );
+      memset( &serialized_manifest_chunk, 0, sizeof(struct SG_chunk));
       return rc;
    }
    
-   // is this message from that gateway?
-   rc = ms_client_verify_gateway_message< SG_messages::Manifest >( ms, volume_id, remote_gateway_id, &mmsg );
-   if( rc != 0 ) {
-      
-      SG_error("ms_client_verify_gateway_message( from=%" PRIu64 " ) rc = %d\n", remote_gateway_id, rc );
-      
-      return rc;
+   // gift the raw data we received to the cache
+   cache_rc = SG_gateway_cached_manifest_put_raw_async( gateway, reqdat, &serialized_manifest_chunk, SG_CACHE_FLAG_DETACHED | SG_CACHE_FLAG_UNSHARED, NULL );
+   if( cache_rc != 0 ) {
+
+      SG_warn("Failed to cache manifest from %" PRIu64 "\n", coordinator_gateway_id );
+      SG_safe_free( serialized_manifest );
+      memset( &serialized_manifest_chunk, 0, sizeof(struct SG_chunk));
    }
-   
-   // deserialize 
-   rc = SG_manifest_load_from_protobuf( manifest, &mmsg );
-   if( rc != 0 ) {
-      
-      SG_error("SG_manifest_load_from_protobuf rc = %d\n", rc );
-   }
-   
+
+   // success!
    return rc;
 }
 
-// download a manifest (from the caches) from remote_gateway_id; verify it came from remote_gateway_id; parse it
+
+// download a manifest (from the caches) from remote_gateway_id; verify it came from coordinator_gateway_id; parse it
 // return 0 on success, and popuilate *manifest 
 // return -ENOMEM on OOM
 // return -EINVAL if reqdat doesn't refer to a manifest
@@ -314,8 +340,7 @@ static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_re
 // return -EPROTO on HTTP 400-level message
 // return -errno on socket- and recv-related errors
 // return non-zero if the gateway's driver method to connect to the cache fails
-// NOTE: does *not* check if the manifest came from a different gateway than the one given here (remote_gateway_id)
-int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t remote_gateway_id, struct SG_manifest* manifest ) {
+int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_gateway_id, uint64_t remote_gateway_id, struct SG_manifest* manifest ) {
    
    int rc = 0;
    char* manifest_url = NULL;
@@ -388,7 +413,7 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
       return rc;
    }
    
-   rc = SG_client_get_manifest_curl( gateway, reqdat, curl, remote_gateway_id, manifest );
+   rc = SG_client_get_manifest_curl( gateway, reqdat, curl, coordinator_gateway_id, manifest );
    if( rc != 0 ) {
       
       // failed 
@@ -404,12 +429,13 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
    if( SG_manifest_get_volume_id( manifest ) != volume_id ||
        SG_manifest_get_file_id( manifest ) != reqdat->file_id || 
        SG_manifest_get_file_version( manifest ) != reqdat->file_version || 
+       SG_manifest_get_coordinator( manifest ) != coordinator_gateway_id ||
        SG_manifest_get_modtime_sec( manifest ) != reqdat->manifest_timestamp.tv_sec ||
        SG_manifest_get_modtime_nsec( manifest ) != reqdat->manifest_timestamp.tv_nsec ) {
       
       // failed 
-      SG_error("manifest '%s' mismatch: expected volume=%" PRIu64 " file=%" PRIX64 ".%" PRId64 " timestamp=%ld.%ld, but got volume=%" PRIu64 " file=%" PRIX64 ".%" PRId64 " timestamp=%ld.%ld\n",
-               reqdat->fs_path, volume_id, reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec,
+      SG_error("manifest '%s' mismatch: expected volume=%" PRIu64 " gateway=%" PRIu64 " file=%" PRIX64 ".%" PRId64 " timestamp=%ld.%ld, but got volume=%" PRIu64 " file=%" PRIX64 ".%" PRId64 " timestamp=%ld.%ld\n",
+               reqdat->fs_path, volume_id, coordinator_gateway_id, reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec,
                SG_manifest_get_volume_id( manifest ), SG_manifest_get_file_id( manifest ), SG_manifest_get_file_version( manifest ), (long)SG_manifest_get_modtime_sec( manifest ), (long)SG_manifest_get_modtime_nsec( manifest ) );
       
       curl_easy_cleanup( curl );
@@ -847,10 +873,10 @@ int SG_client_block_sign( struct SG_gateway* gateway, struct SG_request_data* re
 // verify the authenticity of a block that has a signed block header
 // return 0 on success, and set *ret_data_offset to refer to the offset the signed block's buffer where the block data begins
 // return -ENOMEM on OOM
-// return -EPERM on signature verification failure 
+// return -EPERM on signature verification failure, or if the block didn't come from the coordinator we exected
 // return -EBADMSG if the block doesn't have enough data
 // return -EAGAIN if the cert was not found
-int SG_client_block_verify( struct SG_gateway* gateway, struct SG_chunk* signed_block, uint64_t* ret_data_offset ) {
+int SG_client_block_verify( struct SG_gateway* gateway, uint64_t coordinator_id, struct SG_chunk* signed_block, uint64_t* ret_data_offset ) {
 
    int rc = 0;
    uint32_t hdr_len = 0;
@@ -882,6 +908,13 @@ int SG_client_block_verify( struct SG_gateway* gateway, struct SG_chunk* signed_
       // bad message 
       SG_debug("Unparseable data (offset %zu, length %u)\n", sizeof(uint32_t), hdr_len );
       return -EBADMSG;
+   }
+
+   // must be the coordinator 
+   if( coordinator_id != blkhdr.gateway_id() ) {
+      // invalid message
+      SG_debug("Coordinator mismatch: expected %" PRIu64 ", got %" PRIu64 "\n", coordinator_id, blkhdr.gateway_id());
+      return -EPERM;
    }
 
    // verify header 
@@ -950,8 +983,10 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
    // hash exists?
    if( !SG_manifest_has_block_hash( manifest, block_id ) ) {
 
-      // expect signed block header in the block data stream
-      rc = SG_client_block_verify( gateway, block_data, block_data_offset );
+      // no hash in manifest
+      // expect signed block header in the block data stream, and
+      // expect signed block header to come from manifest's coordinator
+      rc = SG_client_block_verify( gateway, SG_manifest_get_coordinator(manifest), block_data, block_data_offset );
       if( rc != 0 ) {
          SG_error("SG_client_block_verify(%" PRIu64 ") rc = %d\n", block_id, rc );
          return rc;
