@@ -37,7 +37,7 @@ extern "C" {
 int UG_consistency_inode_download( struct SG_gateway* gateway, uint64_t file_id, struct md_entry* ent );
 
 // get the manifest from one of a list of gateways
-int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t* gateway_ids, size_t num_gateway_ids, struct SG_manifest* manifest );
+int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_id, uint64_t* gateway_ids, size_t num_gateway_ids, struct SG_manifest* manifest );
 
 // reload the path's-worth of metadata
 int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs_path );

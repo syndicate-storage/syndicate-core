@@ -175,31 +175,50 @@ UG_consistency_inode_download_out:
 }
 
 
-// download a manifest, synchronously.  Try from each gateway in gateway_ids, in order.
+// download a manifest, synchronously.  Try from the cache, and then from each gateway in gateway_ids, in order.
 // return 0 on success, and populate *manifest 
 // return -ENOMEM on OOM 
 // return -EINVAL if reqdat doesn't refer to a manifest
 // return -ENODATA if a manifest could not be fetched (i.e. no gateways online, all manifests obtained were invalid, etc.)
 // NOTE: does *not* check if the manifest came from a different gateway than the one contacted
-int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t* gateway_ids, size_t num_gateway_ids, struct SG_manifest* manifest ) {
+int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_id, uint64_t* gateway_ids, size_t num_gateway_ids, struct SG_manifest* manifest ) {
    
    int rc = 0;
    SG_messages::Manifest mmsg;
+   struct SG_chunk serialized_manifest;
+   struct SG_chunk manifest_chunk;
    
    if( !SG_request_is_manifest( reqdat ) ) {
       return -EINVAL;
    }
-   
+
+   // cache?
+   rc = SG_gateway_cached_manifest_get_raw( gateway, reqdat, &serialized_manifest );
+   if( rc == 0 ) {
+
+      // cache hit.
+      // try to verify 
+      rc = SG_client_parse_manifest( gateway, reqdat, coordinator_id, &serialized_manifest, manifest );
+      if( rc == 0 ) {
+        // cached data is correct
+        return 0;
+      }
+   }
+
+   // will have to download
    if( num_gateway_ids == 0 ) {
       return -ENODATA;
    }
+
+   memset( &serialized_manifest, 0, sizeof(struct SG_chunk));
+   memset( &manifest_chunk, 0, sizeof(struct SG_chunk));
 
    for( size_t i = 0; i < num_gateway_ids; i++ ) {
      
       SG_debug("GET manifest %" PRIX64 ".%" PRId64 "/manifest.%ld.%ld from %" PRIu64 "\n", 
             reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, gateway_ids[i] );
 
-      rc = SG_client_get_manifest( gateway, reqdat, gateway_ids[i], manifest );
+      rc = SG_client_get_manifest( gateway, reqdat, coordinator_id, gateway_ids[i], manifest );
       if( rc != 0 ) {
          
          // not from this one 
@@ -353,7 +372,7 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
    }
    
    // get the manifest 
-   rc = UG_consistency_manifest_download( gateway, &reqdat, gateway_ids_buf, num_gateway_ids, &new_manifest );
+   rc = UG_consistency_manifest_download( gateway, &reqdat, coordinator_id, gateway_ids_buf, num_gateway_ids, &new_manifest );
    SG_safe_free( gateway_ids_buf );
    
    if( rc != 0 ) {
