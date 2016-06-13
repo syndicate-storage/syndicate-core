@@ -362,6 +362,32 @@ def start_gateway( config_dir, gateway_path, email, volume_name, gateway_name, *
     return prog, out_path
 
 
+def start_automount_server( config_dir, amd_server_path, email, port, *extra_args, **kw ):
+    """
+    Start the automount server
+    Return a subprocess and a stdout path
+    """
+    out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
+    out_fd = os.fdopen(out_fdes, "w")
+
+    if 'private_key' in kw.keys():
+        pkey_path = kw['private_key']
+    else:
+        pkey_path, pkey_fd = tempfile.mkstemp(prefix='syndicate-pkey-')
+        os.close(pkey_fd)
+        os.system("openssl genrsa 4096 > \"%s\"" % pkey_path)
+
+    prog = start( amd_server_path,
+                  '-f',
+                  '-c', os.path.join(config_dir, 'syndicate.conf'),
+                  '-d',
+                  '-p', port,
+                  '-k', pkey_path,
+                  *extra_args, stdout_fd=out_fd, **kw )
+
+    return prog, out_path
+    
+
 def stop_gateway( proc, stdout_path, valgrind=False ):
     """
     Stop a gateway process
@@ -392,6 +418,26 @@ def stop_gateway( proc, stdout_path, valgrind=False ):
     return (exitcode, out)
 
 
+def stop_automount_server( proc, stdout_path ):
+    """
+    Stop an automount server
+    Return (exitcode, stdout)
+    """
+    if proc.poll() is None:
+        try:
+            proc.send_signal( signal.SIGTERM )
+        except:
+            pass
+
+    exitcode = finish(proc)
+
+    out = None
+    with open(stdout_path, "r") as f:
+        out = f.read()
+
+    return (exitcode, out)
+
+
 def cache_dir( config_dir, volume_id, gateway_id ):
     """
     Get gateway-specific cache dir
@@ -406,14 +452,31 @@ def staging_dir( config_dir, volume_id, gateway_id ):
     return os.path.join(config_dir, "data", "%s" % volume_id, "staging", "%s" % gateway_id )
 
 
-def clear_cache( config_dir ):
+def clear_cache( config_dir, volume_id=None, gateway_id=None ):
     """
     Clear cached data in a config dir
     DO NOT CALL UNLESS THE GATEWAY IS STOPPED
-    """
-    cache_dir = os.path.join(config_dir, "data")
-    shutil.rmtree(cache_dir)
 
+    TODO: clear the reader, but not the RG/AG cache
+    """
+    cache_dir = None 
+    if volume_id is None and gateway_id is None:
+        cache_dir = os.path.join(config_dir, "data")
+
+    elif volume_id is not None and gateway_id is None:
+        cache_dir = os.path.join(config_dir, "data", "%s" % volume_id)
+
+    elif volume_id is not None and gateway_id is not None:
+        cache_dir = os.path.join(config_dir, "data", "%s" % volume_id, "%s" % gateway_id )
+
+    else:
+        raise Exception("gateway ID given but not volume ID")
+
+    if os.path.exists(cache_dir):
+        print "$ rm -rf %s" % cache_dir
+        shutil.rmtree(cache_dir)
+
+    print "$ mkdir -p %s" % cache_dir
     os.makedirs( cache_dir, 0700 )
     return True
 
