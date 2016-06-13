@@ -199,6 +199,7 @@ int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_requ
       // cache hit.
       // try to verify 
       rc = SG_client_parse_manifest( gateway, reqdat, coordinator_id, &serialized_manifest, manifest );
+      SG_chunk_free( &serialized_manifest );
       if( rc == 0 ) {
         // cached data is correct
         return 0;
