@@ -2,9 +2,10 @@
 
 ROOTDIR="$(pwd)"
 TESTOUT="$(mktemp -d /tmp/syndicate-tap-XXXXXX)"
+SCRIPTDIR=`dirname $0`
 CONFIG_VARS="$1"
 
-if [ -n "$CONFIG_VARS" ]; then 
+if [ -n "$CONFIG_VARS" ]; then
    source "$CONFIG_VARS"
 
    # make available to subprocesses
@@ -17,12 +18,12 @@ fi
 
 # local MS?
 MS_PID=
-if [ -n "$SYNDICATE_MS_LOCAL" ]; then 
-    source ./subr-ms.sh
+if [ -z "$SYNDICATE_MS" ]; then
+    source ${SCRIPTDIR}/subr-ms.sh
 
     # TODO: set up MS
     MS_PID="$(ms_dev_start)"
-    if [ $? -ne 0 ]; then 
+    if [ $? -ne 0 ]; then
        echo >&2 "Failed to start MS"
        exit 1
     fi
@@ -31,7 +32,7 @@ fi
 # run tests and output in TAP format
 DIRS=
 while IFS= read TESTDIR; do
-    if [ "$TESTDIR" = "." ] || [ "$TESTDIR" = ".." ]; then 
+    if [ "$TESTDIR" = "." ] || [ "$TESTDIR" = ".." ]; then
        continue
     fi
 
@@ -47,7 +48,7 @@ TESTCOUNT=1
 for TESTDIR in $DIRS; do
    TESTS=
    while IFS= read TESTNAME; do
-      if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then 
+      if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then
          TESTCOUNT=$(($TESTCOUNT+1))
       fi
    done <<EOF
@@ -55,13 +56,13 @@ $(ls "$TESTDIR")
 EOF
 done
 
-# begin run 
+# begin run
 echo "1..$TESTCOUNT"
 TESTIDX=1
-   
+
 for TESTDIR in $DIRS; do
    while IFS= read TESTNAME; do
-      if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then 
+      if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then
          # run test
          cd "$TESTDIR"
          "./$TESTNAME" > "$TESTOUT/$TESTNAME.out" 2>&1
@@ -69,7 +70,7 @@ for TESTDIR in $DIRS; do
          cd ..
 
          # log test result
-         if [ $RC -eq 0 ]; then 
+         if [ $RC -eq 0 ]; then
             echo "ok $TESTIDX - $TESTNAME"
          else
             echo "not ok $TESTIDX - $TESTNAME"
@@ -78,7 +79,7 @@ for TESTDIR in $DIRS; do
          # diagnostics
          cat "$TESTOUT/$TESTNAME.out" | sed 's/^\(.*\)$/# \1/g'
 
-         # next test 
+         # next test
          TESTIDX=$(($TESTIDX + 1))
       fi
    done <<EOF
@@ -86,13 +87,13 @@ $(ls "$TESTDIR")
 EOF
 done
 
-# stop the MS, if need be 
-if [ -n "$MS_PID" ]; then 
+# stop the MS, if need be
+if [ -n "$MS_PID" ]; then
    ms_dev_stop "$MS_PID"
-   if [ $? -ne 0 ]; then 
+   if [ $? -ne 0 ]; then
       echo >&2 "Failed to stop MS"
       exit 1
    fi
 fi
 
-exit 0 
+exit 0
