@@ -16,7 +16,5 @@ usr/lib/python2.7/dist-packages/syndicate/rg/*.py
 usr/lib/python2.7/dist-packages/syndicate/rg/drivers/*.py
 usr/lib/python2.7/dist-packages/syndicate/rg/drivers/disk/*
 usr/lib/python2.7/dist-packages/syndicate/rg/drivers/s3/*
-usr/lib/python2.7/dist-packages/syndicate/ug/*.py
-usr/lib/python2.7/dist-packages/syndicate/ug/drivers/*.py
 usr/lib/python2.7/dist-packages/syndicate/util/*.py
 
