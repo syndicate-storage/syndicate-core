@@ -6,8 +6,14 @@ usr/lib/python2.7/dist-packages/syndicate/ag/*.py
 usr/lib/python2.7/dist-packages/syndicate/ag/curation/*.py
 usr/lib/python2.7/dist-packages/syndicate/ag/datasets/*.py
 usr/lib/python2.7/dist-packages/syndicate/ag/drivers/*.py
-usr/lib/python2.7/dist-packages/syndicate/ag/drivers/disk/*
-usr/lib/python2.7/dist-packages/syndicate/ag/drivers/fs/*
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/disk/*.py
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/disk/config
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/disk/driver
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/disk/secrets
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/fs/*.py
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/fs/config
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/fs/driver
+usr/lib/python2.7/dist-packages/syndicate/ag/drivers/fs/secrets
 usr/lib/python2.7/dist-packages/syndicate/ms/*.py
 usr/lib/python2.7/dist-packages/syndicate/observer/*.py
 usr/lib/python2.7/dist-packages/syndicate/observer/storage/*.py
