@@ -223,8 +223,8 @@ int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_requ
       if( rc != 0 ) {
          
          // not from this one 
-         SG_warn("SG_client_get_manifest( %" PRIX64 ".%" PRId64 "/manifest.%ld.%ld ) from %" PRIu64 " rc = %d\n", 
-                  reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, gateway_ids[i], rc );
+         SG_warn("SG_client_get_manifest(%" PRIX64 ".%" PRId64 "/manifest.%ld.%ld) from %" PRIu64 " by %" PRIu64" rc = %d\n", 
+                  reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, gateway_ids[i], coordinator_id, rc );
          
          rc = -ENODATA;
          continue;
@@ -378,7 +378,7 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
    
    if( rc != 0 ) {
       
-      SG_error("UG_consistency_manifest_download( %" PRIX64 ".%" PRId64 "/manifest.%ld.%ld ) rc = %d\n", 
+      SG_error("UG_consistency_manifest_download(%" PRIX64 ".%" PRId64 "/manifest.%ld.%ld) rc = %d\n", 
                reqdat.file_id, reqdat.file_version, reqdat.manifest_timestamp.tv_sec, reqdat.manifest_timestamp.tv_nsec, rc );
       
       SG_request_data_free( &reqdat );
