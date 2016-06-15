@@ -377,7 +377,12 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
       rc = md_download_loop_run( dlloop );
       if( rc != 0 ) {
          
-         SG_error("md_download_loop_run rc = %d\n", rc );
+         if( rc < 0 ) {
+             SG_error("md_download_loop_run rc = %d\n", rc );
+         }
+         else {
+            rc = 0;
+         }
          break;
       }
       
