@@ -11,7 +11,7 @@ echo "config dir: $CONFIG_DIR"
 
 RANDOM_VOLUME_NAME="$(basename "$RANDOM_PATH")"
 
-$SYNDICATE -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME" description="test create_volume" blocksize=4096 email="$SYNDICATE_ADMIN_EMAIL"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME" description="test create_volume" blocksize=4096 email="$SYNDICATE_ADMIN"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -19,7 +19,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # should fail (duplicate) 
-$SYNDICATE -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME" description="test create_volume duplicate" blocksize=4096 email="$SYNDICATE_ADMIN_EMAIL"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME" description="test create_volume duplicate" blocksize=4096 email="$SYNDICATE_ADMIN"
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -27,7 +27,7 @@ if [ $RC -eq 0 ]; then
 fi
 
 # should fail (invalid name)
-$SYNDICATE -c "$CONFIG_PATH" create_volume name="" description="blank volume name" blocksize=4096 email="$SYNDICATE_ADMIN_EMAIL"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_volume name="" description="blank volume name" blocksize=4096 email="$SYNDICATE_ADMIN"
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -35,7 +35,7 @@ if [ $RC -eq 0 ]; then
 fi
 
 # should fail (user does not exist)
-$SYNDICATE -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME-2" description="no user" blocksize=4096 email="none@gmail.com"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME-2" description="no user" blocksize=4096 email="none@gmail.com"
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -43,7 +43,7 @@ if [ $RC -eq 0 ]; then
 fi
 
 # should fail (no blocksize)
-$SYNDICATE -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME-4" description="no block size" email="$SYNDICATE_ADMIN_EMAIL"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_volume name="$RANDOM_VOLUME_NAME-4" description="no block size" email="$SYNDICATE_ADMIN"
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -57,7 +57,7 @@ pushd "$SAVE_DIR"
 cp "$CONFIG_DIR/volumes/"* .
 popd
 
-$SYNDICATE -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -65,7 +65,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # is it gone?
-VOLUME_JSON="$($SYNDICATE -c "$CONFIG_PATH" list_volumes)"
+VOLUME_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" list_volumes)"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -81,7 +81,7 @@ if [ "$(ls -l "$CONFIG_DIR/volumes/" | wc -l)" != "1" ]; then
 fi
 
 # should fail--need the key
-$SYNDICATE -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -93,7 +93,7 @@ fi
 cp "$SAVE_DIR/"* "$CONFIG_DIR/volumes"
 rm -rf "$SAVE_DIR"
 
-$SYNDICATE -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 

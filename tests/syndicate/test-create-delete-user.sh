@@ -13,7 +13,7 @@ RANDOM_USER_NAME="$(basename "$RANDOM_PATH")@gmail.com"
 RANDOM_ADMIN_NAME="$(basename "$RANDOM_PATH")@admin.com"
 
 # random user
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto max_volumes=20 max_gateways=21
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto max_volumes=20 max_gateways=21
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -21,7 +21,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # random admin
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_ADMIN_NAME" auto max_volumes=20 max_gateways=21 is_admin=True
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_ADMIN_NAME" auto max_volumes=20 max_gateways=21 is_admin=True
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -29,7 +29,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # should fail (duplicate) 
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto 
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto 
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -37,7 +37,7 @@ if [ $RC -eq 0 ]; then
 fi
 
 # should fail (invalid name)
-$SYNDICATE -c "$CONFIG_PATH" create_user "asdf.not.an.email" auto
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "asdf.not.an.email" auto
 RC=$?
 
 if [ $RC -eq 0 ]; then 
@@ -47,7 +47,7 @@ fi
 # should succeed
 openssl genrsa 4096 > "$CONFIG_DIR/$RANDOM_USER_NAME.au.pkey"
 
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME".au "$CONFIG_DIR/$RANDOM_USER_NAME.au.pkey"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME".au "$CONFIG_DIR/$RANDOM_USER_NAME.au.pkey"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -61,7 +61,7 @@ pushd "$SAVE_DIR"
 cp "$CONFIG_DIR/users/"* .
 popd
 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME".au
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME".au
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -69,7 +69,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # is it gone?
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" list_users)"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" list_users)"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -85,7 +85,7 @@ if [ "$(ls -l "$CONFIG_DIR/users/" | grep "$RANDOM_USER_NAME".au | wc -l)" != "0
 fi
 
 # should succeed--idempotent even if we don't have local state
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME".au
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME".au
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -97,7 +97,7 @@ fi
 cp "$SAVE_DIR/"* "$CONFIG_DIR/users"
 rm -rf "$SAVE_DIR"
 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME.au"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME.au"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -105,14 +105,14 @@ if [ $RC -ne 0 ]; then
 fi
 
 # clean up 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
    test_fail "Delete should have worked"
 fi
 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_ADMIN_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_ADMIN_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -120,7 +120,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # should be empty now... 
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" list_users)"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" list_users)"
 RC=$?
 
 if [ $RC -ne 0 ]; then 

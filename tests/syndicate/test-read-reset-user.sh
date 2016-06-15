@@ -13,7 +13,7 @@ RANDOM_USER_NAME="$(basename "$RANDOM_PATH")@gmail.com"
 RANDOM_ADMIN_NAME="$(basename "$RANDOM_PATH")@admin.com"
 
 # random user
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto max_volumes=20 max_gateways=21
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_USER_NAME" auto max_volumes=20 max_gateways=21
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -21,11 +21,11 @@ if [ $RC -ne 0 ]; then
 fi
 
 # random admin
-$SYNDICATE -c "$CONFIG_PATH" create_user "$RANDOM_ADMIN_NAME" auto max_volumes=20 max_gateways=21 is_admin=True
+$SYNDICATE_TOOL -c "$CONFIG_PATH" create_user "$RANDOM_ADMIN_NAME" auto max_volumes=20 max_gateways=21 is_admin=True
 RC=$?
 
 # read users
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" list_users)"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" list_users)"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -41,7 +41,7 @@ if [ -z "$(echo "$USER_JSON" | grep "max_gateways" | grep "21")" ]; then
 fi
 
 # read admin user 
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" read_user "$RANDOM_ADMIN_NAME")"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" read_user "$RANDOM_ADMIN_NAME")"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -57,7 +57,7 @@ if [ -z "$(echo "$USER_JSON" | grep "max_gateways" | grep "21")" ]; then
 fi
 
 # read user 
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" read_user "$RANDOM_USER_NAME")"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" read_user "$RANDOM_USER_NAME")"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -70,7 +70,7 @@ openssl genrsa 4096 > "$CONFIG_DIR/new-key@gmail.com.pkey"
 openssl rsa -pubout < "$CONFIG_DIR/new-key@gmail.com.pkey" > "$CONFIG_DIR/new-key@gmail.com.pub"
 
 # reset the user 
-$SYNDICATE -c "$CONFIG_PATH" reset_user "$RANDOM_USER_NAME" "$CONFIG_DIR/new-key@gmail.com.pub"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" reset_user "$RANDOM_USER_NAME" "$CONFIG_DIR/new-key@gmail.com.pub"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -78,7 +78,7 @@ if [ $RC -ne 0 ]; then
 fi
 
 # re-read user 
-USER_JSON="$($SYNDICATE -c "$CONFIG_PATH" read_user "$RANDOM_USER_NAME")"
+USER_JSON="$($SYNDICATE_TOOL -c "$CONFIG_PATH" read_user "$RANDOM_USER_NAME")"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
@@ -92,14 +92,14 @@ if [ "$OLD_USER_PUBKEY" = "$NEW_USER_PUBKEY" ]; then
 fi
 
 # clean up 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_USER_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
    test_fail "Delete should have worked"
 fi
 
-$SYNDICATE -c "$CONFIG_PATH" delete_user "$RANDOM_ADMIN_NAME"
+$SYNDICATE_TOOL -c "$CONFIG_PATH" delete_user "$RANDOM_ADMIN_NAME"
 RC=$?
 
 if [ $RC -ne 0 ]; then 
