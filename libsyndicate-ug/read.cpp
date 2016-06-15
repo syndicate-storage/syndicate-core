@@ -513,6 +513,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          }
          
          // next block download 
+         dlctx = NULL;
          rc = md_download_loop_next( dlloop, &dlctx );
          if( rc != 0 ) {
             
@@ -529,7 +530,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          gateway_idx = block_gateway_idx[ block_id ];
          
          // start this block
-         rc = SG_request_data_init_block( gateway, fs_path, block_requests->file_id, block_requests->file_version, block_id, SG_manifest_block_version( block_info ), &reqdat );
+         rc = SG_request_data_init_block( gateway, fs_path, SG_manifest_get_file_id(block_requests), SG_manifest_get_file_version(block_requests), block_id, SG_manifest_block_version( block_info ), &reqdat );
          if( rc != 0 ) {
             break;
          }
@@ -564,7 +565,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
              break;
          }
 
-         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", block_requests->file_id, block_id, SG_manifest_block_version( block_info ) );
+         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ) );
 
          // started at least one block; try to start more 
          cycled_through = false;
@@ -578,14 +579,23 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       rc = md_download_loop_run( dlloop );
       if( rc != 0 ) {
          
-         SG_error("md_download_loop_run rc = %d\n", rc );
+         if( rc < 0 ) {
+             SG_error("md_download_loop_run rc = %d\n", rc );
+         }
+         else {
+            // done!
+            rc = 0;
+         }
          break;
       }
-      
+     
+      rc = 0; 
+
       // find the finished downloads.  check at least once.
       while( true ) {
          
          // next finished download
+         dlctx = NULL;
          rc = md_download_loop_finished( dlloop, &dlctx );
          if( rc != 0 ) {
             
@@ -694,7 +704,7 @@ int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, stru
       dirty_block = &(*blocks)[ SG_manifest_block_iterator_id( itr ) ];
     
       // NOTE: this will pass the block through the deserialize driver 
-      rc = UG_dirty_block_load_from_cache( gateway, fs_path, block_requests->file_id, block_requests->file_version, dirty_block, &io_hints );
+      rc = UG_dirty_block_load_from_cache( gateway, fs_path, SG_manifest_get_file_id(block_requests), SG_manifest_get_file_version(block_requests), dirty_block, &io_hints );
       
       if( rc != 0 ) {
          
