@@ -28,6 +28,7 @@ import shutil
 
 PUT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-put")
 GETXATTR_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-getxattr")
+CAT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-cat")
 RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
 
@@ -60,6 +61,16 @@ if __name__ == "__main__":
 
     if exitcode != 0:
         raise Exception("%s exited %s" % (PUT_PATH, exitcode))
+
+    # read the file, to populate the cache 
+    exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
+                                 '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name,
+                                 output_path, valgrind=True )
+
+    if exitcode != 0:
+        rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )
+        testlib.save_output( output_dir, "syndicate-rg", rg_out )
+        raise Exception("Failed to read %s" % path)
 
     # check cache 
     exitcode, out_get1xattr = testlib.run( GETXATTR_PATH, '-d2', '-f', '-c', os.path.join(config_dir, "syndicate.conf"),
