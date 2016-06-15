@@ -1,8 +1,8 @@
 #!/bin/sh
 
-ROOTDIR="$(pwd)"
+SCRIPTDIR=`dirname $0` # find parent directory of this script
+ROOTDIR=`readlink -f ${SCRIPTDIR}` # find the absolute path
 TESTOUT="$(mktemp -d /tmp/syndicate-tap-XXXXXX)"
-SCRIPTDIR=`dirname $0`
 CONFIG_VARS="$1"
 
 if [ -n "$CONFIG_VARS" ]; then
@@ -36,8 +36,8 @@ while IFS= read TESTDIR; do
        continue
     fi
 
-    if [ -d "$TESTDIR" ]; then
-        DIRS="$DIRS $TESTDIR"
+    if [ -d "${ROOTDIR}/${TESTDIR}" ]; then
+        DIRS="$DIRS ${ROOTDIR}/${TESTDIR}"
     fi
 done <<EOF
 $(ls "$ROOTDIR")
