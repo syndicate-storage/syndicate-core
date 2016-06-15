@@ -932,15 +932,17 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
       return md_HTTP_create_response_builtin( resp, 500 );
    }
 
-   // sign manifest 
-   rc = md_sign< SG_messages::Manifest >( gateway_private_key, &manifest_message );
-   if( rc != 0 ) {
-      
-      // failed to sign 
-      SG_error("md_sign( %" PRIX64 ".%" PRId64 "[manifest %" PRId64 ".%ld] ) rc = %d\n",
-               reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, rc );
-      
-      return md_HTTP_create_response_builtin( resp, 500 );
+   // sign manifest, if no signature is given by the implementation
+   if( manifest_message.signature().size() == 0 ) {
+      rc = md_sign< SG_messages::Manifest >( gateway_private_key, &manifest_message );
+      if( rc != 0 ) {
+         
+         // failed to sign 
+         SG_error("md_sign( %" PRIX64 ".%" PRId64 "[manifest %" PRId64 ".%ld] ) rc = %d\n",
+                  reqdat->file_id, reqdat->file_version, reqdat->manifest_timestamp.tv_sec, reqdat->manifest_timestamp.tv_nsec, rc );
+         
+         return md_HTTP_create_response_builtin( resp, 500 );
+      }
    }
    
    // serialize to string (with signature) 
