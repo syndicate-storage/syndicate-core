@@ -304,13 +304,12 @@ int md_cache_block_future_clean( struct md_cache_block_future* f ) {
    if( (f->flags & SG_CACHE_FLAG_UNSHARED) != 0 ) {
       
       // we own this data
+      SG_debug("Free unshared cache data for %p\n", f);
       SG_safe_free( f->block_data );
    }
    
    SG_safe_free( f->aio.aio_sigevent.sigev_value.sival_ptr );
-   
    memset( &f->aio, 0, sizeof(f->aio) );
-   
    sem_destroy( &f->sem_ongoing );
    
    return 0;
@@ -997,14 +996,7 @@ struct md_syndicate_cache* md_cache_new(void) {
 // return -EINVAL if size limit is 0
 int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t size_limit ) {
    
-   int rc = 0;
-  
-   /* 
-   if( size_limit == 0 ) {
-      return -EINVAL;
-   }
-   */
-
+   int rc = 0; 
    memset( cache, 0, sizeof(struct md_syndicate_cache) );
    
    pthread_rwlock_t* locks[] = {
@@ -1094,6 +1086,50 @@ int md_cache_start( struct md_syndicate_cache* cache ) {
    
    return 0;
 }
+
+
+// flush the cache:
+// * block incoming writes
+// * wait for all pending writes to hit disk
+// NOTE: can be starved by writers; only call once no more writes will happen!
+// return 0 on success
+// return -EIO on failure
+int md_cache_flush( struct md_syndicate_cache* cache ) {
+
+   int worst_rc = 0;
+   size_t pending_size = 0;
+   size_t ongoing_size = 0;
+   SG_debug("Flushing cache %p\n", cache);
+
+   while( true ) {
+      // wait for writes to flush
+      md_cache_pending_rlock( cache );
+      pending_size = cache->pending->size();
+      md_cache_pending_unlock( cache );
+
+      if( pending_size > 0 ) {
+         sleep(1);
+         continue;
+      }
+
+      // see that we're done
+      md_cache_ongoing_writes_rlock( cache );
+      ongoing_size = cache->ongoing_writes->size();
+      md_cache_ongoing_writes_unlock( cache );
+
+      if( ongoing_size > 0 ) {
+         sleep(1);
+         continue;
+      }
+      else {
+         break;
+      }
+   }
+
+   SG_debug("Flushed cache %p\n", cache);
+   return worst_rc;
+}
+
 
 // stop the cache thread 
 // always succeeds
@@ -1476,7 +1512,8 @@ void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t*
       sem_post( &f->sem_ongoing );
       
       // are we supposed to reap it?
-      if( detached || !cache->running ) {
+      if( detached ) {
+         SG_debug("Free detached cache future %p\n", f);
          md_cache_block_future_free( f );
       }
    }
@@ -1784,6 +1821,8 @@ struct md_cache_block_future* md_cache_write_block_async( struct md_syndicate_ca
       *_rc = -ENOMEM;
       return NULL;
    }
+
+   SG_debug("cache future %p (flags = 0x%" PRIX64 ")\n", f, flags);
    
    // create the block to cache
    int block_fd = md_cache_open_block( cache, file_id, file_version, block_id, block_version, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, flags );

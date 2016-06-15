@@ -102,6 +102,7 @@ int md_download_set_add( struct md_download_set* dlset, struct md_download_conte
 int md_download_set_clear_itr( struct md_download_set* dlset, const md_download_set_iterator& itr );
 int md_download_set_clear( struct md_download_set* dlset, struct md_download_context* dlctx );    // don't use inside a e.g. for() loop where you're iterating over a download set
 size_t md_download_set_size( struct md_download_set* dlset );
+bool md_download_set_contains( struct md_download_set* dlset, struct md_download_context* dlctx );
 
 // iterating through waiting
 md_download_set_iterator md_download_set_begin( struct md_download_set* dlset );
@@ -1054,6 +1055,7 @@ int md_download_set_init( struct md_download_set* dlset ) {
 
 // free a download set 
 // return 0 on success
+// NOT THREAD SAFE
 int md_download_set_free( struct md_download_set* dlset ) {
    
    SG_debug("Free download set %p\n", dlset );
@@ -1076,6 +1078,7 @@ int md_download_set_free( struct md_download_set* dlset ) {
 // does not affect the download's reference count
 // return 0 on success
 // return -ENOMEM on OOM
+// NOT THREAD SAFE
 int md_download_set_add( struct md_download_set* dlset, struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -1104,6 +1107,7 @@ int md_download_set_add( struct md_download_set* dlset, struct md_download_conte
 // don't do this in e.g. a for() loop where you're iterating over download contexts
 // return 0 on success 
 // return -ENOMEM on OOM
+// NOT THREAD SAFE
 int md_download_set_clear_itr( struct md_download_set* dlset, const md_download_set_iterator& itr ) {
    
    try {
@@ -1122,6 +1126,7 @@ int md_download_set_clear_itr( struct md_download_set* dlset, const md_download_
 // don't do this in e.g. a for() loop where you're iterating over download contexts
 // return 0 on success 
 // return -ENOMEM on OOM 
+// NOT THREAD SAFE
 int md_download_set_clear( struct md_download_set* dlset, struct md_download_context* dlctx ) {
 
    try {
@@ -1143,11 +1148,17 @@ int md_download_set_clear( struct md_download_set* dlset, struct md_download_con
 
 // how many items in a download set?
 // return the number of items
+// NOT THREAD SAFE
 size_t md_download_set_size( struct md_download_set* dlset ) {
    
    return dlset->waiting->size();
 }
 
+// does this download set contain this download?
+// NOT THREAD SAFE
+bool md_download_set_contains( struct md_download_set* dlset, struct md_download_context* dlctx ) {
+   return dlset->waiting->count( dlctx ) > 0;
+}
 
 // iterate: begin 
 // return an iterator to the waiting set
@@ -1928,9 +1939,10 @@ int md_download_loop_free( struct md_download_loop* dlloop ) {
 
 // get the next available download in the download loop.
 // return 0 on success, and set *dlctx to point to the available download
-// return -EAGAIN if there are no free downloads 
+// return -EAGAIN if there are no free downloads, and set *dlctx to NULL
 int md_download_loop_next( struct md_download_loop* dlloop, struct md_download_context** dlctx ) {
    
+   *dlctx = NULL;
    for( int i = 0; i < dlloop->num_downloads; i++ ) {
       
       if( !md_download_context_initialized( dlloop->downloads[i] ) ) {
@@ -1962,7 +1974,7 @@ int md_download_loop_run( struct md_download_loop* dlloop ) {
    int rc = 0;
    dlloop->started = true;
   
-   while( dlloop->dlset.waiting->size() > 0 ) {
+   while( md_download_set_size( &dlloop->dlset ) > 0 ) {
       
       // wait for some downloads to finish, but be resillent against deadlock
       rc = md_download_context_wait_any( &dlloop->dlset, 10000 );
@@ -1989,15 +2001,15 @@ int md_download_loop_run( struct md_download_loop* dlloop ) {
 // find a finished download
 // caller must unref and free when done with it
 // return 0 on success, and set *dlctx to point to the finished download 
-// return -EAGAIN if there are no finished downloads 
+// return -EAGAIN if there are no finished downloads, and set *dlctx to NULL
 int md_download_loop_finished( struct md_download_loop* dlloop, struct md_download_context** dlctx ) {
-   
+  
+   *dlctx = NULL; 
    for( int i = 0; i < dlloop->num_downloads; i++ ) {
       
-      if( md_download_context_initialized( dlloop->downloads[i] ) && md_download_context_finalized( dlloop->downloads[i] ) ) {
+      if( md_download_context_initialized( dlloop->downloads[i] ) && md_download_context_finalized( dlloop->downloads[i] ) && md_download_set_contains( &dlloop->dlset, dlloop->downloads[i] ) ) {
          
          *dlctx = dlloop->downloads[i];
-         
          md_download_set_clear( &dlloop->dlset, *dlctx );
          
          return 0;

@@ -88,7 +88,7 @@ if __name__ == "__main__":
         testlib.clear_cache( config_dir )
         exitcode, out = testlib.run( READ_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
                                     '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', read_gateway_name,
-                                    output_path, start, end - start )
+                                    output_path, start, end - start, valgrind=True )
         testlib.save_output( output_dir, 'syndicate-read-%s-%s' % (start, end), out )
         if exitcode != 0:
             stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
