@@ -231,7 +231,7 @@ int SG_client_parse_manifest( struct SG_gateway* gateway, struct SG_request_data
    rc = ms_client_verify_gateway_message< SG_messages::Manifest >( ms, volume_id, coordinator_gateway_id, &mmsg );
    if( rc != 0 ) {
       
-      SG_error("ms_client_verify_gateway_message( from=%" PRIu64 " ) rc = %d\n", coordinator_gateway_id, rc );
+      SG_error("ms_client_verify_gateway_message(from=%" PRIu64 ") rc = %d\n", coordinator_gateway_id, rc );
       SG_chunk_free( &manifest_chunk );
       if( rc != -ENOMEM ) {
          rc = -EPERM;
@@ -308,7 +308,7 @@ static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_re
   
    rc = SG_client_parse_manifest( gateway, reqdat, coordinator_gateway_id, &serialized_manifest_chunk, manifest );
    if( rc != 0 ) {
-      SG_error("SG_client_parse_manifest rc = %d\n", rc );
+      SG_error("SG_client_parse_manifest(from=%" PRIu64 ") rc = %d\n", coordinator_gateway_id, rc );
       SG_safe_free( serialized_manifest );
       memset( &serialized_manifest_chunk, 0, sizeof(struct SG_chunk));
       return rc;
@@ -417,7 +417,7 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
    if( rc != 0 ) {
       
       // failed 
-      SG_error("SG_client_get_manifest_curl( '%s' ) rc = %d\n", manifest_url, rc );
+      SG_error("SG_client_get_manifest_curl('%s') (wrote by %" PRIu64 ") rc = %d\n", manifest_url, coordinator_gateway_id, rc );
       
       curl_easy_cleanup( curl );
       SG_safe_free( manifest_url );
@@ -515,7 +515,7 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
    }
    
    // reference it, to keep it around despite the fate of the download loop struct
-   // md_download_context_ref( dlctx );
+   md_download_context_ref( dlctx );
    
    // watch it 
    rc = md_download_loop_watch( dlloop, dlctx );
@@ -553,6 +553,20 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
 }
 
 
+// clean up a request data context 
+void SG_client_request_cls_cleanup_and_free( struct SG_client_request_cls* reqcls ) {
+
+   if( reqcls != NULL ) {
+      if( reqcls->free_cls != NULL ) {
+         (*reqcls->free_cls)(reqcls->cls);
+         reqcls->cls = NULL;
+      }
+
+      SG_client_request_cls_free( reqcls );
+      SG_safe_free( reqcls );
+   }
+}
+
 // clean up a download context used for transfering data asynchronously, including the associated state
 // TODO: release the curl handle into the connection pool 
 void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
@@ -573,14 +587,7 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
          curl_easy_cleanup( curl );
       }
    
-      if( reqcls != NULL ) {
-         if( reqcls->free_cls != NULL ) {
-            (*reqcls->free_cls)(reqcls->cls);
-         }
-
-         SG_client_request_cls_free( reqcls );
-         SG_safe_free( reqcls );
-      }
+      // SG_client_request_cls_cleanup_and_free( reqcls );
    }
    
    return;
@@ -616,12 +623,16 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    
    int rc = 0;
    int http_status = 0;
+
+   SG_debug("Wait on dlctx %p\n", dlctx);
    struct SG_client_request_cls* reqcls = (struct SG_client_request_cls*)md_download_context_get_cls( dlctx );
+   
+   md_download_context_set_cls( dlctx, NULL );
 
    if( reqcls == NULL ) {
-
-      SG_error("FATAL BUG: not a download: %p\n", dlctx );
-      exit(1);
+      // already been waited on 
+      SG_error("Download %p already waited on\n", dlctx);
+      return -EINVAL;
    }
    
    // are we ready?
@@ -634,6 +645,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
          SG_error("md_download_context_wait( %p ) rc = %d\n", dlctx, rc );
          
          SG_client_download_async_cleanup( dlctx );
+         SG_client_request_cls_cleanup_and_free( reqcls );
          return rc;
       }
    }
@@ -646,6 +658,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
       SG_error("download %p finished with HTTP status %d\n", dlctx, http_status );
       
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return -ENODATA;
    }
    
@@ -655,6 +668,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
       
       // OOM 
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return rc;
    }
    
@@ -668,6 +682,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    
    // done!
    SG_client_download_async_cleanup( dlctx );
+   SG_client_request_cls_cleanup_and_free( reqcls );
    
    return rc;
 }
@@ -1055,10 +1070,9 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
    if( rc != 0 ) {
       
       SG_error("SG_client_download_async_wait( %p ) rc = %d\n", dlctx, rc );
-      
       return rc;
    }
-  
+ 
    SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "]\n", reqdat->file_id, reqdat->file_version, *block_id );
 
    block_chunk.data = block_buf;
@@ -2563,6 +2577,8 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
       SG_error("FATAL BUG: not a client download: %p\n", dlctx );
       exit(1);
    }
+
+   md_download_context_set_cls( dlctx, NULL );
    
    // wait for this download to finish 
    rc = md_download_context_wait( dlctx, conf->transfer_timeout * 1000 );
@@ -2571,6 +2587,7 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
       SG_error("md_download_context_wait( %p ) rc = %d\n", dlctx, rc );
       
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return rc;
    }
    
@@ -2583,6 +2600,7 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
       SG_error("download %p finished with HTTP status %d\n", dlctx, http_status );
       
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return -ENODATA;
    }
    
@@ -2593,6 +2611,7 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
       SG_error("md_download_context_get_buffer( %p ) rc = %d\n", dlctx, rc );
       
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return rc;
    }
    
@@ -2606,11 +2625,13 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
       SG_error("SG_client_request_end( %p ) rc = %d\n", dlctx, rc );
       
       SG_client_download_async_cleanup( dlctx );
+      SG_client_request_cls_cleanup_and_free( reqcls );
       return rc;
    }
    
    // clean up 
    SG_client_download_async_cleanup( dlctx );
+   SG_client_request_cls_cleanup_and_free( reqcls );
    
    return rc;
 }
