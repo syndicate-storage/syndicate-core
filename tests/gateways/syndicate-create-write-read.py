@@ -75,6 +75,12 @@ if __name__ == "__main__":
     gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
     read_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
+    read_gateway_info = testlib.read_gateway( config_dir, read_gateway_name )
+    read_gateway_id = read_gateway_info['g_id']
+
+    volume_info = testlib.read_volume( config_dir, volume_name )
+    volume_id = volume_info['volume_id']
+
     random_part = hex(random.randint(0, 2**32-1))[2:]
     output_path = "/put-%s" % random_part
     exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
@@ -88,6 +94,7 @@ if __name__ == "__main__":
     ranges = [
         (5000, 16000),
         (0, 1),     # 1 block, tail unaligned
+        (1, 200),   # 1 block, unaligned head and tail
         (0, 4096),  # 1 block, aligned
         (0, 8192),  # 2 blocks, aligned
         (0, 1000),  # 1 block, tail unaligned
@@ -121,24 +128,33 @@ if __name__ == "__main__":
 
         expected_data = overlay( expected_data, range_data, start )
 
-    # read each range back
+    # read each range back--cached and uncached
     for (start, end) in ranges:
 
-        testlib.clear_cache( config_dir )
-        exitcode, out = testlib.run( READ_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
-                                    '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', read_gateway_name,
-                                    output_path, start, end - start, valgrind=True )
+        # only clear reader's cache
+        testlib.clear_cache( config_dir, volume_id=volume_id, gateway_id=read_gateway_id )
 
-        testlib.save_output( output_dir, 'syndicate-read-%s-%s' % (start, end), out )
-        if exitcode != 0:
-            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg" )
-            raise Exception("%s exited %s" % (READ_PATH, exitcode))
+        # do each read twice--once uncached, and one cached 
+        for i in xrange(0, 2):
 
-        # correctness 
-        if expected_data[start:end] not in out:
-            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg" )
-            print >> sys.stderr, "Missing data\n%s\n" % expected_data[start:end]
-            raise Exception("Missing data for %s-%s" % (start, end))
+            exitcode, out = testlib.run( READ_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
+                                        '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', read_gateway_name,
+                                        output_path, start, end - start, valgrind=True )
+
+            outname = "uncached"
+            if i > 0:
+                outname = "cached"
+
+            testlib.save_output( output_dir, 'syndicate-read-%s-%s-%s' % (start, end, outname), out )
+            if exitcode != 0:
+                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg" )
+                raise Exception("%s exited %s" % (READ_PATH, exitcode))
+
+            # correctness 
+            if expected_data[start:end] not in out:
+                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg" )
+                print >> sys.stderr, "Missing data\n%s\n" % expected_data[start:end]
+                raise Exception("Missing data for %s-%s" % (start, end))
 
     rg_exitcode, rg_out = testlib.stop_gateway( rg_proc, rg_out_path )
     testlib.save_output( output_dir, "syndicate-rg", rg_out )
