@@ -58,6 +58,9 @@ struct SG_manifest {
    int32_t mtime_nsec;
    
    SG_manifest_block_map_t* blocks;
+
+   char* signature;
+   size_t signature_len;
    
    pthread_rwlock_t lock;
 };

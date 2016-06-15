@@ -102,7 +102,6 @@ int SG_manifest_block_load_from_protobuf( struct SG_manifest_block* dest, const 
       hash_len = mblock->hash().size();
    }
    
-   
    int rc = SG_manifest_block_init( dest, mblock->block_id(), mblock->block_version(), hash, hash_len );
    if( rc != 0 ) {
       return rc;
@@ -275,16 +274,25 @@ int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages:
    int rc = 0;
    
    pthread_rwlock_t lock;
-   
+   char* sig = NULL;
+   size_t siglen = 0;
+
    rc = pthread_rwlock_init( &lock, NULL );
    if( rc != 0 ) {
       return rc;
+   }
+
+   sig = SG_CALLOC( char, mmsg->signature().size()+1 );
+   if( sig == NULL ) {
+      pthread_rwlock_destroy(&lock);
+      return -ENOMEM;
    }
    
    // load each block 
    SG_manifest_block_map_t* blocks = SG_safe_new( SG_manifest_block_map_t() );
    if( blocks == NULL ) {
       
+      SG_safe_free( sig );
       pthread_rwlock_destroy( &lock );
       return -ENOMEM;
    }
@@ -301,6 +309,7 @@ int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages:
          SG_manifest_block_map_free( blocks );
          SG_safe_delete( blocks );
          
+         SG_safe_free( sig );
          pthread_rwlock_destroy( &lock );
          return rc;
       }
@@ -312,6 +321,8 @@ int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages:
          
          SG_manifest_block_map_free( blocks );
          SG_safe_delete( blocks );
+         
+         SG_safe_free( sig );
          pthread_rwlock_destroy( &lock );
          
          return -ENOMEM;
@@ -330,9 +341,14 @@ int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages:
    dest->mtime_sec = mmsg->mtime_sec();
    dest->mtime_nsec = mmsg->mtime_nsec();
    dest->stale = false;
+
+   memcpy( sig, mmsg->signature().data(), mmsg->signature().size() );
+   siglen = mmsg->signature().size();
    
    dest->blocks = blocks;
    dest->lock = lock;
+   dest->signature = sig;
+   dest->signature_len = siglen;
    
    return 0;
 }
@@ -390,6 +406,7 @@ int SG_manifest_free( struct SG_manifest* manifest ) {
       SG_safe_delete( manifest->blocks );
    }
    
+   SG_safe_free( manifest->signature ); 
    pthread_rwlock_destroy( &manifest->lock );
    memset( manifest, 0, sizeof(struct SG_manifest) );
    return 0;
@@ -1240,7 +1257,17 @@ int SG_manifest_serialize_to_protobuf( struct SG_manifest* manifest, SG_messages
       mmsg->set_size( manifest->size );
       mmsg->set_owner_id( manifest->owner_id );
 
-      mmsg->set_signature( string("") );
+      if( manifest->signature != NULL ) {
+         try {
+            mmsg->set_signature( string(manifest->signature, manifest->signature_len) );
+         }
+         catch( bad_alloc& ba ) {
+            return -ENOMEM;
+         }
+      }
+      else {
+         mmsg->set_signature( string("") );
+      }
    }
       
    SG_manifest_unlock( manifest );
