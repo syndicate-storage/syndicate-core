@@ -385,7 +385,7 @@ static int UG_vacuumer_get_block_data( struct UG_vacuumer* vacuumer, struct UG_v
    }
    
    // try to get the manifest 
-   rc = UG_consistency_manifest_download( gateway, &reqdat, UG_RG_context_RG_ids( vctx->rg_context ), UG_RG_context_num_RGs( vctx->rg_context ), old_manifest );
+   rc = UG_consistency_manifest_download( gateway, &reqdat, vctx->inode_data.coordinator, UG_RG_context_RG_ids( vctx->rg_context ), UG_RG_context_num_RGs( vctx->rg_context ), old_manifest );
    SG_request_data_free( &reqdat );
    
    if( rc != 0 ) {
