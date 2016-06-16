@@ -82,6 +82,7 @@ for TESTDIR in $DIRS; do
          # timing info
          echo "  ---"
          echo "    duration_ms: $((${END_MS} - ${START_MS}))"
+         echo "  ..."
 
          # diagnostics
          cat "$TESTOUT/$TESTNAME.out" | sed 's/^\(.*\)$/# \1/g'
