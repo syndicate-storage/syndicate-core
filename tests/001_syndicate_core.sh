@@ -66,10 +66,10 @@ for TESTDIR in $DIRS; do
 
          # run test
          cd "$TESTDIR"
-         START_MS=$(date +%s%2N)
+         START_MS=$(date +%s)
          "./$TESTNAME" > "$TESTOUT/$TESTNAME.out" 2>&1
-         END_MS=$(date +%s%2N)
          RC=$?
+         END_MS=$(date +%s)
          cd ..
 
          # log test result
