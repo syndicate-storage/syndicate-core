@@ -63,9 +63,12 @@ TESTIDX=1
 for TESTDIR in $DIRS; do
    while IFS= read TESTNAME; do
       if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then
+
          # run test
          cd "$TESTDIR"
+         START_MS=$(date +%s%3N)
          "./$TESTNAME" > "$TESTOUT/$TESTNAME.out" 2>&1
+         END_MS=$(date +%s%3N)
          RC=$?
          cd ..
 
@@ -75,6 +78,10 @@ for TESTDIR in $DIRS; do
          else
             echo "not ok $TESTIDX - $TESTNAME"
          fi
+
+         # timing info
+         echo "  ---"
+         echo "    duration_ms: $((${END_MS} - ${START_MS}))"
 
          # diagnostics
          cat "$TESTOUT/$TESTNAME.out" | sed 's/^\(.*\)$/# \1/g'
