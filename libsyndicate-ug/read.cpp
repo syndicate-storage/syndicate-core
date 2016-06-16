@@ -1112,7 +1112,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    // anything left to fetch remotely?
    if( SG_manifest_get_block_count( &blocks_to_download ) > 0 ) {
    
-      // fetch remote 
+      // fetch remote
       rc = UG_read_blocks_remote( gateway, fs_path, &blocks_to_download, &read_blocks );
       if( rc != 0 ) {
          
@@ -1139,10 +1139,21 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       if( buf_len < head_len ) {
          copy_len = buf_len;
       }
-
-      SG_debug("Copy unaligned head %" PRIu64 " at %" PRIu64 " (%" PRIu64 " bytes)\n", first_block, (uint64_t)offset, copy_len );
-
+      
       head_buf = UG_dirty_block_buf( &head_itr->second );
+
+      ///////////////////////////////////////////////////// 
+      char debug_buf[52];
+      memset(debug_buf, 0, 52);
+      for( unsigned int i = 0; i < (50 / 3) && i < copy_len; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", *(head_buf->data + block_size - head_len + i));
+         strcat(debug_buf, nbuf);
+      }
+      ///////////////////////////////////////////////////// 
+
+      SG_debug("Copy unaligned head %" PRIu64 " at %" PRIu64 " (%" PRIu64 " bytes, '%s...')\n", first_block, (uint64_t)offset, copy_len, debug_buf );
       memcpy( buf, head_buf->data + block_size - head_len, copy_len );
    }
 
@@ -1165,10 +1176,21 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       else {
          copy_at = 0;
       }
-
-      SG_debug("Copy unaligned tail %" PRIu64 " at %" PRIu64 " (%" PRIu64 " bytes); buf_len_eof = %" PRIu64 "\n", last_block, copy_at, tail_len, buf_len_eof );
-
+      
       tail_buf = UG_dirty_block_buf( &tail_itr->second );
+ 
+      ///////////////////////////////////////////////////// 
+      char debug_buf[52];
+      memset(debug_buf, 0, 52);
+      for( unsigned int i = 0; i < (50 / 3) && i < tail_len; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", tail_buf->data[i]);
+         strcat(debug_buf, nbuf);
+      }
+      ///////////////////////////////////////////////////// 
+
+      SG_debug("Copy unaligned tail %" PRIu64 " at %" PRIu64 " (%" PRIu64 " bytes, '%s...'); buf_len_eof = %" PRIu64 "\n", last_block, copy_at, tail_len, debug_buf, buf_len_eof );
       memcpy( buf + copy_at, tail_buf->data, tail_len );
    }
 
@@ -1208,6 +1230,7 @@ UG_read_impl_fail:
   
    if( num_read > 0 ) {
        
+      ///////////////////////////////////////////////////// 
       char debug_buf[52];
       memset(debug_buf, 0, 52);
       for( int i = 0; i < (50 / 3) && i < num_read; i++ ) {
@@ -1216,6 +1239,7 @@ UG_read_impl_fail:
          snprintf(nbuf, 4, " %02X", buf[i]);
          strcat(debug_buf, nbuf);
       }
+      ///////////////////////////////////////////////////// 
 
       SG_debug("Read %" PRId64 " bytes (%s...)\n", num_read, debug_buf);
    }
