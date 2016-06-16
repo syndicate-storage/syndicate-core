@@ -1227,7 +1227,18 @@ int UG_read( struct UG_state* state, char *buf, size_t size, UG_handle_t *fi ) {
       // zero-out the remainder of the buffer
       memset( buf + nr, 0, size - nr );
    }
-   
+
+   char debug_buf[52];
+   memset(debug_buf, 0, 52);
+   for( int i = 0; i < (50 / 3) && i < nr; i++ ) {
+      char nbuf[5];
+      memset(nbuf, 0, 5);
+      snprintf(nbuf, 4, " %02X", buf[i]);
+      strcat(debug_buf, nbuf);
+   }
+
+   SG_debug("Read %d bytes (%s...)\n", nr, debug_buf);
+
    fi->offset += nr;
    return nr;
 }

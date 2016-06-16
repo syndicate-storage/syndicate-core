@@ -1205,7 +1205,21 @@ UG_read_impl_fail:
    UG_dirty_block_map_free( &read_blocks );
    
    SG_manifest_free( &blocks_to_download );
-   
+  
+   if( num_read > 0 ) {
+       
+      char debug_buf[52];
+      memset(debug_buf, 0, 52);
+      for( int i = 0; i < (50 / 3) && i < num_read; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", buf[i]);
+         strcat(debug_buf, nbuf);
+      }
+
+      SG_debug("Read %" PRId64 " bytes (%s...)\n", num_read, debug_buf);
+   }
+
    return num_read;
 }
 
