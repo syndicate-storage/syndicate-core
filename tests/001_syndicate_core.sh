@@ -44,7 +44,7 @@ $(ls "$ROOTDIR")
 EOF
 
 # get test count
-TESTCOUNT=1
+TESTCOUNT=0
 for TESTDIR in $DIRS; do
    TESTS=
    while IFS= read TESTNAME; do
