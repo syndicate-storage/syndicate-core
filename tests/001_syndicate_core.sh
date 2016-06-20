@@ -44,7 +44,7 @@ $(ls "$ROOTDIR")
 EOF
 
 # get test count
-TESTCOUNT=1
+TESTCOUNT=0
 for TESTDIR in $DIRS; do
    TESTS=
    while IFS= read TESTNAME; do
@@ -63,10 +63,13 @@ TESTIDX=1
 for TESTDIR in $DIRS; do
    while IFS= read TESTNAME; do
       if [ -f "$TESTDIR/$TESTNAME" ] && [ -x "$TESTDIR/$TESTNAME" ] && ! [ -L "$TESTDIR/$TESTNAME" ]; then
+
          # run test
          cd "$TESTDIR"
+         START_MS=$(date +%s)
          "./$TESTNAME" > "$TESTOUT/$TESTNAME.out" 2>&1
          RC=$?
+         END_MS=$(date +%s)
          cd ..
 
          # log test result
@@ -75,6 +78,11 @@ for TESTDIR in $DIRS; do
          else
             echo "not ok $TESTIDX - $TESTNAME"
          fi
+
+         # timing info
+         echo "  ---"
+         echo "    duration_ms: $((${END_MS} - ${START_MS}))"
+         echo "  ..."
 
          # diagnostics
          cat "$TESTOUT/$TESTNAME.out" | sed 's/^\(.*\)$/# \1/g'
