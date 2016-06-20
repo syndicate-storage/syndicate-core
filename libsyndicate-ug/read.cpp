@@ -153,8 +153,6 @@ int UG_read_unaligned_setup( struct SG_gateway* gateway, char const* fs_path, st
          
          return rc;
       }
-      
-      buf = NULL;
 
       read_size = MIN(
                      UG_inode_size( inode ) - offset, 
@@ -165,7 +163,9 @@ int UG_read_unaligned_setup( struct SG_gateway* gateway, char const* fs_path, st
       *head_len = read_size;
 
       num_read += MIN( read_size, buf_len );
-      SG_debug("Read unaligned HEAD block %" PRIu64 " (%" PRIu64 " bytes)\n", first_block, read_size );
+      SG_debug("Read unaligned HEAD block %" PRIu64 " (%" PRIu64 " bytes) to %p\n", first_block, read_size, buf );
+      
+      buf = NULL;
    }
    
    // is the last block unaligned, and if so, is it either 
@@ -193,13 +193,13 @@ int UG_read_unaligned_setup( struct SG_gateway* gateway, char const* fs_path, st
          return rc;
       }
       
-      buf = NULL;
-
       read_size = (offset + buf_len) % block_size;
       *tail_len = read_size;
 
       num_read += read_size;
-      SG_debug("Read unaligned TAIL block %" PRIu64 " (%" PRIu64 " bytes)\n", last_block, read_size );
+      SG_debug("Read unaligned TAIL block %" PRIu64 " (%" PRIu64 " bytes) to %p\n", last_block, read_size, buf );
+      
+      buf = NULL;
    }
    
    // transfer data over to the dirty_blocks set
@@ -620,12 +620,37 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
             SG_error("SG_client_get_block_finish rc = %d\n", rc );
             break;
          }
-         
+
+             
+         ///////////////////////////////////////////////////// 
+         char debug_buf[52];
+         memset(debug_buf, 0, 52);
+         for( unsigned int i = 0; i < (50 / 3) && i < next_block.len; i++ ) {
+            char nbuf[5];
+            memset(nbuf, 0, 5);
+            snprintf(nbuf, 4, " %02X", next_block.data[i]);
+            strcat(debug_buf, nbuf);
+         }
+         SG_debug("Fetched block (copied '%s...', %" PRIu64 " bytes total to %p)\n", debug_buf, next_block.len, next_block.data);
+         ///////////////////////////////////////////////////// 
+
+            
          // copy the data in
          // NOTE: we do not emplace the data, since this method is used to directly copy
          // downloaded data into a client reader's read buffer
          SG_chunk_copy( &(*blocks)[ next_block_id ].buf, &next_block );
-        
+         
+         ///////////////////////////////////////////////////// 
+         memset(debug_buf, 0, 52);
+         for( unsigned int i = 0; i < (50 / 3) && i < (*blocks)[next_block_id].buf.len; i++ ) {
+            char nbuf[5];
+            memset(nbuf, 0, 5);
+            snprintf(nbuf, 4, " %02X", (*blocks)[next_block_id].buf.data[i]);
+            strcat(debug_buf, nbuf);
+         }
+         SG_debug("Copied into block set (copied '%s...', %" PRIu64 " bytes total to %p)\n", debug_buf, (*blocks)[next_block_id].buf.len, (*blocks)[next_block_id].buf.data);
+         ///////////////////////////////////////////////////// 
+
          try { 
              // finished this block 
              block_gateway_idx.erase( next_block_id );
@@ -970,6 +995,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    uint64_t file_size = 0;
    uint64_t copy_len = 0;
    uint64_t copy_at = 0;
+   uint64_t block_copy_at = 0;
    uint64_t buf_len_eof = 0;
    
    struct SG_chunk* head_buf = NULL;
@@ -980,7 +1006,6 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    uint64_t volume_id = ms_client_get_volume_id( ms );
    
    UG_dirty_block_map_t read_blocks;
-   UG_dirty_block_map_t unaligned_blocks;
    
    struct UG_dirty_block* last_block_read = NULL;
    UG_dirty_block_map_t::iterator last_block_read_itr;
@@ -1070,7 +1095,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       have_unaligned_tail = true;
    }
    
-   SG_debug("Unaligned read: %d bytes (head unaligned: %d, tail unaligned: %d)\n", rc, have_unaligned_head, have_unaligned_tail );
+   SG_debug("Unaligned read: %d bytes (head unaligned: %d, tail unaligned: %d, head_len = %" PRIu64 ", tail_len = %" PRIu64 ")\n", rc, have_unaligned_head, have_unaligned_tail, head_len, tail_len );
    num_read += rc;
 
    // set up aligned read 
@@ -1113,6 +1138,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    if( SG_manifest_get_block_count( &blocks_to_download ) > 0 ) {
    
       // fetch remote
+      SG_debug("Download %zu blocks\n", SG_manifest_get_block_count( &blocks_to_download ));
       rc = UG_read_blocks_remote( gateway, fs_path, &blocks_to_download, &read_blocks );
       if( rc != 0 ) {
          
@@ -1139,7 +1165,9 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       if( buf_len < head_len ) {
          copy_len = buf_len;
       }
-      
+
+      block_copy_at = offset % block_size;
+
       head_buf = UG_dirty_block_buf( &head_itr->second );
 
       ///////////////////////////////////////////////////// 
@@ -1148,13 +1176,13 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       for( unsigned int i = 0; i < (50 / 3) && i < copy_len; i++ ) {
          char nbuf[5];
          memset(nbuf, 0, 5);
-         snprintf(nbuf, 4, " %02X", *(head_buf->data + block_size - head_len + i));
+         snprintf(nbuf, 4, " %02X", *(head_buf->data + block_copy_at + i));
          strcat(debug_buf, nbuf);
       }
       ///////////////////////////////////////////////////// 
 
-      SG_debug("Copy unaligned head %" PRIu64 " at %" PRIu64 " (%" PRIu64 " bytes, '%s...')\n", first_block, (uint64_t)offset, copy_len, debug_buf );
-      memcpy( buf, head_buf->data + block_size - head_len, copy_len );
+      SG_debug("Copy unaligned head %" PRIu64 " at offset %" PRIu64 " (block offset %zu, %" PRIu64 " bytes, '%s...' at %p)\n", first_block, (uint64_t)offset, block_copy_at, copy_len, debug_buf, head_buf->data );
+      memcpy( buf, head_buf->data + block_copy_at, copy_len );
    }
 
    if( have_unaligned_tail ) {

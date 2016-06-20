@@ -197,6 +197,18 @@ int UG_driver_chunk_deserialize( struct SG_gateway* gateway, struct SG_request_d
             SG_error("Tried to copy buf len %" PRIu64 " to buf len %" PRIu64 "\n", in_chunk->len, out_chunk->len );
          }
       }
+      
+      ///////////////////////////////////////////////////// 
+      char debug_buf[52];
+      memset(debug_buf, 0, 52);
+      for( unsigned int i = 0; i < (50 / 3) && i < out_chunk->len; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", out_chunk->data[i]);
+         strcat(debug_buf, nbuf);
+      }
+      SG_debug("no-op deserializer (copied '%s...', %" PRIu64 " bytes total)\n", debug_buf, out_chunk->len);
+      ///////////////////////////////////////////////////// 
 
    }
   
