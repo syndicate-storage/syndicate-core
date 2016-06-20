@@ -257,11 +257,12 @@ struct md_syndicate_conf {
 #define SG_DEFAULT_CERTS_ROOT       "~/.syndicate/certs"
 #define SG_DEFAULT_IPC_ROOT         "~/.syndicate/ipc"
 
-#ifdef _PACKAGED
-#define SG_DEFAULT_CERTS_RELOAD_HELPER     "/usr/lib/syndicate/certs_reload"
-#define SG_DEFAULT_DRIVER_RELOAD_HELPER    "/usr/lib/syndicate/driver_reload"
-#else
+// overridable paths to helpers
+#ifndef SG_DEFAULT_CERTS_RELOAD_HELPER
 #define SG_DEFAULT_CERTS_RELOAD_HELPER     "/usr/local/lib/syndicate/certs_reload"
+#endif
+
+#ifndef SG_DEFAULT_DRIVER_RELOAD_HELPER
 #define SG_DEFAULT_DRIVER_RELOAD_HELPER    "/usr/local/lib/syndicate/driver_reload"
 #endif
 

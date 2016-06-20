@@ -8,5 +8,5 @@ export DEBIAN_INSTALL=1
 	dh ${@}
 
 override_dh_auto_build:
-dh_auto_build -- EXTRA_DEFS="-D_PACKAGED -DUG_DEFAULT_DRIVER_EXEC_STR=/usr/lib/syndicate/ug-driver"
+	dh_auto_build -- EXTRA_DEFS="-DSG_DEFAULT_CERTS_RELOAD_HELPER=/usr/lib/syndicate/certs_reload -DSG_DEFAULT_DRIVER_RELOAD_HELPER=/usr/lib/syndicate/driver_reload -DUG_DEFAULT_DRIVER_EXEC_STR=/usr/lib/syndicate/ug-driver"
 
