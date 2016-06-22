@@ -33,27 +33,27 @@ struct UG_sync_context;
 // queue for threads waiting to synchronize blocks
 typedef queue< struct UG_sync_context* > UG_inode_fsync_queue_t;
 
-// map block IDs to their versions, so we know which block to evict on close 
+// map block IDs to their versions, so we know which block to evict on close
 typedef map< uint64_t, int64_t > UG_inode_block_eviction_map_t;
 
 // UG-specific inode information, for fskit
 struct UG_inode;
 
-// UG-specific file handle information, for fskit 
+// UG-specific file handle information, for fskit
 struct UG_file_handle {
-   
+
    int flags;                           // open flags
-   
+
    struct UG_inode* inode_ref;          // reference to the parent inode (i.e. so we can release dirty blocks)
-   
-   struct fskit_file_handle* handle_ref;        // refernece to the parent fskit file handle 
-   
-   UG_inode_block_eviction_map_t* evicts;       // non-dirty blocks to evict on close 
+
+   struct fskit_file_handle* handle_ref;        // refernece to the parent fskit file handle
+
+   UG_inode_block_eviction_map_t* evicts;       // non-dirty blocks to evict on close
 };
 
 
 extern "C" {
-   
+
 // initialization
 struct UG_inode* UG_inode_alloc( int count );
 int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry* entry, uint64_t volume_id, uint64_t coordinator_id, int64_t file_version );
@@ -61,16 +61,16 @@ int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_da
 int UG_inode_fskit_entry_init( struct fskit_core* fs, struct fskit_entry* fent, struct fskit_entry* parent, struct md_entry* inode_data );
 int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data );
 
-// free 
+// free
 int UG_inode_free( struct UG_inode* inode );
 
-// set up a file handle 
+// set up a file handle
 int UG_file_handle_init( struct UG_file_handle* fh, struct UG_inode* inode, int flags );
 
-// free 
+// free
 int UG_file_handle_free( struct UG_file_handle* fh );
 
-// export an inode 
+// export an inode
 int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t parent_id );
 int UG_inode_export_fs( struct fskit_core* fs, char const* fs_path, struct md_entry* inode_data );
 int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*** ret_xattr_names, char*** ret_xattr_values, size_t** ret_xattr_value_lengths );
@@ -83,37 +83,37 @@ int UG_inode_export_match_version( struct UG_inode* dest, struct md_entry* src )
 int UG_inode_export_match_size( struct UG_inode* dest, struct md_entry* src );
 int UG_inode_export_match_type( struct UG_inode* dest, struct md_entry* src );
 
-// import an inode 
+// import an inode
 int UG_inode_import( struct UG_inode* dest, struct md_entry* src );
 
-// import blocks 
+// import blocks
 int UG_inode_manifest_merge_blocks( struct SG_gateway* gateway, struct UG_inode* inode, struct SG_manifest* new_manifest );
 
 // directly put dirty blocks
 int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block, bool replace );
 
-// get the modified dirty blocks from an inode 
+// get the modified dirty blocks from an inode
 int UG_inode_dirty_blocks_modified( struct UG_inode* inode, UG_dirty_block_map_t* modified );
 
 // add a dirty block and update our manifest
 int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block );
 int UG_inode_dirty_block_update_manifest( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block );
 
-// eviction hints 
+// eviction hints
 int UG_file_handle_evict_add_hint( struct UG_file_handle* fh, uint64_t block_id, int64_t block_version );
 int UG_file_handle_evict_blocks( struct UG_file_handle* fh );
 
-// manifest 
+// manifest
 int UG_inode_manifest_replace( struct UG_inode* inode, struct SG_manifest* manifest );
 
-// truncate 
+// truncate
 int UG_inode_truncate_find_removed( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, struct SG_manifest* removed );
 int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, int64_t new_version, int64_t write_nonce, struct timespec* new_manifest_timestamp );
 
-// timestamps 
+// timestamps
 bool UG_inode_manifest_is_newer_than( struct SG_manifest* manifest, int64_t mtime_sec, int32_t mtime_nsec );
 
-// extraction 
+// extraction
 int UG_inode_dirty_blocks_extract( struct UG_inode* inode, UG_dirty_block_map_t* modified );
 int UG_inode_dirty_blocks_return( struct UG_inode* inode, UG_dirty_block_map_t* extracted );
 
@@ -122,12 +122,12 @@ int UG_inode_sync_queue_push( struct UG_inode* inode, struct UG_sync_context* sy
 struct UG_sync_context* UG_inode_sync_queue_pop( struct UG_inode* inode );
 int UG_inode_clear_replaced_blocks( struct UG_inode* inode );
 
-// locks 
+// locks
 int UG_inode_rlock( struct UG_inode* inode );
 int UG_inode_wlock( struct UG_inode* inode );
 int UG_inode_unlock( struct UG_inode* inode );
 
-// getters 
+// getters
 uint64_t UG_inode_volume_id( struct UG_inode* inode );
 uint64_t UG_inode_coordinator_id( struct UG_inode* inode );
 char* UG_inode_name( struct UG_inode* inode );
@@ -148,8 +148,8 @@ bool UG_inode_renaming( struct UG_inode* inode );
 bool UG_inode_deleting( struct UG_inode* inode );
 int64_t UG_inode_ms_num_children( struct UG_inode* inode );
 int64_t UG_inode_ms_capacity( struct UG_inode* inode );
-uint32_t UG_inode_max_read_freshness( struct UG_inode* inode );
-uint32_t UG_inode_max_write_freshness( struct UG_inode* inode );
+int32_t UG_inode_max_read_freshness( struct UG_inode* inode );
+int32_t UG_inode_max_write_freshness( struct UG_inode* inode );
 int64_t UG_inode_generation( struct UG_inode* inode );
 struct timespec UG_inode_refresh_time( struct UG_inode* inode );
 struct timespec UG_inode_manifest_refresh_time( struct UG_inode* inode );
@@ -171,8 +171,8 @@ void UG_inode_set_manifest_refresh_time_now( struct UG_inode* inode );
 void UG_inode_set_children_refresh_time( struct UG_inode* inode, struct timespec* ts );
 void UG_inode_set_children_refresh_time_now( struct UG_inode* inode );
 void UG_inode_set_old_manifest_modtime( struct UG_inode* inode, struct timespec* ts );
-void UG_inode_set_max_read_freshness( struct UG_inode* inode, uint32_t rf );
-void UG_inode_set_max_write_freshness( struct UG_inode* inode, uint32_t wf );
+void UG_inode_set_max_read_freshness( struct UG_inode* inode, int32_t rf );
+void UG_inode_set_max_write_freshness( struct UG_inode* inode, int32_t wf );
 void UG_inode_set_read_stale( struct UG_inode* inode, bool val );
 void UG_inode_set_deleting( struct UG_inode* inode, bool val );
 void UG_inode_set_dirty( struct UG_inode* inode, bool val );
@@ -185,7 +185,7 @@ void UG_inode_set_generation( struct UG_inode* inode, uint64_t generation );
 void UG_inode_bind_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent );
 void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode );
 
-// publish 
+// publish
 int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, struct md_entry* ent_data, struct UG_inode** ret_inode_data );
 
 }

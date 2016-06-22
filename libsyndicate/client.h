@@ -14,7 +14,7 @@
    limitations under the License.
 */
 
-// Syndicate Gateway client API 
+// Syndicate Gateway client API
 
 #ifndef _LIBSYNDICATE_CLIENT_H_
 #define _LIBSYNDICATE_CLIENT_H_
@@ -27,16 +27,16 @@
 // maximum length of a gateway reply: 1MB
 #define SG_CLIENT_MAX_REPLY_LEN         1024000
 
-// asynchronous upload 
+// asynchronous upload
 struct SG_client_request_async;
 typedef size_t (*SG_client_read_callback_t)( char*, size_t, size_t, void* );
 
 extern "C" {
-    
+
 // extra data to include in a write
 struct SG_client_WRITE_data;
 
-// set up a write reqeust 
+// set up a write reqeust
 struct SG_client_WRITE_data* SG_client_WRITE_data_new(void);
 int SG_client_WRITE_data_init( struct SG_client_WRITE_data* dat );
 int SG_client_WRITE_data_set_write_delta( struct SG_client_WRITE_data* dat, struct SG_manifest* write_delta );
@@ -44,7 +44,7 @@ int SG_client_WRITE_data_set_mtime( struct SG_client_WRITE_data* dat, struct tim
 int SG_client_WRITE_data_set_mode( struct SG_client_WRITE_data* dat, mode_t mode );
 int SG_client_WRITE_data_set_size( struct SG_client_WRITE_data* dat, uint64_t mode );
 int SG_client_WRITE_data_set_owner_id( struct SG_client_WRITE_data* dat, uint64_t owner_id );
-int SG_client_WRITE_data_set_refresh( struct SG_client_WRITE_data* dat, uint64_t read_freshness, uint64_t write_freshness );
+int SG_client_WRITE_data_set_refresh( struct SG_client_WRITE_data* dat, int32_t read_freshness, int32_t write_freshness );
 int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uint64_t volume_id, uint64_t coordinator_id, uint64_t file_id, int64_t file_version );
 int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entry* ent );
 
@@ -73,7 +73,7 @@ int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_mess
 int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags );
 int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name );
 
-// gateway-to-gateway messaging.  The corresponding driver methods will be run 
+// gateway-to-gateway messaging.  The corresponding driver methods will be run
 struct SG_client_request_async* SG_client_request_async_new(void);
 void SG_client_request_async_init( struct SG_client_request_async* req, SG_client_read_callback_t read_callback, size_t maxlen, void* cls );
 void* SG_client_request_async_cls( struct SG_client_request_async* datareq );
@@ -81,13 +81,13 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
 int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct md_download_loop* dlloop, struct md_download_context* dlctx );
 int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_download_context* dlctx, SG_messages::Reply* reply );
 
-// low-level download logic 
+// low-level download logic
 int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) );
 int SG_client_download_async_wait( struct md_download_context* dlctx, char** chunk_buf, off_t* chunk_len, void** cls );
 void SG_client_download_async_cleanup( struct md_download_context* dlctx );
 void SG_client_download_async_cleanup_loop( struct md_download_loop* dlloop );
 
-// signed block authentication 
+// signed block authentication
 int SG_client_block_sign( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block_data, struct SG_chunk* signed_block_data );
 int SG_client_block_verify( struct SG_gateway* gateway, struct SG_chunk* signed_block, uint64_t* ret_data_offset );
 
@@ -96,4 +96,4 @@ bool SG_client_request_is_remote_unavailable( int error );
 
 }
 
-#endif 
+#endif

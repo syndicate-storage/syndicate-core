@@ -77,14 +77,14 @@ using namespace std;
 struct md_entry {
    int type;            // file or directory?
    char* name;          // name of this entry
-   uint64_t file_id;    // id of this file 
+   uint64_t file_id;    // id of this file
    int64_t ctime_sec;   // creation time (seconds)
    int32_t ctime_nsec;  // creation time (nanoseconds)
    int64_t mtime_sec;   // last-modified time (seconds)
    int32_t mtime_nsec;  // last-modified time (nanoseconds)
    int64_t manifest_mtime_sec;  // manifest last-mod time (actual last-write time, regardless of utime) (seconds)
    int32_t manifest_mtime_nsec; // manifest last-mod time (actual last-write time, regardless of utime) (nanoseconds)
-   int64_t write_nonce; // last-write nonce 
+   int64_t write_nonce; // last-write nonce
    int64_t xattr_nonce; // xattr write nonce
    int64_t version;     // file version
    int32_t max_read_freshness;      // how long is this entry fresh until it needs revalidation?
@@ -98,14 +98,14 @@ struct md_entry {
    int64_t generation;  // n, as in, the nth item to ever be created in the parent directory
    int64_t num_children; // number of children this entry has (if it's a directory)
    int64_t capacity;    // maximum index number a child can have (i.e. used by listdir())
-   
+
    unsigned char* ent_sig;      // signature over this entry from the coordinator, as well as any ancillary data below
    size_t ent_sig_len;
-   
+
    // ancillary data: not always filled in
-   
+
    uint64_t parent_id;  // id of this file's parent directory
-   
+
    // putxattr, removexattr only (and only from the coordinator)
    unsigned char* xattr_hash;   // hash over (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value))
 };
@@ -130,12 +130,12 @@ struct md_entry {
 
 // server configuration
 struct md_syndicate_conf {
-   
-   // paths 
+
+   // paths
    char* config_file_path;                            // *absolute* path to the config file.
    char* volumes_path;                                // path to the directory containing volume keys and certs
-   char* gateways_path;                               // path to the directory containing gateway keys and certs 
-   char* users_path;                                  // path to the directory containing user keys and certs 
+   char* gateways_path;                               // path to the directory containing gateway keys and certs
+   char* users_path;                                  // path to the directory containing user keys and certs
    char* drivers_path;                                // path to the directory containing drivers
    char* syndicate_path;                              // path to the directory containing Syndicate public keys
    char* logs_path;                                   // path to the logfile directory to store gateway logs
@@ -143,34 +143,34 @@ struct md_syndicate_conf {
    char* certs_root;                                  // path to the *root* directory containing cached certs from other users, volumes, and gateways.
    char* certs_path;                                  // path to the *gateway-specific* directory containing cached certs.  Derived from certs_root; set at runtime.
    char* ipc_root;                                    // path to any temporary driver state (IPC objects like UNIX domain sockets or named pipes)
-   
-   // command-line options 
+
+   // command-line options
    char* volume_name;                                 // name of the volume we're connected to
    char* gateway_name;                                // name of this gateway
    char* ms_username;                                 // MS username for this user
-   
+
    // gateway fields
-   int64_t default_read_freshness;                    // default number of milliseconds a file can age before needing refresh for reads
-   int64_t default_write_freshness;                   // default number of milliseconds a file can age before needing refresh for writes
+   int32_t default_read_freshness;                    // default number of milliseconds a file can age before needing refresh for reads
+   int32_t default_write_freshness;                   // default number of milliseconds a file can age before needing refresh for writes
    bool gather_stats;                                 // gather statistics or not?
-   int max_read_retry;                                // maximum number of times to retry a read (i.e. fetching a block or manifest) before considering it failed 
+   int max_read_retry;                                // maximum number of times to retry a read (i.e. fetching a block or manifest) before considering it failed
    int max_write_retry;                               // maximum number of times to retry a write (i.e. replicating a block or manifest) before considering it failed
-   int max_metadata_read_retry;                       // maximum number of times to retry a metadata read before considering it failed 
+   int max_metadata_read_retry;                       // maximum number of times to retry a metadata read before considering it failed
    int max_metadata_write_retry;                      // maximum number of times to retry a metadata write before considering it failed
    int connect_timeout;                               // number of seconds to wait to connect for data
    int transfer_timeout;                              // how long a manifest/block transfer is allowed to take (in seconds)
    bool verify_peer;                                  // whether or not to verify the gateway server's SSL certificate with peers (if using HTTPS to talk to them)
-   uint64_t cache_size_limit;                         // soft limit on the size in bytes of the cache 
+   uint64_t cache_size_limit;                         // soft limit on the size in bytes of the cache
    char* metadata_url;                                // MS url
    uint64_t config_reload_freq;                       // how often do we check for a new configuration from the MS?
-   
-   // cert and key processors 
+
+   // cert and key processors
    char* certs_reload_helper;                         // command to go reload and revalidate all certificates
    char* driver_reload_helper;                        // command to go reload and revalidate the driver
-   char** helper_env;                                 // environment variables to pass 
+   char** helper_env;                                 // environment variables to pass
    size_t num_helper_envs;
    size_t max_helper_envs;
-   
+
    // debug
    int debug_lock;                                    // print verbose information on locks
 
@@ -186,7 +186,7 @@ struct md_syndicate_conf {
    uint64_t owner;                                    // what is our user ID in Syndicate?  Files created in this UG will assume this UID as their owner
    uint64_t gateway;                                  // what is our gateway ID?
    uint64_t volume;                                   // what is our volume ID?
-   uint64_t gateway_type;                             // type of gateway 
+   uint64_t gateway_type;                             // type of gateway
    int64_t cert_bundle_version;                       // the version of the cert bundle (obtained during initialization and kept in sync through config reloads)
    int64_t gateway_version;                           // the version of this gateway's cert (obtained during initialization and kept in sync through config reloads)
    int64_t volume_version;                            // the version of the volume (obtained during initialization and kept in sync through config reloads)
@@ -196,14 +196,14 @@ struct md_syndicate_conf {
    char* driver_exec_path;                            // what is the path to the driver to execute?
    char** driver_roles;                               // what are the different role(s) this gateway's driver takes on?
    size_t num_driver_roles;
-   
+
    char* user_pubkey_pem;                             // Syndicate User public key (PEM format) (if the private key is given, this will be generated from it)
    size_t user_pubkey_pem_len;
    EVP_PKEY* user_pubkey;
    char* volume_pubkey_pem;                           // volume metadata public key (PEM format).  Corresponds to the volume owner's public key
    size_t volume_pubkey_pem_len;
    EVP_PKEY* volume_pubkey;
-   
+
    // misc
    bool is_client;                                    // if true for a UG, always fetch data from RGs
 };
@@ -212,7 +212,7 @@ struct md_syndicate_conf {
 #define SG_GATEWAY_ANON            (uint64_t)0xFFFFFFFFFFFFFFFFLL
 #define SG_GATEWAY_TOOL            (uint64_t)0xFFFFFFFFFFFFFFFELL       // gateway id used by messages from the administrative tool
 
-// config elements 
+// config elements
 #define SG_CONFIG_VOLUMES_PATH            "volumes"
 #define SG_CONFIG_GATEWAYS_PATH           "gateways"
 #define SG_CONFIG_USERS_PATH              "users"
@@ -287,7 +287,7 @@ typedef map<uint64_t, struct ms_gateway_cert*> ms_cert_bundle;
 
 extern "C" {
 
-// library config 
+// library config
 int md_debug( struct md_syndicate_conf* conf, int level );
 int md_error( struct md_syndicate_conf* conf, int level );
 int md_signals( int use_signals );
@@ -346,7 +346,7 @@ int md_parse_header( char* header_buf, char const* header_name, char** header_va
 uint64_t md_parse_header_uint64( char* hdr, off_t offset, size_t size );
 uint64_t* md_parse_header_uint64v( char* hdr, off_t offset, size_t size, size_t* ret_len );
 
-// networking 
+// networking
 char* md_get_hostname( struct md_syndicate_conf* conf );
 int md_set_hostname( struct md_syndicate_conf* conf, char const* hostname );
 
@@ -358,12 +358,12 @@ int md_init_client( struct md_syndicate_conf* conf, struct ms_client* client, st
 
 int md_shutdown(void);
 
-// load certs 
+// load certs
 int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey, ms::ms_user_cert* user_cert, ms::ms_user_cert* volume_owner_cert, ms::ms_volume_metadata* volume_cert, ms_cert_bundle* gateway_certs );
 int md_driver_reload( struct md_syndicate_conf* conf, struct ms_gateway_cert* cert );
 struct ms_gateway_cert* md_gateway_cert_find( ms_cert_bundle* gateway_certs, uint64_t gateway_id );
 
-// driver 
+// driver
 int md_conf_set_driver_params( struct md_syndicate_conf* conf, char const* driver_exec_path, char const** driver_roles, size_t num_roles );
 
 }
@@ -380,17 +380,17 @@ template <class T> int md_serialize( T* protobuf, char** bits, size_t* bits_len 
       SG_error("SerializeToString exception: %s\n", e.what() );
       return -EINVAL;
    }
-   
+
    char* ret = SG_CALLOC( char, msgbits.size() );
    if( ret == NULL ) {
       return -ENOMEM;
    }
-   
+
    memcpy( ret, msgbits.data(), msgbits.size() );
-   
+
    *bits = ret;
    *bits_len = msgbits.size();
-   
+
    return 0;
 }
 
@@ -406,12 +406,12 @@ template <class T> int md_parse( T* protobuf, char const* bits, size_t bits_len 
       SG_error("ParseFromString exception: %s\n", e.what() );
       return -EINVAL;
    }
-   
+
    if( !valid ) {
       SG_error("ParseFromString rc = %d (missing %s)\n", valid, protobuf->InitializationErrorString().c_str() );
       return -EINVAL;
    }
-   
+
    return 0;
 }
 
