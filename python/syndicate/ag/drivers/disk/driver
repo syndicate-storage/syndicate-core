@@ -148,7 +148,7 @@ def next_dataset( driver_config, driver_secrets ):
 
         next_path = '/' + next_path.strip("/")     # do this here since os.path.join won't work with absolute paths
         cmd = None
-        gateway.log_error("Will '%s' '%s'" % (next_cmd, next_path) )
+        gateway.log_debug("Will '%s' '%s'" % (next_cmd, next_path) )
 
         if os.path.exists( full_path ):
             # creating or updating
@@ -167,7 +167,7 @@ def next_dataset( driver_config, driver_secrets ):
 
             if cmd is not None:
                 # have a command!
-                gateway.log_error("next cmd: %s\n" % cmd)
+                gateway.log_debug("next cmd: %s\n" % cmd)
                 break
 
             else:
@@ -182,7 +182,7 @@ def next_dataset( driver_config, driver_secrets ):
 
     # send the command to the AG and get back the result
     if cmd is not None:
-        gateway.log_error("Crawl %s" % next_path)
+        gateway.log_debug("Crawl %s" % next_path)
         rc = gateway.crawl( cmd )
         if rc != 0:
             gateway.log_error( "Failed to crawl %s: %s" % (cmd['path'], rc) )

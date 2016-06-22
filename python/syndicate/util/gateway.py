@@ -37,7 +37,7 @@ def do_driver_shutdown():
     """
     global driver_shutdown
 
-    log_error("Worker exiting")
+    log_debug("Worker exiting")
 
     if driver_shutdown is not None:
         rc = driver_shutdown()
