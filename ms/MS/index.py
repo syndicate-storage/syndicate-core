@@ -628,8 +628,9 @@ class MSEntryIndex( storagetypes.Object ):
       """
       
       old_max_cutoff = None
+      refresh_attempts = 5  # in case there are no children to swap
       
-      while True:
+      while refresh_attempts >= 0:
          
          # refresh the index max cutoff--it may have changed
          # the cutoff is the new number of children, after this entry has been deleted
@@ -703,6 +704,8 @@ class MSEntryIndex( storagetypes.Object ):
             # (NOTE: EPERM can mean that the children beyond the cutoff aren't showing up in queries yet)
             # TODO: can loop forever?
             logging.info("__compactify_child_delete( /%s/%s index=%s threshold=%s ) rc = %s" % (volume_id, parent_id, free_dir_index, parent_max_cutoff, replaced_dir_index))
+            refresh_attempts -= 1
+            time.sleep(1)   # see if the datacenter will catch up
             continue 
          
          else:
