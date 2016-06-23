@@ -418,7 +418,7 @@ static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* f
    // parse this
    struct UG_inode* inode = NULL;
    char* tmp = NULL;
-   uint32_t read_ttl = (uint32_t)strtoll( buf, &tmp, 10 );
+   int32_t read_ttl = (int32_t)strtoll( buf, &tmp, 10 );
 
    if( tmp == buf || *tmp != '\0' ) {
       // invalid
