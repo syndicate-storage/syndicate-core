@@ -2293,7 +2293,8 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
       if( rc == -EAGAIN ) {
          
          // only failed since we're missing the certificate.
-         // try to get it and have the requester try again 
+         // try to get it and have the requester try again
+         SG_debug("Unknown gateway %" PRIu64 "; trying to reload\n", request_msg->src_gateway_id() );
          SG_gateway_start_reload( gateway );
          return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
       }
@@ -2321,6 +2322,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
           SG_safe_delete( request_msg );
       
           // yup, need a reload 
+          SG_debug("%s", "Need to reload volume first\n");
           SG_gateway_start_reload( gateway );
           return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
        }
