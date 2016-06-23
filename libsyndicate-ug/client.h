@@ -141,6 +141,7 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
 // high-level file data API
 UG_handle_t* UG_create( struct UG_state* state, char const* path, mode_t mode, int* rc  );
 UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_entry* ent_data, int* ret_rc );
+int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struct md_entry* ent_data );
 UG_handle_t* UG_open( struct UG_state* state, char const* path, int flags, int* rc );
 int UG_read( struct UG_state* state, char *buf, size_t size, UG_handle_t* fi );
 int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t *fi );

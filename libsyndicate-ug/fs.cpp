@@ -224,7 +224,10 @@ static int UG_fs_mkdir( struct fskit_core* fs, struct fskit_route_metadata* rout
    // inode data 
    struct UG_inode* inode = NULL;
    
-   rc = UG_fs_create_or_mkdir( fs, route_metadata, fent, mode, NULL, &inode );
+   // caller-given inode data 
+   struct md_entry* caller_inode_data = (struct md_entry*)fskit_route_metadata_get_cls( route_metadata );
+
+   rc = UG_fs_create_or_mkdir( fs, route_metadata, fent, mode, caller_inode_data, &inode );
    if( rc != 0 ) {
       
       return rc;

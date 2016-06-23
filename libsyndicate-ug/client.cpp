@@ -481,12 +481,26 @@ int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent 
 }
 
 
-// mkdir(2)
+// POSIX-y mkdir(2)
 // forward to fskit, which will take care of communicating with the MS
 int UG_mkdir( struct UG_state* state, char const* path, mode_t mode ) {
    
    return fskit_mkdir( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
+
+
+// more advanced mkdir, setting extra syndicate-specific fields
+int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struct md_entry* ent_data ) {
+   
+   // sanity check 
+   if( ent_data->type != MD_ENTRY_DIR ) {
+      return -EINVAL;
+   }
+
+   SG_debug("max read/write: (%d, %d)\n", ent_data->max_read_freshness, ent_data->max_write_freshness);
+   return fskit_mkdir_ex( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ), (void*)ent_data );
+}
+
 
 // unlink(2)
 // forward to fskit, which will take care of communicating with the MS and garbage-collecting blocks
