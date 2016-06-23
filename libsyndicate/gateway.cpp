@@ -1360,6 +1360,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
    struct sigaction sigact;
    memset( &sigact, 0, sizeof(struct sigaction) );
    
+   sigemptyset( &sigact.sa_mask );
    sigact.sa_sigaction = SG_gateway_term;
    
    // use sa_sigaction, not sa_handler
