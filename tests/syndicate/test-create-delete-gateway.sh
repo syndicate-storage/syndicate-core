@@ -91,7 +91,7 @@ pushd "$SAVE_DIR"
 cp "$CONFIG_DIR/gateways/"* .
 popd
 
-for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_NAME; do
+for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_AG_GATEWAY_NAME; do
    
    GW_NAME="$NAME-01"
 
@@ -124,12 +124,7 @@ for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_N
    fi
 done
 
-# types.conf should be the only file...
-if [ "$(ls -l "$CONFIG_DIR/gateways/" | wc -l)" != "2" ]; then
-   test_fail "Gateway directory $CONFIG_DIR/gateways not empty"
-fi
-
-for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_NAME; do 
+for NAME in $RANDOM_RG_GATEWAY_NAME; do 
 
    GW_NAME="$NAME-01"
 
@@ -150,7 +145,7 @@ for NAME in $RANDOM_UG_GATEWAY_NAME $RANDOM_RG_GATEWAY_NAME $RANDOM_AG_GATEWAY_N
 
    GW_NAME="$NAME-01"
 
-   # should be idempotent
+   # should succeed
    $SYNDICATE_TOOL -c "$CONFIG_PATH" delete_gateway "$GW_NAME"
    RC=$?
 
