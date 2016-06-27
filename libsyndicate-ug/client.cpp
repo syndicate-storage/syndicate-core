@@ -551,7 +551,7 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
    int rc = 0;
-   struct stat sb;
+   struct md_entry mdsb;
    UG_handle_t* dh = NULL;
    struct md_entry** listing = NULL;
    char* path = NULL;
@@ -563,6 +563,8 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
    if( root_path_dup == NULL ) {
       return -ENOMEM;
    }
+
+   memset( &mdsb, 0, sizeof(struct md_entry));
 
    vector<char*> path_stack;
 
@@ -578,13 +580,13 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
       path = path_stack.at( path_stack.size() - 1 );
 
-      rc = UG_stat( state, path, &sb );
+      rc = UG_stat_raw( state, path, &mdsb );
       if( rc != 0 ) {
          SG_error("UG_stat('%s') rc = %d\n", path, rc );
          goto UG_rmtree_cleanup;
       }
 
-      if( S_ISREG(sb.st_mode) ) {
+      if( mdsb.type == MD_ENTRY_FILE ) {
          // file--unlink
          SG_debug("Remove file '%s'\n", path);
          rc = UG_unlink( state, path );
@@ -594,13 +596,15 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
          }
          path_stack.pop_back();
          SG_safe_free(path);
+         md_entry_free(&mdsb);
       }
-      else if( S_ISDIR(sb.st_mode) ) {
+      else if( mdsb.type == MD_ENTRY_DIR ) {
 
          SG_debug("Remove children of directory '%s'\n", path);
          dh = UG_opendir( state, path, &rc );
          if( dh == NULL ) {
             SG_error("UG_opendir('%s') rc = %d\n", path, rc );
+            md_entry_free(&mdsb);
             goto UG_rmtree_cleanup;
          }
          
@@ -609,6 +613,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
             rc = UG_readdir( state, &listing, 65536, dh ); 
             if( rc < 0 ) {
                UG_closedir(state, dh);
+               md_entry_free(&mdsb);
                SG_error("UG_readdir('%s') rc = %d\n", path, rc );
                goto UG_rmtree_cleanup;
             }
@@ -622,10 +627,16 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
             if( num_children == 0 ) {
                SG_debug("No children in '%s'\n", path);
+               if( listing != NULL ) {
+                  UG_free_dir_listing(listing);
+               }
+               else {
+                  SG_warn("No children given in '%s'\n", path);
+               }
                break;
             }
 
-            SG_debug("Read %zu children\n", num_children );
+            SG_debug("Read %zu children from '%s'\n", num_children, path );
             for( size_t i = 0; i < num_children; i++ ) {
 
                // delete each file while we're still fresh
@@ -637,6 +648,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                if( child_path == NULL ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
@@ -647,6 +659,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                   UG_closedir(state, dh);
                   SG_error("UG_unlink('%s') rc = %d\n", child_path, rc );
                   SG_safe_free(child_path);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
@@ -659,16 +672,19 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
             
                // push back each directory 
                if( listing[i]->type != MD_ENTRY_DIR ) {
+                  SG_debug("Skip non-directory '%s'\n", listing[i]->name);
                   continue;
                }
 
                // skip the current directory
-               if( listing[i]->file_id == sb.st_ino ) {
+               if( listing[i]->file_id == mdsb.file_id ) {
+                  SG_debug("Skip current directory %" PRIX64 " '%s'\n", listing[i]->file_id, listing[i]->name);
                   continue;
                }
 
-               // skip the parent 
-               if( listing[i]->parent_id == sb.st_ino ) {
+               // skip the parent THIS IS STILL BUGGY 
+               if( listing[i]->file_id == mdsb.parent_id ) {
+                  SG_debug("Skip parent directory %" PRIX64 " '%s'\n", listing[i]->file_id, listing[i]->name);
                   continue;
                }
 
@@ -678,10 +694,11 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                if( child_path == NULL ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
-               SG_debug("Directory: '%s' ('%s', %" PRIX64 ", %" PRIX64 ")\n", child_path, listing[i]->name, listing[i]->file_id, sb.st_ino );
+               SG_debug("Directory: '%s' ('%s', %" PRIX64 ", %" PRIX64 ")\n", child_path, listing[i]->name, listing[i]->file_id, mdsb.file_id );
 
                try {
                   path_stack.push_back(child_path);
@@ -689,6 +706,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                catch( bad_alloc& ba ) {
                   UG_closedir(state, dh);
                   UG_free_dir_listing(listing);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
             }
@@ -698,6 +716,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
          // done!
          UG_closedir(state, dh);
+         md_entry_free(&mdsb);
             
          if( empty ) {
             // maybe empty now
