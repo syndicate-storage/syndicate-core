@@ -276,7 +276,7 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
 // return partial results, even on error 
 // return 0 on success
 // return -EINVAL for invalid arguments.
-// return -ENOMEM on OOM 
+// return -ENOMEM on OOM
 // return negative on download failure, or corruption
 static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent_id, int64_t num_children, int64_t least_unknown_generation, int64_t dir_capacity, struct ms_client_multi_result* results ) {
    
@@ -301,7 +301,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
    bool aborted = false;
 
    int i = 0;
-   
+   bool diffdir = false; 
    struct md_entry* ents = NULL;
    
    // sanity check 
@@ -434,12 +434,16 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          
          num_downloads_finished ++;
          num_children_downloaded += num_children_fetched;
-         max_known_generation = MAX( max_generation_fetched, max_known_generation );
+
+         if( max_generation_fetched > 0 ) {
+             // got at least one child
+             max_known_generation = MAX( max_generation_fetched, max_known_generation );
+         }
 
          // are we out of children to fetch?
          if( num_children_fetched == 0 ) {
            
-            if( (unsigned)num_children_downloaded >= (unsigned)num_children ) { 
+            if( (unsigned)num_children_downloaded >= (unsigned)num_children || diffdir ) { 
                 SG_debug("Out of children (%" PRIu64 " fetched total)\n", num_children_downloaded );
             
                 rc = MD_DOWNLOAD_FINISH;
@@ -449,13 +453,14 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
 
          SG_debug("Fetched %" PRIu64 " (%" PRIu64 " downloaded total)\n", num_children_fetched, num_children_downloaded );
          
-         // do we need to switch over to LISTDIR?
+         // do we need to switch over to DIFFDIR?
          if( batch_queue.size() == 0 && num_children > 0 && num_children_downloaded < (unsigned)num_children ) {
             
             // yup
             SG_debug("Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 "\n", num_children_downloaded, num_children, max_known_generation + 1 );
             least_unknown_generation = max_known_generation + 1;
             batch_queue.push( least_unknown_generation );
+            diffdir = true;
          }
       }
       
