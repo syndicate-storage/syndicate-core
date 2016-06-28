@@ -129,7 +129,7 @@ static int ms_client_parse_listing( struct ms_client* client, struct ms_listing*
          rc = ms_entry_verify( client, src->mutable_entries(i) );
          if( rc != 0 ) {
             
-            SG_error("Unverifiable entry %" PRIX64 " (rc = %d)\n", src->entries(i).file_id(), rc );
+            SG_error("Unverifiable entry %" PRIX64 " from %" PRIu64 " (rc = %d)\n", src->entries(i).file_id(), src->entries(i).coordinator(), rc );
             
             ms_client_free_listing( dst );
             memset( dst, 0, sizeof(struct ms_listing));

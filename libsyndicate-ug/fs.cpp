@@ -828,7 +828,7 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
       
       md_cache_evict_file( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), 0 );
    }
-   
+
    return rc;
 }
 

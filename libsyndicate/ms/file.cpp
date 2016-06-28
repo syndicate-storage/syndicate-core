@@ -530,7 +530,8 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
    curl_easy_setopt( curl, CURLOPT_HEADERFUNCTION, ms_client_timing_header_func );
    curl_easy_setopt( curl, CURLOPT_WRITEHEADER, &timing );
   
-   // run 
+   // run
+   SG_debug("MS RPC op %d\n", request->op);
    rc = md_download_run( curl, MS_MAX_MSG_SIZE, &buf, &buflen );
    
    curl_easy_cleanup( curl );

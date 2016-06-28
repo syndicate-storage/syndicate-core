@@ -2427,8 +2427,8 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    msent->set_capacity( 16 );
    msent->clear_ms_signature();
 
-   // SG_debug("%s", "Verify:\n");
-   // msent->PrintDebugString();
+   SG_debug("%s", "Verify:\n");
+   msent->PrintDebugString();
 
    rc = md_verify< ms::ms_entry >( pubkey, msent );
 
@@ -2514,8 +2514,8 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
        msent.clear_xattr_hash();
    }
 
-   // SG_debug("from %s:%d, sign:\n", file, lineno);
-   // msent.PrintDebugString();
+   SG_debug("from %s:%d, sign:\n", file, lineno);
+   msent.PrintDebugString();
 
    rc = md_sign< ms::ms_entry >( privkey, &msent );
    if( rc != 0 ) {
