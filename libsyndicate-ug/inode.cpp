@@ -1596,7 +1596,7 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
 // resolve a path to an inode and it's parent's information
 // return a pointer to the locked fskit_entry on success, and set *parent_id
 // return NULL on error, and set *rc to non-zero
-static struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id ) {
+struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id ) {
 
    struct resolve_parent {
 

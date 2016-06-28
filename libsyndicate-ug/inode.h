@@ -157,6 +157,8 @@ struct timespec UG_inode_children_refresh_time( struct UG_inode* inode );
 size_t UG_inode_sync_queue_len( struct UG_inode* inode );
 bool UG_inode_creating( struct UG_inode* inode );
 
+struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id );
+
 // setters
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version );
 void UG_inode_set_write_nonce( struct UG_inode* inode, int64_t wn );
