@@ -251,7 +251,7 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 // return 0 on success 
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM
-static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data ) {
+static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data, uint64_t parent_id ) {
    
    int rc = 0;
    struct md_entry inode_data;
@@ -274,6 +274,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    fent = fskit_entry_ref( fs, path, &rc );
    if( fent == NULL ) {
       
+      SG_debug("fskit_entry_ref('%s') failed\n", path );
       return rc;
    }
    
@@ -283,9 +284,10 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    
    write_nonce = UG_inode_write_nonce( inode );
    
-   rc = UG_inode_export( &inode_data, inode, 0 );
+   rc = UG_inode_export( &inode_data, inode, parent_id );
    if( rc != 0 ) {
       
+      SG_debug("UG_inode_export('%s') rc = %d\n", path, rc );
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, path, fent );
       return rc;
@@ -294,6 +296,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
    if( rc != 0 ) {
        
+      SG_debug("UG_inode_export_xattr_hash('%s') rc = %d\n", path, rc );
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, path, fent );
       md_entry_free( &inode_data );
@@ -316,6 +319,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    inode_data.xattr_hash = xattr_hash;
    
    // send the update along
+   SG_debug("update '%s'\n", path);
    rc = ms_client_update( ms, &inode_data_out, &inode_data );
    
    inode_data.xattr_hash = NULL;
@@ -364,7 +368,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
 // return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
 // return -EREMOTEIO if there was a network-level error 
 // return non-zero error if the write was processed remotely, but failed remotely
-static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data ) {
+static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, uint64_t parent_id ) {
    
    int rc = 0;
    struct md_entry inode_out;
@@ -405,7 +409,8 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
    struct fskit_entry* fent = NULL;
    struct UG_inode* inode = NULL;
    uint64_t coordinator_id = 0;
-   
+   uint64_t parent_id = 0;
+
    // ensure fresh first
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -413,22 +418,21 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
       SG_error("UG_consistency_path_ensure_fresh('%s') rc = %d\n", path, rc );
       return rc;
    }
-   
-   // look up coordinator 
-   fent = fskit_entry_ref( fs, path, &rc );
+
+   fent = UG_inode_resolve_path_and_parent( fs, path, true, &rc, &parent_id );
    if( fent == NULL ) {
-   
-      return rc;  
+      SG_error("UG_inode_resolve_path_and_parent('%s') rc = %d\n", path, rc );
+      return rc;
    }
    
-   fskit_entry_rlock( fent );
+   fskit_entry_ref_entry( fent );
    
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    coordinator_id = UG_inode_coordinator_id( inode );
    
    fskit_entry_unlock( fent );
    
-   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data ), UG_update_remote( state, path, write_data ), &rc );
+   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data, parent_id ), UG_update_remote( state, path, write_data, parent_id ), &rc );
    
    ref_rc = fskit_entry_unref( fs, path, fent );
    if( ref_rc != 0 ) {
