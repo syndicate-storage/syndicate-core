@@ -83,7 +83,7 @@ def read_key( key_path, public=False ):
    Read a key from key_path.
    Verify that it is the kind of key Syndicate supports (i.e. RSA 4096-bit)
    Verify that it is a private key, or if public is True, a public key.
-   Return the PEM-encoded key on success.
+   Return the parsed key object on success.
    Return None on error
    """
    try:
