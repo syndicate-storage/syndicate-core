@@ -602,8 +602,7 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
          ms::ms_entry* msent = reply.mutable_listing()->mutable_entries(0);
          rc = ms_entry_verify( client, msent );
          if( rc != 0 ) {
-            SG_error("Invalid entry %" PRIX64 "\n", reply.listing().entries(0).file_id() );
-               
+            SG_error("Invalid entry %" PRIX64 "\n", msent->file_id());
             ms_client_timing_free( &timing );
             return -EBADMSG;
          }
@@ -906,7 +905,7 @@ int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct
             if( ent->type == MD_ENTRY_DIR ) {
                 
                 // MS controls directory consistency information 
-                ent_out->write_nonce = result.ent->write_nonce;
+                ent_out->write_nonce = ent->write_nonce; //result.ent->write_nonce;
             }
             else {
                 

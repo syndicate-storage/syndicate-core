@@ -2416,7 +2416,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 
        // restore original directory values
        // xattrs are trusted for directories only if the client trusts the MS.
-       msent->set_write_nonce( 1 );
+       // msent->set_write_nonce( 1 );
        msent->set_xattr_nonce( 1 );
        msent->clear_xattr_hash();
    }
@@ -2441,7 +2441,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    if( msent->type() == MD_ENTRY_DIR ) {
 
        // restore
-       msent->set_write_nonce( write_nonce );
+       // msent->set_write_nonce( write_nonce );
        msent->set_xattr_nonce( xattr_nonce );
 
        if( has_xattr_hash ) {
