@@ -16,6 +16,8 @@
    limitations under the License.
 """
 
+# creates a multi-block file in an AG and reads various byte-ranges from it.
+
 import os
 import sys
 import subprocess
