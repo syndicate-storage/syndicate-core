@@ -251,7 +251,7 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 // return 0 on success 
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM
-static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data, uint64_t parent_id ) {
+static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
    struct md_entry inode_data;
@@ -260,7 +260,6 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    struct SG_gateway* gateway = UG_state_gateway( state );
    struct ms_client* ms = SG_gateway_ms( gateway );
    
-   int64_t write_nonce = 0;
    struct md_entry inode_data_out;
    memset( &inode_data_out, 0, sizeof(struct md_entry) );
    
@@ -281,8 +280,6 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    fskit_entry_rlock( fent );
    
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
-   
-   write_nonce = UG_inode_write_nonce( inode );
    
    rc = UG_inode_export( &inode_data, inode, parent_id );
    if( rc != 0 ) {
@@ -317,6 +314,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    }
 
    inode_data.xattr_hash = xattr_hash;
+   inode_data.write_nonce = write_nonce;
    
    // send the update along
    SG_debug("update '%s'\n", path);
@@ -368,7 +366,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
 // return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
 // return -EREMOTEIO if there was a network-level error 
 // return non-zero error if the write was processed remotely, but failed remotely
-static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, uint64_t parent_id ) {
+static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
    struct md_entry inode_out;
@@ -410,6 +408,7 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
    struct UG_inode* inode = NULL;
    uint64_t coordinator_id = 0;
    uint64_t parent_id = 0;
+   int64_t write_nonce = 0;
 
    // ensure fresh first
    rc = UG_consistency_path_ensure_fresh( gateway, path );
@@ -429,10 +428,11 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
    
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    coordinator_id = UG_inode_coordinator_id( inode );
+   write_nonce = UG_inode_write_nonce( inode );
    
    fskit_entry_unlock( fent );
    
-   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data, parent_id ), UG_update_remote( state, path, write_data, parent_id ), &rc );
+   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data, parent_id, write_nonce ), UG_update_remote( state, path, write_data, parent_id, write_nonce ), &rc );
    
    ref_rc = fskit_entry_unref( fs, path, fent );
    if( ref_rc != 0 ) {
