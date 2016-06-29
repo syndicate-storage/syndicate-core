@@ -33,6 +33,7 @@ import json
 
 PUT_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-put")
 READ_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-read")
+LS_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-ls")
 AG_PATH = os.path.join(testconf.SYNDICATE_AG_ROOT, "syndicate-ag")
 AG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/ag/drivers/disk" )
 
@@ -98,7 +99,7 @@ if __name__ == "__main__":
         (4096, 16834), # 3 blocks, aligned
         (5000, 16384), # 3 blocks, head unaligned
         (4096, 16000), # 3 blocks, tail unaligned
-        (5000, 16000), # 3 blocks, head and tail unaligned
+        (5000, 16000) # 3 blocks, head and tail unaligned
     ]
 
     for (start, end) in ranges:
@@ -125,6 +126,17 @@ if __name__ == "__main__":
             if expected_data[start:end] not in out:
                 stop_and_save( output_dir, ag_proc, ag_out_path, "syndicate-ag")
                 raise Exception("Missing data for %s-%s" % (start, end))
+
+    # finally, list it
+    for p in ['/', '/dir1', '/dir1/dir2', output_path]:
+        exitcode, out = testlib.run( LS_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'),
+                                     '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', read_gateway_name,
+                                     p, valgrind=True )
+
+        testlib.save_output( output_dir, "syndicate-ls-%s" % p.replace("/", "\\x2f" ), out)
+        if exitcode != 0:
+            stop_and_save(output_dir, ag_proc, ag_out_path, "syndicate-ag")
+            raise Exception("Failed to list %s" % p)
 
     ag_exitcode, ag_out = testlib.stop_gateway( ag_proc, ag_out_path )
 
