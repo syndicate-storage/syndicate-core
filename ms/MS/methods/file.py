@@ -169,7 +169,9 @@ def _getattr( owner_id, volume, file_id, file_version, write_nonce ):
    if file_data is not None:
       # got data...
       # do we need to actually send this?
-      if file_data.version == file_version and file_data.write_nonce == write_nonce:
+      # NOTE: root directory is always NEW
+      root_file_id = MSEntry.unserialize_id(0)
+      if file_data.version == file_version and file_data.write_nonce == write_nonce and file_id != root_file_id:
          need_refresh = False
          
          logging.info("%s has type %s version %s write_nonce %s, status=NOCHANGE" % (file_data.name, file_data.ftype, file_data.version, file_data.write_nonce))
