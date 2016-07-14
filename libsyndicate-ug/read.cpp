@@ -565,7 +565,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
              break;
          }
 
-         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ) );
+         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "] with %p\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ), dlctx );
 
          // started at least one block; try to start more 
          cycled_through = false;

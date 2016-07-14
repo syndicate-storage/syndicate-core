@@ -2376,7 +2376,6 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 
    // if root, preserve but clear these fields set by the MS
    // (in order to verify volume owner signature)
-   int64_t write_nonce = msent->write_nonce();
    int64_t xattr_nonce = msent->xattr_nonce();
    string ms_signature = msent->ms_signature();
    string xattr_hash;
@@ -2893,7 +2892,7 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    conf->connect_timeout = 15;
 
    conf->portnum = -1;
-   conf->transfer_timeout = 600;
+   conf->transfer_timeout = 600;    // 10 minutes default
 
    conf->owner = 0;
    conf->usermask = 0377;

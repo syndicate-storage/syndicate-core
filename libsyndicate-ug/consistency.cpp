@@ -1717,6 +1717,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
          SG_safe_free( fs_dirpath );
          return -ESTALE;
       }
+      SG_debug("Remotely refreshed %" PRIX64 "\n", file_id);
    }
 
 

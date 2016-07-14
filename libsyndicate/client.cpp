@@ -573,8 +573,6 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
 
    CURL* curl = NULL;
 
-   struct SG_client_request_cls* reqcls = (struct SG_client_request_cls*)md_download_context_get_cls( dlctx );
-
    // clean up
    int free_rc = md_download_context_unref( dlctx );
    if( free_rc > 0 ) {

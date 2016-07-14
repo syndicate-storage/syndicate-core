@@ -995,7 +995,7 @@ int md_download_sem_wait( sem_t* sem, int64_t timeout_ms ) {
 // return -ETIMEDOUT if timeout_ms is >= 0 and the deadline was exceeded
 int md_download_context_wait( struct md_download_context* dlctx, int64_t timeout_ms ) {
    
-   SG_debug("Wait on download context %p\n", dlctx );
+   SG_debug("Wait on download context %p (%" PRIu64 " millis)\n", dlctx, timeout_ms );
    
    int rc = md_download_sem_wait( &dlctx->sem, timeout_ms );
    
@@ -1746,13 +1746,6 @@ int md_download_context_run( struct md_download_context* dlctx ) {
    return rc;
 }
 
-// initialze a curl handle
-// always succeeds
-void md_init_curl_handle( struct md_syndicate_conf* conf, CURL* curl_h, char const* url, time_t query_timeout ) {
-   md_init_curl_handle2( curl_h, url, query_timeout, conf->verify_peer );
-}
-
-
 // setsockopt for curl 
 static int md_curl_sockopt( void* userdata, curl_socket_t sockfd, curlsocktype purpose ) {
 
@@ -1770,7 +1763,7 @@ static int md_curl_sockopt( void* userdata, curl_socket_t sockfd, curlsocktype p
 
 
 // initialze a curl handle
-void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, bool ssl_verify_peer ) {
+static void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, bool ssl_verify_peer, int64_t transfer_timeout ) {
    
    curl_easy_setopt( curl_h, CURLOPT_NOPROGRESS, 1L );   // no progress bar
    curl_easy_setopt( curl_h, CURLOPT_USERAGENT, "Syndicate-Gateway/1.0");
@@ -1796,9 +1789,19 @@ void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, 
       curl_easy_setopt( curl_h, CURLOPT_SSL_VERIFYHOST, 0L );
    }
    
-   curl_easy_setopt( curl_h, CURLOPT_SOCKOPTFUNCTION, md_curl_sockopt );  
+   curl_easy_setopt( curl_h, CURLOPT_SOCKOPTFUNCTION, md_curl_sockopt );
+   
+   // stop-gap
+   curl_easy_setopt( curl_h, CURLOPT_TIMEOUT, transfer_timeout );
    
    //curl_easy_setopt( curl_h, CURLOPT_VERBOSE, 1L );
+}
+
+
+// initialze a curl handle
+// always succeeds
+void md_init_curl_handle( struct md_syndicate_conf* conf, CURL* curl_h, char const* url, time_t query_timeout ) {
+   md_init_curl_handle2( curl_h, url, query_timeout, conf->verify_peer, conf->transfer_timeout );
 }
 
 
@@ -2099,7 +2102,9 @@ int md_download_loop_cleanup( struct md_download_loop* dlloop, md_download_curl_
    int rc = 0;
    struct md_download_context* dlctx = NULL;
    CURL* curl = NULL;
-   
+  
+   SG_debug("Clean up download loop %p (set %p)\n", dlloop, &dlloop->dlset);
+
    for( int i = 0; i < dlloop->num_downloads; i++ ) {
       
       dlctx = dlloop->downloads[i];

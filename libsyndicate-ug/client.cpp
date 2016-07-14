@@ -501,7 +501,7 @@ int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struc
       return -EINVAL;
    }
 
-   SG_debug("max read/write: (%d, %d)\n", ent_data->max_read_freshness, ent_data->max_write_freshness);
+   SG_debug("max read/write, size: (%d, %d, %" PRIu64 ")\n", ent_data->max_read_freshness, ent_data->max_write_freshness, ent_data->size);
    return fskit_mkdir_ex( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ), (void*)ent_data );
 }
 

@@ -120,7 +120,6 @@ int md_download_sem_wait( sem_t* sem, int64_t timeout_ms );
 
 // helper functions to initialize curl handles for downloading 
 void md_init_curl_handle( struct md_syndicate_conf* conf, CURL* curl, char const* url, time_t query_time );
-void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, bool ssl_verify_peer );
 
 // download/upload callbacks
 size_t md_get_callback_response_buffer( void* stream, size_t size, size_t count, void* user_data );
