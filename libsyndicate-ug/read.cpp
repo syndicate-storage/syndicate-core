@@ -675,6 +675,11 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       
       md_download_loop_abort( dlloop );
       rc = -EIO;
+
+      // unref failed downloads 
+      // (do this twice on abort, since we have to clear out
+      // downloads that were in-flight when we aborted)
+      SG_client_download_async_cleanup_loop( dlloop );
    }
     
    SG_client_download_async_cleanup_loop( dlloop );
