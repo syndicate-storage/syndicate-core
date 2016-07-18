@@ -824,7 +824,7 @@ int SG_server_HTTP_GET_block( struct SG_gateway* gateway, struct SG_request_data
       rc = 0;
       SG_chunk_free( &block );
    }
-   if( rc < 0 ) {
+   else if( rc != 0 ) {
       
       // failure 
       SG_chunk_free( &block );
@@ -991,7 +991,7 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
       SG_chunk_free( &serialized_manifest );
       rc = 0;
    }
-   if( rc != 0 ) {
+   else if( rc != 0 ) {
       
       // failed 
       SG_chunk_free( &serialized_manifest );
