@@ -1311,6 +1311,7 @@ int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t 
 // return 0 on success.
 // return -ENOMEM on OOM
 // return -EBADF if fi is NULL or refers to a directory 
+// fi->fent must *NOT* be locked!
 int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* ret_block_version, unsigned char* ret_hash, UG_handle_t* fi ) {
 
    struct fskit_entry* fent = NULL;
@@ -1353,7 +1354,7 @@ int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* ret_blo
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_getblock_out;
@@ -1458,7 +1459,7 @@ int UG_putblockinfo( struct UG_state* state, uint64_t block_id, int64_t block_ve
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_putblock_out;
@@ -1542,7 +1543,7 @@ int UG_manifest_export( struct UG_state* ug, struct SG_manifest* manifest, UG_ha
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_manifest_export_out;
