@@ -637,6 +637,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    if( !md_download_context_finalized( dlctx ) ) {
 
       // wait for it...
+      SG_debug("Wait forever for %p to finish\n", dlctx );
       rc = md_download_context_wait( dlctx, -1 );
       if( rc != 0 ) {
 
@@ -903,6 +904,7 @@ int SG_client_block_verify( struct SG_gateway* gateway, uint64_t coordinator_id,
 
    if( (unsigned)signed_block->len < sizeof(uint32_t) ) {
       // can't even have the header length
+      SG_error("Invalid block length %zu\n", signed_block->len);
       return -EBADMSG;
    }
 
@@ -2579,6 +2581,7 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
    md_download_context_set_cls( dlctx, NULL );
 
    // wait for this download to finish
+   SG_debug("Wait at most %" PRId64 " millis for %p to finish\n", (int64_t)(conf->transfer_timeout * 1000), dlctx );
    rc = md_download_context_wait( dlctx, conf->transfer_timeout * 1000 );
    if( rc != 0 ) {
 
