@@ -1936,9 +1936,14 @@ static int SG_gateway_cache_get_raw( struct SG_gateway* gateway, struct SG_reque
    
    // success! promote!
    md_cache_promote_block( gateway->cache, reqdat->file_id, reqdat->file_version, block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec );
+    
+   // for debugging...
+   char prefix[21];
+   memset( prefix, 0, 21 );
+   memcpy( prefix, chunk_buf, MIN( 20, chunk_len ) );
    
-   SG_debug("CACHE HIT on %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s)\n",
-            reqdat->file_id, reqdat->file_version, SG_request_is_block( reqdat ) ? "block" : "manifest", block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path );
+   SG_debug("CACHE HIT on %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) %zu bytes, data: '%s'...\n",
+            reqdat->file_id, reqdat->file_version, SG_request_is_block( reqdat ) ? "block" : "manifest", block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, chunk_len, prefix );
    
    SG_chunk_init( chunk, chunk_buf, chunk_len );
    return 0;
