@@ -262,6 +262,7 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
    int* attempts = NULL;
    int num_processed = 0;
    int request_id = 0;
+   CURL* curl = NULL;
    struct md_download_context* dlctx = NULL;
    
    if( path->size() == 0 ) {
@@ -461,6 +462,11 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
          if( dlstate != NULL ) { 
              ms_client_get_metadata_context_free( dlstate );
              SG_safe_free( dlstate );
+         }
+         
+         md_download_context_unref_free( dlctx, &curl );
+         if( curl != NULL ) {
+             curl_easy_cleanup( curl );
          }
       }
    }
