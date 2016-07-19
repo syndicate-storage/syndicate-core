@@ -37,6 +37,8 @@ READ_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-read")
 AG_PATH = os.path.join(testconf.SYNDICATE_AG_ROOT, "syndicate-ag")
 AG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/ag/drivers/disk" )
 
+expected_data = None
+
 def stop_and_save( output_dir, proc, out_path, save_name ):
     exitcode, out = testlib.stop_gateway( proc, out_path )
     testlib.save_output( output_dir, save_name, out )
