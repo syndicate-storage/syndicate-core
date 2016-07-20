@@ -387,6 +387,8 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    struct SG_chunk next_block;
    struct SG_manifest_block* block_info = NULL;
 
+   uint64_t max_connections = 10;
+
    UG_block_gateway_map_t block_gateway_idx;        // map block ID to the index into gateway_ids for the next gateway to try
    int gateway_idx = 0;
    SG_manifest_block_iterator itr;
@@ -456,7 +458,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       return -ENOMEM;
    }
 
-   rc = md_download_loop_init( dlloop, SG_gateway_dl( gateway ), MIN( (unsigned)ms->max_connections, SG_manifest_get_block_count( block_requests ) ) );
+   rc = md_download_loop_init( dlloop, SG_gateway_dl( gateway ), MIN( max_connections, SG_manifest_get_block_count( block_requests ) ) );
    if( rc != 0 ) {
       
       SG_error("md_download_loop_init rc = %d\n", rc );
@@ -469,7 +471,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    
    itr = SG_manifest_block_iterator_begin( block_requests );
 
-   SG_debug("Initialize read download loop %p for %" PRIX64 " with %" PRIu64 " contexts\n", dlloop, SG_manifest_get_file_id(block_requests), MIN( (unsigned)ms->max_connections, SG_manifest_get_block_count( block_requests ) ) ); 
+   SG_debug("Initialize read download loop %p for %" PRIX64 " with %" PRIu64 " contexts\n", dlloop, SG_manifest_get_file_id(block_requests), MIN( max_connections, SG_manifest_get_block_count( block_requests ) ) ); 
    SG_debug("Will download %zu blocks for %" PRIX64 " with %p\n", block_gateway_idx.size(), SG_manifest_get_file_id(block_requests), dlloop);
 
    // download each block 
