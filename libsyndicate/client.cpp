@@ -452,6 +452,10 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
 
 
 // set up and start a download context used for transferring data asynchronously
+// This will ref the download context once more than it needs to; the caller must
+// call SG_client_download_async_cleanup() and then md_download_unref_free.
+// This is meant to allow the caller to inspect the dlctx state once we're done
+// processing the block download.
 // return 0 on success
 // return -ENOMEM on OOM
 int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) ) {
@@ -547,6 +551,8 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
 
       return rc;
    }
+
+   SG_debug("Running download %p in loop %p\n", dlctx, dlloop);
 
    // started!
    return 0;
@@ -1073,7 +1079,7 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
       return rc;
    }
 
-   SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "]\n", reqdat->file_id, reqdat->file_version, *block_id );
+   SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "] with %p\n", reqdat->file_id, reqdat->file_version, *block_id, dlctx );
 
    block_chunk.data = block_buf;
    block_chunk.len = block_len;
