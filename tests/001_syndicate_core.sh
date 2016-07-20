@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env bash
+
 
 SCRIPTDIR=`dirname $0` # find parent directory of this script
 ROOTDIR=`readlink -f ${SCRIPTDIR}` # find the absolute path
@@ -66,10 +67,11 @@ for TESTDIR in $DIRS; do
 
          # run test
          cd "$TESTDIR"
-         START_MS=$(date +%s)
+         # note, %N is a gnu extension for nanoseconds
+         START_NS=$(date +%s%N)
          "./$TESTNAME" > "$TESTOUT/$TESTNAME.out" 2>&1
          RC=$?
-         END_MS=$(date +%s)
+         END_NS=$(date +%s%N)
          cd ..
 
          # log test result
@@ -80,8 +82,9 @@ for TESTDIR in $DIRS; do
          fi
 
          # timing info
+         DURATION_MS=$(((${END_NS}-${START_NS})/1000000))
          echo "  ---"
-         echo "    duration_ms: $((${END_MS} - ${START_MS}))"
+         echo "    duration_ms: $DURATION_MS"
          echo "  ..."
 
          # diagnostics
