@@ -623,7 +623,7 @@ int md_downloader_end_all_cancelling( struct md_downloader* dl ) {
          dlctx->cancelled = true;
          dlctx->cancelling = false;
 
-         struct md_download_set* dlset = dlctx->dlset;
+         // struct md_download_set* dlset = dlctx->dlset;
          
          pthread_mutex_unlock( &dlctx->finalize_lock );
          
@@ -640,7 +640,7 @@ int md_downloader_end_all_cancelling( struct md_downloader* dl ) {
 
             rc = 0;
          }
-       
+         /* 
          // wake up the set waiting on this dlctx 
          if( dlset != NULL ) {
             
@@ -652,6 +652,7 @@ int md_downloader_end_all_cancelling( struct md_downloader* dl ) {
                continue;
             }
          }
+         */
       }
       
       dl->cancelling->clear();
@@ -1423,8 +1424,19 @@ int md_downloader_finalize_download_context( struct md_download_context* dlctx, 
       // caller should free
       rc = 1;
    }
+
+   // wake up threads waiting for this download set 
+   if( dlctx->dlset != NULL ) {
+      
+      rc = md_download_set_wakeup( dlctx->dlset );
+      if( rc != 0 ) {
+         
+         SG_error("md_download_set_wakeup( %p ) rc = %d\n", dlctx->dlset, rc );
+         rc = 0;
+      }
+   }
    
-   // release waiting thread
+   // wake up threads waitin for this specific download
    sem_post( &dlctx->sem );
 
    pthread_mutex_unlock( &dlctx->finalize_lock );
@@ -1500,7 +1512,7 @@ int md_downloader_finalize_download_contexts( struct md_downloader* dl ) {
             }
            
             // get the download set from this dlctx, so we can awaken it later
-            struct md_download_set* dlset = dlctx->dlset;
+            // struct md_download_set* dlset = dlctx->dlset;
             
             // finalize the download context, unref'ing it
             rc = md_downloader_finalize_download_context( dlctx, result );
@@ -1523,6 +1535,7 @@ int md_downloader_finalize_download_contexts( struct md_downloader* dl ) {
                rc = 0;
             }
             
+            /*
             // wake up the set waiting on this dlctx 
             if( dlset != NULL ) {
                
@@ -1534,6 +1547,7 @@ int md_downloader_finalize_download_contexts( struct md_downloader* dl ) {
                   continue;
                }
             }
+            */
          }
       } 
       
@@ -2108,11 +2122,15 @@ int md_download_loop_cleanup( struct md_download_loop* dlloop, md_download_curl_
       dlctx = dlloop->downloads[i];
       
       if( !dlctx->initialized ) {
+         // clear from parent set
+         SG_debug("Clear download %p from set %p in loop %p\n", dlctx, &dlloop->dlset, dlloop );
+         md_download_set_clear( &dlloop->dlset, dlctx );
          continue;
       }
-      
-      // remove from parent set
-      md_download_context_clear_set( dlctx );
+      else {
+         // remove from parent set
+         md_download_context_clear_set( dlctx );
+      }
 
       // wait to finish 
       SG_debug("Wait for download context %p (set %p, loop %p)\n", dlctx, &dlloop->dlset, dlloop);
