@@ -1374,7 +1374,8 @@ static int md_HTTP_connection_handler( void* cls, struct MHD_Connection* connect
       
       struct md_HTTP_response* resp = con_data->resume_resp;
       con_data->resume_resp = NULL;
-      
+     
+      SG_debug("Connection %p resumed\n", connection); 
       return md_HTTP_send_response( connection, resp );
    }
    
@@ -1448,11 +1449,11 @@ int md_HTTP_connection_resume( struct md_HTTP_connection_data* con_data, struct 
    con_data->resume_resp = resp;
    
    // send it back
-   MHD_resume_connection( con_data->connection );
    con_data->suspended = false;
       
    SG_debug("Resume connection %p\n", con_data->connection );
       
+   MHD_resume_connection( con_data->connection );
    return 0;
 }
 
