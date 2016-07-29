@@ -475,7 +475,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    SG_debug("Will download %zu blocks for %" PRIX64 " with %p\n", block_gateway_idx.size(), SG_manifest_get_file_id(block_requests), dlloop);
 
    // download each block 
-   do {
+   while( block_gateway_idx.size() > 0 ) {
       
       // start as many downloads as we can
       while( block_gateway_idx.size() > 0 ) {
@@ -577,6 +577,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          }
 
          SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "] with %p in %p\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ), dlctx, dlloop );
+         SG_debug("download loop %p has %d downloads\n", dlloop, md_download_loop_num_initialized(dlloop));
 
          // started at least one block; try to start more 
          cycled_through = false;
@@ -586,7 +587,12 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          SG_debug("Will abort download loop %p\n", dlloop);
          break;
       }
-      
+     
+      if( md_download_loop_num_initialized(dlloop) == 0 && block_gateway_idx.size() == 0 ) {
+         SG_debug("Download loop is dead; no more downloads (%p)\n", dlloop);
+         break;
+      }
+
       // wait for at least one of the downloads to finish 
       rc = md_download_loop_run( dlloop );
       if( rc != 0 ) {
@@ -686,10 +692,9 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       if( rc != 0 ) {
          SG_debug("Will abort download loop %p\n", dlloop);
          break;
-      }
-      
-   } while( block_gateway_idx.size() > 0 );
-  
+      }     
+   }
+
    SG_debug("Read finished: md_download_loop_running(%p) == %d, block_gateway_idx.size() == %zu\n", dlloop, md_download_loop_running(dlloop), block_gateway_idx.size() );
 
    // failure?
