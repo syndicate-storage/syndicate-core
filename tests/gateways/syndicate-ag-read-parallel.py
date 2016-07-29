@@ -69,19 +69,20 @@ class UGThread( threading.Thread ):
 
         # try reading various ranges (these are (start, end) absolute ranges, not offset/length)
         ranges = [
+            (0, 16384),
             (1, 200),
-            (0, 4096),  # 1 block, aligned
-            (0, 8192),  # 2 blocks, aligned
-            (0, 1000),  # 1 block, tail unaligned
-            (0, 6000),  # 2 blocks, tail unaligned
-            (100, 4000), # 1 block, head unaligned
-            (5000, 10000), # 2 blocks, head and tail unaligned
-            (4096, 10000), # 2 blocks, tail unaligned
-            (5000, 8192),  # 2 blocks, head unalighed
-            (4096, 16834), # 3 blocks, aligned
-            (5000, 16384), # 3 blocks, head unaligned
-            (4096, 16000), # 3 blocks, tail unaligned
-            (5000, 16000), # 3 blocks, head and tail unaligned
+            (0, 4096),
+            (0, 8192),
+            (0, 1000),
+            (0, 6000),
+            (100, 4000),
+            (5000, 10000),
+            (4096, 10000),
+            (5000, 8192),
+            (4096, 16834),
+            (5000, 16384),
+            (4096, 16000),
+            (5000, 16000)
         ]
 
         self.exitcode = 0
@@ -138,7 +139,7 @@ class UGThread( threading.Thread ):
 if __name__ == "__main__":
 
     config_dir, output_dir = testlib.test_setup()
-    volume_name = testlib.add_test_volume( config_dir )
+    volume_name = testlib.add_test_volume( config_dir, blocksize=1024 )
     num_threads = 8
     threads = []
 
