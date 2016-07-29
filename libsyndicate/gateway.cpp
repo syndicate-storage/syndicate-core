@@ -1914,10 +1914,16 @@ static int SG_gateway_cache_get_raw( struct SG_gateway* gateway, struct SG_reque
    block_fd = md_cache_open_block( gateway->cache, reqdat->file_id, reqdat->file_version, block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, O_RDONLY, 0 );
    
    if( block_fd < 0 ) {
-      
-      SG_warn("md_cache_open_block( %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) ) rc = %d\n",
-              reqdat->file_id, reqdat->file_version, SG_request_is_block( reqdat ) ? "block" : "manifest", block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, block_fd );
-      
+     
+      if( block_fd == -ENOENT ) { 
+          SG_debug("md_cache_open_block( %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) ) rc = %d\n",
+                  reqdat->file_id, reqdat->file_version, SG_request_is_block( reqdat ) ? "block" : "manifest", block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, block_fd );
+      }
+      else {
+          SG_error("md_cache_open_block( %" PRIX64 ".%" PRId64 "[%s %" PRIu64 ".%" PRId64 "] (%s) ) rc = %d\n",
+                  reqdat->file_id, reqdat->file_version, SG_request_is_block( reqdat ) ? "block" : "manifest", block_id_or_manifest_mtime_sec, block_version_or_manifest_mtime_nsec, reqdat->fs_path, block_fd );
+      }
+
       return block_fd;
    }
    
