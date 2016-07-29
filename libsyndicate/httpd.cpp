@@ -1564,7 +1564,7 @@ int md_HTTP_start( struct md_HTTP* http, int portnum ) {
    }
    else {
       http->http_daemon = MHD_start_daemon(  http->server_type | MHD_USE_SUSPEND_RESUME | MHD_USE_PIPE_FOR_SHUTDOWN | MHD_USE_DEBUG, portnum, NULL, NULL, &md_HTTP_connection_handler, http,
-                                             MHD_OPTION_THREAD_POOL_SIZE, num_http_threads,
+                                             // MHD_OPTION_THREAD_POOL_SIZE, num_http_threads,
                                              MHD_OPTION_NOTIFY_COMPLETED, md_HTTP_cleanup, http,
                                              MHD_OPTION_END );
    }
