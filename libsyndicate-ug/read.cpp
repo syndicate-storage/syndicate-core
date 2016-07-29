@@ -525,7 +525,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          if( rc != 0 ) {
             
             if( rc == -EAGAIN ) {
-               SG_debug("All download slopts in %p are full\n", dlloop);
+               SG_debug("All download slots in %p are full\n", dlloop);
                rc = 0;
                break;
             }
@@ -688,7 +688,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          break;
       }
       
-   } while( md_download_loop_running( dlloop ) && block_gateway_idx.size() > 0 );
+   } while( block_gateway_idx.size() > 0 );
   
    SG_debug("Read finished: md_download_loop_running(%p) == %d, block_gateway_idx.size() == %zu\n", dlloop, md_download_loop_running(dlloop), block_gateway_idx.size() );
 
