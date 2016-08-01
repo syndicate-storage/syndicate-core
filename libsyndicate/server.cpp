@@ -1537,6 +1537,7 @@ int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
    }
    
    // resume the connection so we can send back the response
+   SG_debug("Finish response on connection %p\n", con_data);
    rc = md_HTTP_connection_resume( con_data, resp );
    if( rc != 0 ) {
       
@@ -2122,7 +2123,6 @@ SG_server_HTTP_POST_PUTCHUNKS_finish:
 
 // handle a REFRESH request: feed the request into the implementation's "refresh" callback
 // this is called as part of an IO completion.
-// NOTE: reqdat must be a getxattr request
 // return 0 on success
 // return -ENOSYS if not implemented 
 // return -EINVAL if the request does not contain xattr information
@@ -2136,15 +2136,17 @@ static int SG_server_HTTP_POST_REFRESH( struct SG_gateway* gateway, struct SG_re
       
       return -ENOSYS;
    }
-  
+ 
+   SG_debug("Begin refresh %" PRIX64 ".%" PRId64 "(%s)\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path);
+
    // forward to implementation 
    rc = SG_gateway_impl_refresh( gateway, reqdat );
-   if( rc != 0 ) {
-      SG_error("SG_gateway_impl_refresh( %" PRIX64 ".%" PRId64 " (%s) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-   }
+
+   SG_error("End refresh %" PRIX64 ".%" PRId64 " (%s), rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
 
    return rc;
 }
+
 
 // handle a SETXATTR request: feed the request into the implementation's "setxattr" callback.
 // this is called as part of an IO completion.
@@ -2445,7 +2447,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                // start refresh 
                rc = SG_server_HTTP_IO_start( gateway, SG_SERVER_IO_WRITE, SG_server_HTTP_POST_REFRESH, reqdat, request_msg, con_data, resp );
                if( rc != 0 ) {
-                  SG_error("SG_server_HTTP_IO_START( RELOAD(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
+                  SG_error("SG_server_HTTP_IO_start( REFRESH(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
                   break;
                }
             }
