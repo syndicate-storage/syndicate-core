@@ -492,7 +492,6 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
       return rc;
    }
    
-   // connect (TODO: connection pool)
    curl = curl_easy_init();
    if( curl == NULL ) {
       

@@ -90,7 +90,6 @@ static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t 
    }
    
    // set up CURL 
-   // TODO: connection pool 
    curl = curl_easy_init();
    if( curl == NULL ) {
       
@@ -186,7 +185,6 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
          SG_error("ms_client_download_parse_errors( %p ) rc = %d\n", dlctx, rc );
       }
       
-      // TODO: connection pool
       md_download_context_unref_free( dlctx, &curl );
       if( curl != NULL ) {
           curl_easy_cleanup( curl );
@@ -202,7 +200,6 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
    rc = ms_client_listing_read_entries( client, dlctx, &children, &num_children, &listing_error );
    
    // done with the download
-   // TODO: connection pool
    md_download_context_unref_free( dlctx, &curl );
    if( curl != NULL ) {
       curl_easy_cleanup( curl );
