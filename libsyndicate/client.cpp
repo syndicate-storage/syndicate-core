@@ -385,7 +385,6 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
       return rc;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
 
    if( curl == NULL ) {
@@ -474,7 +473,6 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
       return -ENOMEM;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
@@ -545,7 +543,6 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
 
       md_download_context_free( dlctx, NULL );
 
-      // TODO: connection pool
       curl_easy_cleanup( curl );
       SG_safe_free( reqcls );
 
@@ -574,7 +571,6 @@ void SG_client_request_cls_cleanup_and_free( struct SG_client_request_cls* reqcl
 }
 
 // clean up a download context used for transfering data asynchronously, including the associated state
-// TODO: release the curl handle into the connection pool
 void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
 
    CURL* curl = NULL;
@@ -587,7 +583,6 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
       md_download_context_free( dlctx, &curl );
 
       if( curl != NULL ) {
-         // TODO: connection pool
          curl_easy_cleanup( curl );
       }
 
@@ -627,6 +622,8 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
 
    int rc = 0;
    int http_status = 0;
+   int curl_rc = 0;
+   int curl_errno = 0;
 
    SG_debug("Wait on dlctx %p\n", dlctx);
    struct SG_client_request_cls* reqcls = (struct SG_client_request_cls*)md_download_context_get_cls( dlctx );
@@ -659,8 +656,10 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    if( !md_download_context_succeeded( dlctx, 200 ) ) {
 
       http_status = md_download_context_get_http_status( dlctx );
+      curl_rc = md_download_context_get_curl_rc( dlctx );
+      curl_errno = md_download_context_get_errno( dlctx );
 
-      SG_error("download %p finished with HTTP status %d\n", dlctx, http_status );
+      SG_error("download %p finished with HTTP status %d, errno = %d, CURL rc = %d\n", dlctx, http_status, curl_errno, curl_rc );
 
       SG_client_download_async_cleanup( dlctx );
       SG_client_request_cls_cleanup_and_free( reqcls );
@@ -1181,7 +1180,6 @@ int SG_client_getxattr( struct SG_gateway* gateway, uint64_t gateway_id, char co
 
     gateway_cert = NULL;
 
-    // TODO: connection pool
     curl = curl_easy_init();
     if( curl == NULL ) {
         return -ENOMEM;
@@ -1315,7 +1313,6 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
 
     gateway_cert = NULL;
 
-    // TODO: connection pool
     curl = curl_easy_init();
     if( curl == NULL ) {
         return -ENOMEM;
@@ -2377,7 +2374,6 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
 
    struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
@@ -2486,7 +2482,6 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
       return -ENOMEM;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
