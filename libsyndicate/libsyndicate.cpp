@@ -2892,7 +2892,7 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    conf->connect_timeout = 15;
 
    conf->portnum = -1;
-   conf->transfer_timeout = 600;    // 10 minutes default
+   conf->transfer_timeout = 60;    // 10 minutes default
 
    conf->owner = 0;
    conf->usermask = 0377;
