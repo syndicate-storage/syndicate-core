@@ -641,6 +641,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          }
 
          // done with this download
+         SG_debug("Finished with download context %p\n", dlctx);
          curl = NULL;
          rc = md_download_context_unref_free( dlctx, &curl );
          if( curl != NULL ) {
