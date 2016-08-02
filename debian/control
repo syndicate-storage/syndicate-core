@@ -4,7 +4,7 @@ Section: utils
 Priority: optional
 Standards-Version: 3.9.5
 X-Python-Version: >= 2.7
-Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, libcurl4-gnutls-dev, libmicrohttpd-dev, libjson0-dev, valgrind, cython, python-all-dev, python-protobuf, libssl-dev, python-crypto, python-requests, libpython2.7-dev, libattr1-dev, libfskit1-dev, libfskit-fuse1-dev, python-grequests
+Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, libcurl4-gnutls-dev, libmicrohttpd-dev-bp, libjson0-dev, valgrind, cython, python-all-dev, python-protobuf, libssl-dev, python-crypto, python-requests, libpython2.7-dev, libattr1-dev, libfskit1-dev, libfskit-fuse1-dev, python-grequests
 
 Package: syndicate-core
 Architecture: any
@@ -36,7 +36,7 @@ Description: Syndicate User Gateway (UG)
 Package: libsyndicate1-dev
 Architecture: any
 Section: libdevel
-Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev, libattr1-dev, libmicrohttpd-dev, libfskit1-dev, libjson0-dev, libcurl4-gnutls-dev
+Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev, libattr1-dev, libmicrohttpd-dev-bp, libfskit1-dev, libjson0-dev, libcurl4-gnutls-dev
 Description: Syndicate libraries, dev
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
