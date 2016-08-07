@@ -627,7 +627,7 @@ int md_debug( struct md_syndicate_conf* conf, int level ) {
    md_set_debug_level( level );
 
    conf->debug_lock = false;
-   if( level > SG_MAX_VERBOSITY ) {
+   if( level >= SG_MAX_VERBOSITY ) {
 
       // debug locks as well
       conf->debug_lock = true;
@@ -1069,10 +1069,10 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
       else if( strcmp( key, SG_CONFIG_DEBUG_LOCK ) == 0 ) {
 
          if( strcasecmp( value, "true" ) == 0 || strcasecmp( value, "yes" ) == 0 || strcasecmp( value, "y" ) == 0 ) {
-            conf->debug_lock = 1;
+            conf->debug_lock = true;
          }
          else if( strcasecmp( value, "false" ) == 0 || strcasecmp( value, "no" ) == 0 || strcasecmp( value, "n" ) == 0 ) {
-            conf->debug_lock = 0;
+            conf->debug_lock = false;
          }
          else {
 
