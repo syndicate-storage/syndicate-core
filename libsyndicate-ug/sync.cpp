@@ -576,7 +576,12 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
          sem_post( &sctx_ptr->sem );
       }
    }
-   
+   else { 
+       // success!
+       UG_inode_set_dirty( inode, false );
+       UG_inode_set_dirty_region( inode, 0, 0 );
+   }
+
    fskit_entry_unlock( fent );
    
    UG_replica_context_free( rctx );
