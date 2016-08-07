@@ -36,6 +36,8 @@ message ManifestBlock {
    optional int32 chunk_type = 6;
    optional uint64 offset = 7;
    optional uint64 size = 8;
+   optional uint64 logical_offset = 9;
+   optional uint64 logical_len = 10;
 }
 
 // manifest (data plane)
@@ -119,14 +121,16 @@ message Request {
    optional int32 new_mode = 19;                // mode (permission bits) to set
    optional int64 new_mtime_sec = 20;           // modtime to set (seconds)
    optional int32 new_mtime_nsec = 21;          // modtime to set (nanoseconds)
+   optional uint64 write_off = 22;              // logical write offset
+   optional uint64 write_len = 23;              // logical write length
 
    // for SETXATTR and REMOVEXATTR
-   optional string xattr_name = 22;             // xattr name 
-   optional string xattr_value = 23;            // xattr value
-   optional int32 xattr_flags = 24;             // xattr flags (create/replace) (SETXATTR only)
+   optional string xattr_name = 24;             // xattr name 
+   optional string xattr_value = 25;            // xattr value
+   optional int32 xattr_flags = 26;             // xattr flags (create/replace) (SETXATTR only)
 
    // for RELOAD 
-   optional uint64 gateway_cert_version = 25;   // version of the gateway's certificate, if the RELOAD is meant for a specific gateway
+   optional uint64 gateway_cert_version = 27;   // version of the gateway's certificate, if the RELOAD is meant for a specific gateway
 }
 
 // control-plane reply 
