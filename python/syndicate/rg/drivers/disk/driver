@@ -85,7 +85,9 @@ def write_chunk( chunk_request, chunk_buf, config, secrets ):
      
       gateway.log_error(traceback.format_exc())
       return -errno.EIO
-   
+  
+   gateway.log_debug("Wrote chunk at (%s,%s)" % (gateway.request_byte_offset(chunk_request), gateway.request_byte_len(chunk_request)))
+
    return 0
 
 
