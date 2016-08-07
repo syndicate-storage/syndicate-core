@@ -579,7 +579,6 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
    else { 
        // success!
        UG_inode_set_dirty( inode, false );
-       UG_inode_set_dirty_region( inode, 0, 0 );
    }
 
    fskit_entry_unlock( fent );
