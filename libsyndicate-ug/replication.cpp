@@ -56,7 +56,7 @@ struct UG_replica_context {
 };
 
 
-// data-plane stream function 
+// data-plane stream function for libcurl 
 // returns number of bytes written on success
 // returns CURL_READFUNC_ABORT on failure 
 // *cls is a UG_replica_context 
@@ -365,6 +365,8 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    struct SG_chunk manifest_chunk;
    uint64_t coordinator_id = UG_inode_coordinator_id( inode );
    bool we_are_coordinator = (UG_inode_coordinator_id( inode ) == SG_gateway_id( gateway ));
+   uint64_t write_offset = UG_inode_dirty_write_offset( inode );
+   uint64_t write_len = UG_inode_dirty_write_len( inode );
 
    memset( &manifest_chunk, 0, sizeof(struct SG_chunk) );
 
@@ -372,6 +374,20 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    rc = SG_request_data_init_common( gateway, fs_path, UG_inode_file_id( inode ), UG_inode_file_version( inode ), &reqdat );
    if( rc != 0 ) {
       goto UG_replica_context_make_controlplane_message_fail;
+   }
+
+   // set write info 
+   if( UG_inode_is_dirty(inode) ) {
+       // write 
+       reqdat.io_hints.io_type = SG_IO_WRITE;
+       reqdat.io_hints.offset = write_offset;
+       reqdat.io_hints.len = write_len;
+
+       SG_debug("Logical write is (%" PRIu64 ",%" PRIu64 ")\n", write_offset, write_len );
+   }
+   else {
+      reqdat.io_hints.offset = 0;
+      reqdat.io_hints.len = 0;
    }
 
    // make chunk info 
@@ -597,6 +613,7 @@ UG_replica_context_make_dataplane_message_fail:
 // NOTE: if non-NULL, then flushed_blocks must all be dirty and in RAM
 // return 0 on success
 // return -ENOMEM on OOM 
+// return -EINVAL on invalid input (i.e. a non-dirty inode)
 int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug,
                              char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
    
