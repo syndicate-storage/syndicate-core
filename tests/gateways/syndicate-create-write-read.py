@@ -41,7 +41,7 @@ def stop_and_save( output_dir, proc, out_path, save_name ):
 def overlay( expected_data, buf, offset ):
     expected_data_list = list(expected_data)
     i = offset
-    for c in buf:
+    for c in list(buf):
         if i >= len(expected_data_list):
             padlen = i - len(expected_data_list) + 1
             for j in xrange(0, padlen):
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         expected_data = f.read()
 
     config_dir, output_dir = testlib.test_setup()
-    volume_name = testlib.add_test_volume( config_dir )
+    volume_name = testlib.add_test_volume( config_dir, blocksize=1024 )
 
     RG_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "RG", caps="NONE", email=testconf.SYNDICATE_ADMIN )
     testlib.update_gateway( config_dir, RG_gateway_name, "port=31112", "driver=%s" % RG_DRIVER )
@@ -95,18 +95,18 @@ if __name__ == "__main__":
         (5000, 16000),
         (0, 1),     # 1 block, tail unaligned
         (1, 200),   # 1 block, unaligned head and tail
-        (0, 4096),  # 1 block, aligned
-        (0, 8192),  # 2 blocks, aligned
+        (0, 4096),  # 4 block, aligned
+        (0, 8192),  # 8 blocks, aligned
         (0, 1000),  # 1 block, tail unaligned
-        (0, 6000),  # 2 blocks, tail unaligned
-        (100, 4000), # 1 block, head unaligned
-        (5000, 10000), # 2 blocks, head and tail unaligned
-        (4096, 10000), # 2 blocks, tail unaligned
-        (5000, 8192),  # 2 blocks, head unalighed
-        (4096, 16834), # 3 blocks, aligned
-        (5000, 16384), # 3 blocks, head unaligned
-        (4096, 16000), # 3 blocks, tail unaligned
-        (5000, 16000), # 3 blocks, head and tail unaligned
+        (0, 6000),  
+        (100, 4000),
+        (5000, 10000), 
+        (4096, 10000), 
+        (5000, 8192),  
+        (4096, 16834), 
+        (5000, 16384), 
+        (4096, 16000), 
+        (5000, 16000), 
     ]
 
     # write each range 
