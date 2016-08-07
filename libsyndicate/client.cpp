@@ -2038,6 +2038,8 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
 
    request->set_request_type( SG_messages::Request::PUTCHUNKS );
    request->set_coordinator_id( coordinator_id );
+   request->set_write_off( reqdat->io_hints.offset );
+   request->set_write_len( reqdat->io_hints.len );
 
    for( size_t i = 0; i < num_chunk_info; i++ ) {
 
@@ -2052,7 +2054,7 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
           return -ENOMEM;
        }
 
-       rc = SG_manifest_block_serialize_to_protobuf( &chunk_info[i], mblock );
+       rc = SG_manifest_block_serialize_to_protobuf_ex( &chunk_info[i], mblock, true );
        if( rc != 0 ) {
 
           return rc;
