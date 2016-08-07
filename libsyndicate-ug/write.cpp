@@ -722,25 +722,8 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    uint64_t file_coordinator = UG_inode_coordinator_id( inode );
    int64_t manifest_mtime_sec = SG_manifest_get_modtime_sec( UG_inode_manifest( inode ) );
    int32_t manifest_mtime_nsec = SG_manifest_get_modtime_nsec( UG_inode_manifest( inode ) );
-   uint64_t dirty_write_offset = UG_inode_dirty_write_offset( inode );
-   uint64_t dirty_write_len = UG_inode_dirty_write_len( inode );
-   bool dirty = UG_inode_is_dirty(inode);
 
    fskit_entry_unlock(fent);
-
-   // if this is going to create a new dirty region, then sync the old region.
-   if( dirty && ((uint64_t)(offset + buf_len) < dirty_write_offset || dirty_write_offset + dirty_write_len < (uint64_t)offset) ) {
-    
-      // fsync first
-      SG_debug("will fsync first: dirty region is (%" PRIu64 ",%" PRIu64 "); will write region (%" PRIu64 ",%" PRIu64 ")\n",
-            dirty_write_offset, dirty_write_offset + dirty_write_len, (uint64_t)offset, (uint64_t)(offset + buf_len) );
-
-      rc = UG_sync_fsync_ex( core, fs_path, fent );
-      if( rc != 0 ) {
-         SG_error("UG_sync_fsync_ex(%" PRIX64 ".%" PRId64 " (%s)) rc = %d\n", file_id, file_version, fs_path, rc );
-         return rc;
-      }
-   }
   
    // ID of the last block written 
    uint64_t last_block_id = (offset + buf_len) / block_size;
@@ -852,6 +835,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    // mark all modified blocks as dirty...
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
       UG_dirty_block_set_dirty( &itr->second, true );
+      UG_dirty_block_set_logical_write( &itr->second, offset, buf_len );
    }
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
@@ -952,21 +936,6 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 
    // will need to contact MS with new metadata
    UG_inode_set_dirty( inode, true );
-
-   dirty_write_offset = UG_inode_dirty_write_offset( inode );
-   dirty_write_len = UG_inode_dirty_write_len( inode );
-
-   if( !dirty ) {
-      // first write
-      UG_inode_set_dirty_region( inode, offset, buf_len );
-   }
-   else { 
-      // subsequent write 
-      uint64_t extent_max = MAX(dirty_write_offset + dirty_write_len, (uint64_t)(offset + buf_len));
-      uint64_t extent_min = MIN( dirty_write_offset, (uint64_t)offset );
-            
-      UG_inode_set_dirty_region( inode, extent_min, extent_max - extent_min );
-   }
 
    SG_debug("%" PRIX64 " has %zu dirty blocks, and is now %" PRIu64 " bytes\n", UG_inode_file_id( inode ), UG_inode_dirty_blocks( inode )->size(), fskit_entry_get_size( fent ) );
    
