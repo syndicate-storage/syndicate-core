@@ -1802,7 +1802,7 @@ static void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_ti
    // stop-gap
    curl_easy_setopt( curl_h, CURLOPT_TIMEOUT, transfer_timeout );
    
-   curl_easy_setopt( curl_h, CURLOPT_VERBOSE, 1L );
+   // curl_easy_setopt( curl_h, CURLOPT_VERBOSE, 1L );
 }
 
 
