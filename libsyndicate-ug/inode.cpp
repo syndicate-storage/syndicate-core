@@ -57,6 +57,9 @@ struct UG_inode {
    bool renaming;                       // if true, then this inode is in the process of getting renamed.  Concurrent renames will fail with EBUSY
    bool deleting;                       // if true, then this inode is in the process of being deleted.  Concurrent opens and stats will fail
    bool creating;                       // if true, then this inode is in the process of being created.  Truncate will be a no-op in this case.
+
+   uint64_t dirty_write_offset;         // logical offset of the current dirty (unreplicated) region of of the file data
+   uint64_t dirty_write_len;            // logical length of the current dirty (unreplicated) region of the file data
 };
 
 
@@ -1842,6 +1845,18 @@ size_t UG_inode_sync_queue_len( struct UG_inode* inode ) {
    return inode->sync_queue->size();
 }
 
+bool UG_inode_is_dirty( struct UG_inode* inode ) {
+   return inode->dirty;
+}
+
+uint64_t UG_inode_dirty_write_offset( struct UG_inode* inode ) {
+   return inode->dirty_write_offset;
+}
+
+uint64_t UG_inode_dirty_write_len( struct UG_inode* inode ) {
+   return inode->dirty_write_len;
+}
+
 // setters
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
    SG_manifest_set_file_version( &inode->manifest, version );
@@ -1943,6 +1958,11 @@ void UG_inode_set_creating( struct UG_inode* inode, bool val ) {
 
 void UG_inode_set_dirty( struct UG_inode* inode, bool val ) {
    inode->dirty = val;
+}
+
+void UG_inode_set_dirty_region( struct UG_inode* inode, uint64_t offset, uint64_t len ) {
+   inode->dirty_write_offset = offset;
+   inode->dirty_write_len = len;
 }
 
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent ) {

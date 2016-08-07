@@ -156,6 +156,9 @@ struct timespec UG_inode_manifest_refresh_time( struct UG_inode* inode );
 struct timespec UG_inode_children_refresh_time( struct UG_inode* inode );
 size_t UG_inode_sync_queue_len( struct UG_inode* inode );
 bool UG_inode_creating( struct UG_inode* inode );
+bool UG_inode_is_dirty( struct UG_inode* inode );
+uint64_t UG_inode_dirty_write_offset( struct UG_inode* inode );
+uint64_t UG_inode_dirty_write_len( struct UG_inode* inode );
 
 struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id );
 
@@ -178,6 +181,7 @@ void UG_inode_set_max_write_freshness( struct UG_inode* inode, int32_t wf );
 void UG_inode_set_read_stale( struct UG_inode* inode, bool val );
 void UG_inode_set_deleting( struct UG_inode* inode, bool val );
 void UG_inode_set_dirty( struct UG_inode* inode, bool val );
+void UG_inode_set_dirty_region( struct UG_inode* inode, uint64_t offset, uint64_t len );
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent );
 void UG_inode_set_creating( struct UG_inode* inode, bool creating );
 void UG_inode_set_size( struct UG_inode* inode, uint64_t size );
