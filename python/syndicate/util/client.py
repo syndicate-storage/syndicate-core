@@ -253,6 +253,7 @@ def ms_rpc( proxy, method_name, *args, **kw ):
    try:
        args, kw, extras = conf.parse_args( config, method_name, args, kw, lib )
    except Exception, e:
+       log.exception(e)
        log.error("Failed to parse arguments for '%s'" % method_name)
        raise e
    
