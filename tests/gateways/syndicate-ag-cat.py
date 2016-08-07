@@ -37,7 +37,7 @@ AG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/ag/drivers/d
 if __name__ == "__main__":
 
     config_dir, output_dir = testlib.test_setup()
-    volume_name = testlib.add_test_volume( config_dir )
+    volume_name = testlib.add_test_volume( config_dir, blocksize=1024 )
 
     # create AG source dataset.  extract config
     ag_driver = syndicate.util.objects.load_driver( AG_DRIVER, None, include_secrets=False )
@@ -92,6 +92,8 @@ if __name__ == "__main__":
             testlib.save_output( output_dir, 'syndicate-cat-%s-%s' % (i,j), out )
 
             if exitcode != 0:
+                ag_exitcode, ag_out = testlib.stop_gateway( ag_proc, ag_out_path )
+                testlib.save_output(output_dir, "syndicate-ag", ag_out)
                 raise Exception("%s exited %s" % (CAT_PATH, exitcode))
 
             if expected_data not in out:
