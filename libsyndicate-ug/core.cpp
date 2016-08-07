@@ -517,6 +517,7 @@ struct UG_state* UG_init_ex( int argc, char** argv, struct md_opts* overrides, v
    
    if( conf->debug_lock ) {
        
+       SG_debug("%s\n", "Enable inode lock debugging");
        fskit_set_debug_level( 2 );
    }
    else if( md_get_debug_level() != 0 ) {

@@ -627,7 +627,7 @@ int md_debug( struct md_syndicate_conf* conf, int level ) {
    md_set_debug_level( level );
 
    conf->debug_lock = false;
-   if( level >= SG_MAX_VERBOSITY ) {
+   if( level > SG_MAX_VERBOSITY ) {
 
       // debug locks as well
       conf->debug_lock = true;
@@ -2625,6 +2625,10 @@ static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* cli
    char* certs_path = NULL;
    char* expanded_path = NULL;
    size_t expanded_path_len = 0;
+
+   if( opts->debug_level > 0 ) {
+       md_debug(conf, opts->debug_level);
+   }
 
    if( config_path == NULL ) {
 
