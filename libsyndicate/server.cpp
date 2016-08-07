@@ -1238,7 +1238,7 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
       SG_request_data_free( reqdat ); 
       return -EINVAL;
    }
-   
+
    return 0;
 }
 
@@ -1882,6 +1882,8 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    uint64_t* block_vec = NULL;
    int block_vec_len = 0;
    int next_block_vec = 0;
+
+   memset( &io_hints, 0, sizeof(struct SG_IO_hints));
    
    // sanity check 
    if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
@@ -2056,7 +2058,10 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
          reqdat->block_id = request_msg->blocks(i).block_id();
          reqdat->block_version = request_msg->blocks(i).block_version();
 
-         SG_IO_hints_init( &io_hints, SG_IO_WRITE, reqdat->block_id * blocksize, blocksize );
+         SG_debug("Block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] from logical write (%" PRIu64 ", %" PRIu64 ")\n",
+               reqdat->file_id, reqdat->file_version, reqdat->block_id, reqdat->block_version, request_msg->blocks(i).logical_offset(), request_msg->blocks(i).logical_len() );
+
+         SG_IO_hints_init( &io_hints, SG_IO_WRITE, request_msg->blocks(i).logical_offset(), request_msg->blocks(i).logical_len() );
          SG_IO_hints_set_context( &io_hints, io_context );
          SG_IO_hints_set_block_vec( &io_hints, block_vec, block_vec_len );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
@@ -2142,7 +2147,7 @@ static int SG_server_HTTP_POST_REFRESH( struct SG_gateway* gateway, struct SG_re
    // forward to implementation 
    rc = SG_gateway_impl_refresh( gateway, reqdat );
 
-   SG_error("End refresh %" PRIX64 ".%" PRId64 " (%s), rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
+   SG_debug("End refresh %" PRIX64 ".%" PRId64 " (%s), rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
 
    return rc;
 }
