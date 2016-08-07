@@ -1146,10 +1146,14 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
 
       // pass along I/O hints, if given 
       dreq->set_io_type( reqdat->io_hints.io_type );
-      if( reqdat->io_hints.io_type != SG_IO_NONE ) {
+      dreq->set_io_context( reqdat->io_hints.io_context );
+      if( reqdat->io_hints.io_type == SG_IO_READ || reqdat->io_hints.io_type == SG_IO_WRITE ) {
           dreq->set_offset( reqdat->io_hints.offset );
           dreq->set_len( reqdat->io_hints.len );
-          dreq->set_io_context( reqdat->io_hints.io_context );
+      }
+      else {
+         dreq->set_offset( 0 );
+         dreq->set_len( 0 );
       }
 
       if( reqdat->io_hints.block_vec != NULL ) {
