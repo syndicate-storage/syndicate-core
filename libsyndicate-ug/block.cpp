@@ -615,6 +615,18 @@ bool UG_dirty_block_in_RAM( struct UG_dirty_block* blk ) {
    return (blk->buf.data != NULL);
 }
 
+uint64_t UG_dirty_block_get_logical_offset( struct UG_dirty_block* blk ) {
+   return blk->logical_write_offset;
+}
+
+uint64_t UG_dirty_block_get_logical_len( struct UG_dirty_block* blk ) {
+   return blk->logical_write_length;
+}
+
+void UG_dirty_block_set_logical_write( struct UG_dirty_block* blk, uint64_t logical_offset, uint64_t logical_len ) {
+   blk->logical_write_offset = logical_offset;
+   blk->logical_write_length = logical_len;
+}
 
 // re-calculate the hash of the block
 // the block must be resident in memory, but not mmap'ed

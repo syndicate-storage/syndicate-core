@@ -54,6 +54,10 @@ struct UG_dirty_block {
   
    // did we flush? 
    bool flushed;
+
+   // logical write offset and length this block corresponds to 
+   uint64_t logical_write_offset;
+   uint64_t logical_write_length;
 };
 
 
@@ -105,6 +109,8 @@ int64_t UG_dirty_block_version( struct UG_dirty_block* blk );
 int UG_dirty_block_hash_buf( struct UG_dirty_block* blk, unsigned char* hash_buf );
 struct SG_chunk* UG_dirty_block_buf( struct UG_dirty_block* blk );
 struct SG_manifest_block* UG_dirty_block_info( struct UG_dirty_block* blk );
+uint64_t UG_dirty_block_get_logical_offset( struct UG_dirty_block* blk );
+uint64_t UG_dirty_block_get_logical_len( struct UG_dirty_block* blk );
 
 // checks
 bool UG_dirty_block_unshared( struct UG_dirty_block* blk );
@@ -116,6 +122,7 @@ bool UG_dirty_block_in_RAM( struct UG_dirty_block* blk );
 // setters 
 int UG_dirty_block_set_buf( struct UG_dirty_block* dest, struct SG_chunk* new_buf );
 int UG_dirty_block_set_version( struct UG_dirty_block* blk, int64_t version );
+void UG_dirty_block_set_logical_write( struct UG_dirty_block* blk, uint64_t logical_offset, uint64_t logical_len );
 
 // serialize 
 int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_chunk* serialized_data );
