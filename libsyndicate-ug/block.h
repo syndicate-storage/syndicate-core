@@ -118,7 +118,7 @@ int UG_dirty_block_set_buf( struct UG_dirty_block* dest, struct SG_chunk* new_bu
 int UG_dirty_block_set_version( struct UG_dirty_block* blk, int64_t version );
 
 // serialize 
-int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_IO_hints* io_hints, struct SG_chunk* serialized_data );
+int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_chunk* serialized_data );
 
 // hash 
 int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_data, size_t serialized_data_len );
