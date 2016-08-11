@@ -674,10 +674,10 @@ static int ms_client_create_or_mkdir( struct ms_client* client, struct md_entry*
    uint64_t new_file_id = ms_client_make_file_id();
    
    // request a particular file ID
-   ent->file_id = new_file_id;
    ms_client_create_initial_fields( ent );
+   ent->file_id = new_file_id;
    
-   SG_debug("desired file_id: %" PRIX64 "\n", ent->file_id );
+   SG_debug("desired file_id: %" PRIX64 " from %" PRIX64 "\n", ent->file_id, old_file_id );
    
    // sign the request
    rc = md_entry_sign( client->gateway_key, ent, &sig, &sig_len );

@@ -55,11 +55,10 @@
 #include <openssl/evp.h>
 #include <math.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>        // for gettid()
 #include <zlib.h>
 
-#define SG_WHERESTR "%ld.%ld %05d:%05d: [%16s:%04u] %s: "
-#define SG_WHEREARG (int)getpid(), (int)gettid(), __FILE__, __LINE__, __func__
+#define SG_WHERESTR "%ld.%ld %05d:%016llx: [%16s:%04u] %s: "
+#define SG_WHEREARG (int)getpid(), md_pthread_self(), __FILE__, __LINE__, __func__
 
 extern int _SG_DEBUG_MESSAGES;
 extern int _SG_INFO_MESSAGES;
@@ -192,9 +191,8 @@ off_t md_response_buffer_size( md_response_buffer_t* rb );
 void* md_memdup( void* buf, size_t len );
 char* SG_strdup_or_die( char const* str );
 
-// linux-specific...
-pid_t gettid(void);
-
+// portable cast pthread_t to uint64_t 
+unsigned long long int md_pthread_self(void);
 }
 
 
