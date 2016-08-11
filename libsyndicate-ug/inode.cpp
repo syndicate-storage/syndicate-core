@@ -888,6 +888,8 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
 // NOTE: for files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
 int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, struct md_entry* ent_data, struct UG_inode** ret_inode_data ) {
 
+   SG_debug("UG_inode_publish %" PRIX64 "\n", fskit_entry_get_file_id(fent) );
+
    int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
 
@@ -921,6 +923,7 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
    }
 
    // update the child with the new inode number
+   SG_debug("UG_inode_publish %" PRIX64 " renamed to %" PRIX64 "\n", fskit_entry_get_file_id( fent ), inode_data_out.file_id );
    fskit_entry_set_file_id( fent, inode_data_out.file_id );
    fskit_entry_set_mode( fent, inode_data_out.mode );
    fskit_entry_set_owner( fent, inode_data_out.owner );

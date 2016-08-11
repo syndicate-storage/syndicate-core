@@ -1877,7 +1877,8 @@ UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_ent
       *ret_rc = -ENOMEM;
       return NULL;
    }
- 
+
+   SG_debug("UG_publish %" PRIX64 "\n", ent_data->file_id ); 
    fh = fskit_create_ex( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ), ent_data->mode, (void*)ent_data, ret_rc );
    
    if( fh == NULL ) {
