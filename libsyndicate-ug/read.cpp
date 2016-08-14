@@ -1257,6 +1257,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    }
 
    // optimization: cache last read block, but only if no writes occurred while we were fetching remote blocks
+   /*
    fskit_entry_wlock( fent );
    
    if( file_version == UG_inode_file_version( inode ) && write_nonce == UG_inode_write_nonce( inode ) ) {
@@ -1283,6 +1284,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    }
    
    fskit_entry_unlock( fent );
+   */
 
 UG_read_impl_fail:
 
