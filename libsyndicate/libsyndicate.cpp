@@ -296,6 +296,9 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
       SG_error("%s", "Failed to load our volume certificate\n");
       return -EPERM;
    }
+   
+   SG_debug("Volume cert: (volume_id=%" PRIu64 ", version=%" PRIu64 ", owner_id=%" PRIu64 ", blocksize=%" PRIu64 ")\n", 
+         volume_cert->volume_id(), volume_cert->volume_version(), volume_cert->owner_id(), volume_cert->blocksize() );
 
    // sanity checks...
    if( volume_cert->volume_id() != gateway_cert.volume_id() ) {
