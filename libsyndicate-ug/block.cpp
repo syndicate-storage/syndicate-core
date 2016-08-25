@@ -322,8 +322,10 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
       return rc;
    }
     
+   SG_request_data_set_IO_hints( &reqdat, io_hints );
+   
    // serialize and update hash 
-   rc = UG_dirty_block_serialize( gateway, &reqdat, dirty_block, io_hints, &serialized_data );
+   rc = UG_dirty_block_serialize( gateway, &reqdat, dirty_block, &serialized_data );
    if( rc != 0 ) {
 
       SG_error("UG_dirty_block_serialize([%" PRIu64 ".%" PRId64 "]) rc = %d\n", UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), rc );
@@ -613,6 +615,18 @@ bool UG_dirty_block_in_RAM( struct UG_dirty_block* blk ) {
    return (blk->buf.data != NULL);
 }
 
+uint64_t UG_dirty_block_get_logical_offset( struct UG_dirty_block* blk ) {
+   return blk->logical_write_offset;
+}
+
+uint64_t UG_dirty_block_get_logical_len( struct UG_dirty_block* blk ) {
+   return blk->logical_write_length;
+}
+
+void UG_dirty_block_set_logical_write( struct UG_dirty_block* blk, uint64_t logical_offset, uint64_t logical_len ) {
+   blk->logical_write_offset = logical_offset;
+   blk->logical_write_length = logical_len;
+}
 
 // re-calculate the hash of the block
 // the block must be resident in memory, but not mmap'ed
@@ -647,7 +661,7 @@ int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_da
 // the block must be resident in memory
 // return 0 on success
 // return -ENOMEM on OOM 
-int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_IO_hints* io_hints, struct SG_chunk* serialized_data ) {
+int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_chunk* serialized_data ) {
 
    int rc = 0;
 

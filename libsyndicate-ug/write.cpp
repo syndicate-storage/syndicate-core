@@ -18,6 +18,7 @@
 #include "read.h"
 #include "consistency.h"
 #include "inode.h"
+#include "sync.h"
 #include "replication.h"
 
 // update timestamps on an inode on write/truncate
@@ -468,7 +469,6 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
       // if we have a write hole...
       struct SG_manifest_block new_block;
       struct SG_chunk new_block_data;
-      uint64_t block_id = 0;
       int64_t block_version = 0;
       
       struct SG_manifest_block* block_info = SG_manifest_block_lookup( UG_inode_manifest( inode ), aligned_block_id );
@@ -481,10 +481,9 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
          new_block_data.data = buf + aligned_offset;
          new_block_data.len = block_size;
 
-         block_id = aligned_block_id;
          block_version = md_random64();
          
-         rc = SG_manifest_block_init_from_chunk( &new_block, block_id, block_version, &new_block_data );
+         rc = SG_manifest_block_init_from_chunk( &new_block, aligned_block_id, block_version, &new_block_data );
          if( rc != 0 ) {
             
             // OOM 
@@ -505,22 +504,25 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
          SG_manifest_block_free( &new_block );
       }
 
-      // reversion
-      UG_dirty_block_set_version( &next_block, md_random64() );
-      block_info = NULL;
-
       if( rc != 0 ) {
          
          SG_error("UG_dirty_block_init_ram_nocopy( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
-                  file_id, file_version, block_id, block_version, rc );
+                  file_id, file_version, aligned_block_id, block_version, rc );
         
          break;
       }
 
+      // reversion
+      UG_dirty_block_set_version( &next_block, md_random64() );
+      block_info = NULL;
+
+      SG_debug("Version of %" PRIu64 " is now %" PRIu64 "\n", aligned_block_id, UG_dirty_block_version( &next_block ));
+
       // emplace 
       try {
          
-         (*dirty_blocks)[ block_id ] = next_block;
+         (*dirty_blocks)[ aligned_block_id ] = next_block;
+         SG_debug("%zu dirty blocks...\n", dirty_blocks->size() );
       }
       catch( bad_alloc& ba ) {
          
@@ -833,6 +835,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    // mark all modified blocks as dirty...
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
       UG_dirty_block_set_dirty( &itr->second, true );
+      UG_dirty_block_set_logical_write( &itr->second, offset, buf_len );
    }
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
@@ -951,6 +954,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 // return -ENOMEM on OOM 
 // return -EPERM if we're not the coordinator
 // return -EROFS if there are no known replica gateways
+// return -EINVAL on invalid request
 // NOTE: inode->entry must be write-locked and ref'ed; it will be unlocked intermittently
 int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_inode* inode, struct SG_manifest* write_delta ) {
    
@@ -973,6 +977,12 @@ int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data*
    if( UG_state_num_replica_gateways( ug ) == 0 ) {
        return -EROFS;
    } 
+
+   // sanity check: need logical I/O offset/length 
+   if( reqdat->io_hints.offset == 0 && reqdat->io_hints.len == 0 ) {
+       SG_error("Missing write offset/length on %" PRIX64 ".%" PRId64 "\n", file_id, file_version);
+       return -EINVAL;
+   }
    
    rc = SG_manifest_dup( &new_manifest, UG_inode_manifest( inode ) );
    if( rc != 0 ) {

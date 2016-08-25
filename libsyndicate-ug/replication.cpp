@@ -56,7 +56,7 @@ struct UG_replica_context {
 };
 
 
-// data-plane stream function 
+// data-plane stream function for libcurl 
 // returns number of bytes written on success
 // returns CURL_READFUNC_ABORT on failure 
 // *cls is a UG_replica_context 
@@ -308,7 +308,7 @@ static int UG_replica_make_block_chunk_info( struct UG_dirty_block* block, uint6
    }
 
    SG_manifest_block_set_type( chunk_info, SG_MANIFEST_BLOCK_TYPE_BLOCK );
-
+   SG_manifest_block_set_logical_write( chunk_info, UG_dirty_block_get_logical_offset( block ), UG_dirty_block_get_logical_len( block ) );
    return rc;
 }
 
@@ -597,6 +597,7 @@ UG_replica_context_make_dataplane_message_fail:
 // NOTE: if non-NULL, then flushed_blocks must all be dirty and in RAM
 // return 0 on success
 // return -ENOMEM on OOM 
+// return -EINVAL on invalid input (i.e. a non-dirty inode)
 int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug,
                              char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
    

@@ -155,7 +155,16 @@ static int md_HTTP_default_send_response( struct MHD_Connection* connection, int
       MHD_destroy_response( response );
       return MHD_NO;
    }
-   
+  
+   // avoid pipelining 
+   rc = MHD_add_response_header( response, "Connection", "close" );
+   if( rc != MHD_YES ) {
+      
+      // OOM 
+      MHD_destroy_response( response );
+      return MHD_NO;
+   }
+
    rc = MHD_queue_response( connection, status_code, response );
    if( rc != MHD_YES ) {
       
@@ -252,7 +261,7 @@ int md_HTTP_create_response_ram_static( struct md_HTTP_response* resp, char cons
       MHD_destroy_response( resp->resp );
       return -ENOMEM;
    }
-   
+
    resp->status = status;
    return 0;
 }
@@ -275,7 +284,7 @@ int md_HTTP_create_response_fd( struct md_HTTP_response* resp, char const* mimet
       MHD_destroy_response( resp->resp );
       return -ENOMEM;
    }
-   
+  
    resp->status = status;
    return 0;
 }
@@ -307,7 +316,19 @@ int md_HTTP_create_response_stream( struct md_HTTP_response* resp, char const* m
 static int md_HTTP_send_response( struct MHD_Connection* connection, struct md_HTTP_response* resp ) {
    
    int rc = 0;
-   
+      
+   // avoid pipelining 
+   // (maybe fixes "stalled" resumes)
+   rc = MHD_add_response_header( resp->resp, MHD_HTTP_HEADER_CONNECTION, "close" );
+   if( rc != MHD_YES ) {
+      
+      // OOM 
+      MHD_destroy_response( resp->resp );
+      md_HTTP_response_free( resp );
+      SG_safe_free( resp );
+      return MHD_NO;
+   }
+
    rc = MHD_queue_response( connection, resp->status, resp->resp );
    
    SG_debug("connection %p: HTTP %d\n", connection, resp->status );
@@ -1374,7 +1395,8 @@ static int md_HTTP_connection_handler( void* cls, struct MHD_Connection* connect
       
       struct md_HTTP_response* resp = con_data->resume_resp;
       con_data->resume_resp = NULL;
-      
+     
+      SG_debug("Connection %p resumed\n", connection); 
       return md_HTTP_send_response( connection, resp );
    }
    
@@ -1448,11 +1470,11 @@ int md_HTTP_connection_resume( struct md_HTTP_connection_data* con_data, struct 
    con_data->resume_resp = resp;
    
    // send it back
-   MHD_resume_connection( con_data->connection );
    con_data->suspended = false;
       
    SG_debug("Resume connection %p\n", con_data->connection );
       
+   MHD_resume_connection( con_data->connection );
    return 0;
 }
 
@@ -1556,14 +1578,27 @@ int md_HTTP_start( struct md_HTTP* http, int portnum ) {
    int rc = 0;
    int num_http_threads = sysconf( _SC_NPROCESSORS_CONF );
 
+   // how many open file descriptors can we have?
+   struct rlimit rlim;
+   rc = getrlimit( RLIMIT_NOFILE, &rlim );
+   if( rc != 0 ) {
+      rc = -errno;
+      SG_error("getrlimit rc = %d\n", rc );
+      return -EPERM;
+   }
+
    if( (http->server_type & MHD_USE_THREAD_PER_CONNECTION) != 0 ) {
       http->http_daemon = MHD_start_daemon(  http->server_type | MHD_USE_DEBUG, portnum, NULL, NULL, &md_HTTP_connection_handler, http,
                                              MHD_OPTION_NOTIFY_COMPLETED, md_HTTP_cleanup, http,
                                              MHD_OPTION_END );
    }
    else {
+
+      SG_debug("Maximum connections: %d\n", (int)rlim.rlim_max);
       http->http_daemon = MHD_start_daemon(  http->server_type | MHD_USE_SUSPEND_RESUME | MHD_USE_PIPE_FOR_SHUTDOWN | MHD_USE_DEBUG, portnum, NULL, NULL, &md_HTTP_connection_handler, http,
-                                             MHD_OPTION_THREAD_POOL_SIZE, num_http_threads,
+                                             // MHD_OPTION_THREAD_POOL_SIZE, num_http_threads,
+                                             MHD_OPTION_CONNECTION_LIMIT, rlim.rlim_max,
+                                             MHD_OPTION_CONNECTION_TIMEOUT, 60,
                                              MHD_OPTION_NOTIFY_COMPLETED, md_HTTP_cleanup, http,
                                              MHD_OPTION_END );
    }

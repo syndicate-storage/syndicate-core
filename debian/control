@@ -4,7 +4,7 @@ Section: utils
 Priority: optional
 Standards-Version: 3.9.5
 X-Python-Version: >= 2.7
-Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, libcurl4-gnutls-dev, libmicrohttpd-dev, libjson0-dev, valgrind, cython, python-all-dev, python-protobuf, libssl-dev, python-crypto, python-requests, libpython2.7-dev, libattr1-dev, libfskit1-dev, libfskit-fuse1-dev, python-grequests
+Build-Depends: debhelper (>= 9), dh-python, protobuf-compiler, libprotobuf-dev, libcurl4-gnutls-dev, libmicrohttpd-dev (>= 0.9.44), libjson0-dev, valgrind, cython, python-all-dev, python-protobuf, libssl-dev, python-crypto, python-requests, libpython2.7-dev, libattr1-dev, libfskit1-dev, libfskit-fuse1-dev, python-grequests
 
 Package: syndicate-core
 Architecture: any

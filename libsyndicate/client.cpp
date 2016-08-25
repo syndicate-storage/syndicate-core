@@ -385,7 +385,6 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
       return rc;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
 
    if( curl == NULL ) {
@@ -452,6 +451,10 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
 
 
 // set up and start a download context used for transferring data asynchronously
+// This will ref the download context once more than it needs to; the caller must
+// call SG_client_download_async_cleanup() and then md_download_unref_free.
+// This is meant to allow the caller to inspect the dlctx state once we're done
+// processing the block download.
 // return 0 on success
 // return -ENOMEM on OOM
 int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) ) {
@@ -470,7 +473,6 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
       return -ENOMEM;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
@@ -541,12 +543,13 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
 
       md_download_context_free( dlctx, NULL );
 
-      // TODO: connection pool
       curl_easy_cleanup( curl );
       SG_safe_free( reqcls );
 
       return rc;
    }
+
+   SG_debug("Running download %p in loop %p\n", dlctx, dlloop);
 
    // started!
    return 0;
@@ -568,12 +571,9 @@ void SG_client_request_cls_cleanup_and_free( struct SG_client_request_cls* reqcl
 }
 
 // clean up a download context used for transfering data asynchronously, including the associated state
-// TODO: release the curl handle into the connection pool
 void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
 
    CURL* curl = NULL;
-
-   struct SG_client_request_cls* reqcls = (struct SG_client_request_cls*)md_download_context_get_cls( dlctx );
 
    // clean up
    int free_rc = md_download_context_unref( dlctx );
@@ -583,7 +583,6 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
       md_download_context_free( dlctx, &curl );
 
       if( curl != NULL ) {
-         // TODO: connection pool
          curl_easy_cleanup( curl );
       }
 
@@ -623,6 +622,8 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
 
    int rc = 0;
    int http_status = 0;
+   int curl_rc = 0;
+   int curl_errno = 0;
 
    SG_debug("Wait on dlctx %p\n", dlctx);
    struct SG_client_request_cls* reqcls = (struct SG_client_request_cls*)md_download_context_get_cls( dlctx );
@@ -639,6 +640,7 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    if( !md_download_context_finalized( dlctx ) ) {
 
       // wait for it...
+      SG_debug("Wait forever for %p to finish\n", dlctx );
       rc = md_download_context_wait( dlctx, -1 );
       if( rc != 0 ) {
 
@@ -654,8 +656,10 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
    if( !md_download_context_succeeded( dlctx, 200 ) ) {
 
       http_status = md_download_context_get_http_status( dlctx );
+      curl_rc = md_download_context_get_curl_rc( dlctx );
+      curl_errno = md_download_context_get_errno( dlctx );
 
-      SG_error("download %p finished with HTTP status %d\n", dlctx, http_status );
+      SG_error("download %p finished with HTTP status %d, errno = %d, CURL rc = %d\n", dlctx, http_status, curl_errno, curl_rc );
 
       SG_client_download_async_cleanup( dlctx );
       SG_client_request_cls_cleanup_and_free( reqcls );
@@ -905,6 +909,7 @@ int SG_client_block_verify( struct SG_gateway* gateway, uint64_t coordinator_id,
 
    if( (unsigned)signed_block->len < sizeof(uint32_t) ) {
       // can't even have the header length
+      SG_error("Invalid block length %zu\n", signed_block->len);
       return -EBADMSG;
    }
 
@@ -1073,7 +1078,7 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
       return rc;
    }
 
-   SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "]\n", reqdat->file_id, reqdat->file_version, *block_id );
+   SG_debug("Finished block %" PRIX64 ".%" PRId64 "[%" PRIu64 "] with %p\n", reqdat->file_id, reqdat->file_version, *block_id, dlctx );
 
    block_chunk.data = block_buf;
    block_chunk.len = block_len;
@@ -1175,7 +1180,6 @@ int SG_client_getxattr( struct SG_gateway* gateway, uint64_t gateway_id, char co
 
     gateway_cert = NULL;
 
-    // TODO: connection pool
     curl = curl_easy_init();
     if( curl == NULL ) {
         return -ENOMEM;
@@ -1309,7 +1313,6 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
 
     gateway_cert = NULL;
 
-    // TODO: connection pool
     curl = curl_easy_init();
     if( curl == NULL ) {
         return -ENOMEM;
@@ -2035,6 +2038,8 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
 
    request->set_request_type( SG_messages::Request::PUTCHUNKS );
    request->set_coordinator_id( coordinator_id );
+   request->set_write_off( reqdat->io_hints.offset );
+   request->set_write_len( reqdat->io_hints.len );
 
    for( size_t i = 0; i < num_chunk_info; i++ ) {
 
@@ -2049,7 +2054,7 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
           return -ENOMEM;
        }
 
-       rc = SG_manifest_block_serialize_to_protobuf( &chunk_info[i], mblock );
+       rc = SG_manifest_block_serialize_to_protobuf_ex( &chunk_info[i], mblock, true );
        if( rc != 0 ) {
 
           return rc;
@@ -2371,7 +2376,6 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
 
    struct md_syndicate_conf* conf = SG_gateway_conf( gateway );
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
@@ -2480,7 +2484,6 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
       return -ENOMEM;
    }
 
-   // TODO: connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
 
@@ -2581,6 +2584,7 @@ int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_downloa
    md_download_context_set_cls( dlctx, NULL );
 
    // wait for this download to finish
+   SG_debug("Wait at most %" PRId64 " millis for %p to finish\n", (int64_t)(conf->transfer_timeout * 1000), dlctx );
    rc = md_download_context_wait( dlctx, conf->transfer_timeout * 1000 );
    if( rc != 0 ) {
 

@@ -449,10 +449,11 @@ static char* md_cache_file_url( struct md_syndicate_cache* cache, uint64_t file_
    return local_file_url;
 }
 
-// create a URL to a specific cached block, based on whether or not it is cache-managed or caller-managed
+// create a URL to a specific cached block, based on whether or not it is cache-managed or caller-managed.
+// if creating, then append '.temp' to the end, so we don't attempt to read it.
 // return the malloc'ed URL on success
 // return -ENOMEM on OOM 
-static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags ) {
+static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags, bool creating ) {
 
    char* local_block_url = NULL;
 
@@ -465,6 +466,18 @@ static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file
 
    if( local_block_url == NULL ) {
       return NULL;
+   }
+
+   if( creating ) {
+      char* tmp = SG_CALLOC( char, strlen(local_block_url) + 6 );
+      if( tmp == NULL ) {
+         SG_safe_free( local_block_url );
+         return NULL;
+      }
+
+      sprintf(tmp, "%s.temp", local_block_url);
+      SG_safe_free( local_block_url );
+      local_block_url = tmp;
    }
 
    return local_block_url;
@@ -490,6 +503,9 @@ static int md_cache_file_setup( struct md_syndicate_cache* cache, uint64_t file_
    local_path = SG_URL_LOCAL_PATH( local_file_url );
 
    rc = md_mkdirs3( local_path, mode | 0700 );
+   if( rc != 0 ) {
+      SG_error("md_mkdirs3('%s') rc = %d\n", local_path, rc );
+   }
    
    SG_safe_free( local_file_url );
    
@@ -534,7 +550,7 @@ int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int
    int rc = 0;
    int fd = 0;
    char* block_path = NULL;
-   char* block_url = md_cache_block_url( cache, file_id, file_version, block_id, block_version, cache_flags );
+   char* block_url = md_cache_block_url( cache, file_id, file_version, block_id, block_version, cache_flags, (bool)(flags & O_CREAT) );
    if( block_url == NULL ) {
       
       return -ENOMEM;
@@ -571,7 +587,7 @@ int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int
 // return 0 on success
 // return -ENOMEM on OOM 
 // return negative (from unlink) on error
-static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags ) {
+static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags, bool created ) {
    
    char* block_path = NULL;
    int rc = 0;
@@ -579,7 +595,7 @@ static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint
    char* local_file_url = NULL;
    char* local_file_path = NULL;
    
-   block_url = md_cache_block_url( cache, file_id, file_version, block_id, block_version, cache_flags );
+   block_url = md_cache_block_url( cache, file_id, file_version, block_id, block_version, cache_flags, created );
    if( block_url == NULL ) {
       return -ENOMEM;
    }
@@ -619,7 +635,7 @@ static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint
 // return negative on error (see md_cache_evict_block_internal)
 int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t flags ) {
    
-   int rc = md_cache_evict_block_internal( cache, file_id, file_version, block_id, block_version, flags );
+   int rc = md_cache_evict_block_internal( cache, file_id, file_version, block_id, block_version, flags, false );
    if( rc == 0 && !(flags & SG_CACHE_FLAG_MANAGED) ) {
       __sync_fetch_and_sub( &cache->num_blocks_written, 1 );
    }
@@ -1465,8 +1481,12 @@ void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t*
    md_cache_completed_unlock( cache );
    
    // safe to use completed as long as no one else performs the above swap
-   
+   int rc = 0;
    int write_count = 0;
+   char* src_url = NULL;
+   char* dest_url = NULL;
+   char* src_path = NULL;
+   char* dest_path = NULL;
    
    // reap completed writes
    for( md_cache_completion_buffer_t::iterator itr = completed->begin(); itr != completed->end(); itr++ ) {
@@ -1480,18 +1500,40 @@ void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t*
       md_cache_remove_ongoing( cache, f );
       
       md_cache_ongoing_writes_unlock( cache );
-      
-      if( f->aio_rc != 0 ) {
+
+      // remove the .temp designation 
+      src_url = md_cache_block_url( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags, true );
+      dest_url = md_cache_block_url( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags, false );
+
+      if( src_url == NULL || dest_url == NULL ) {
+         printf("Out of memory\n");
+         exit(1);
+      }
+      else {
+
+         src_path = SG_URL_LOCAL_PATH(src_url);
+         dest_path = SG_URL_LOCAL_PATH(dest_url);
+         rc = rename( src_path, dest_path );
+      }
+
+      if( rc != 0 ) {
+         rc = -errno;
+         SG_error("Failed to rename %s to %s\n", src_path, dest_path );
+
+         // clear the temp block
+         md_cache_evict_block_internal( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags, true );
+      }
+      else if( f->aio_rc != 0 ) {
          SG_error("WARN: write aio %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] rc = %d\n", c->file_id, c->file_version, c->block_id, c->block_version, f->aio_rc );
          
          // clean up 
-         md_cache_evict_block_internal( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags );
+         md_cache_evict_block_internal( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags, false );
       }
       else if( f->write_rc < 0 ) {
          SG_error("WARN: write %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] rc = %d\n", c->file_id, c->file_version, c->block_id, c->block_version, f->write_rc );
          
          // clean up 
-         md_cache_evict_block_internal( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags );
+         md_cache_evict_block_internal( cache, c->file_id, c->file_version, c->block_id, c->block_version, f->flags, false );
       }
       else if( !(f->flags & SG_CACHE_FLAG_MANAGED) ) {
          // finished!  Put under cache control and update accounting
@@ -1503,6 +1545,9 @@ void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t*
          write_count ++;
       }
       
+      SG_safe_free( src_url );
+      SG_safe_free( dest_url );
+
       // finalized!
       f->finalized = true;
       
@@ -1674,7 +1719,7 @@ int md_cache_evict_blocks( struct md_syndicate_cache* cache, md_cache_lru_t* new
          struct md_cache_entry_key c = cache->cache_lru->front();
          cache->cache_lru->pop_front();
          
-         int rc = md_cache_evict_block_internal( cache, c.file_id, c.file_version, c.block_id, c.block_version, 0 );
+         int rc = md_cache_evict_block_internal( cache, c.file_id, c.file_version, c.block_id, c.block_version, 0, false );
          
          if( rc != 0 && rc != -ENOENT ) {
             

@@ -717,6 +717,7 @@ class MSEntry( storagetypes.Object ):
       "max_read_freshness",
       "max_write_freshness",
       "write_nonce",
+      "xattr_nonce",
       "xattr_hash",
       "ent_sig"
    ]
@@ -921,7 +922,7 @@ class MSEntry( storagetypes.Object ):
          else:
              # empty string 
              ent_pb.xattr_hash = ""
-      
+     
       return
       
    
@@ -1023,8 +1024,8 @@ class MSEntry( storagetypes.Object ):
    @classmethod
    def preprocess_attrs( cls, ent_attrs ):
       # do some preprocessing on the ent attributes, autogenerating them if need be
-      if ent_attrs['ftype'] == MSENTRY_TYPE_DIR:
-         ent_attrs['write_nonce'] = cls.make_dir_write_nonce()
+      # if ent_attrs['ftype'] == MSENTRY_TYPE_DIR:
+      #   ent_attrs['write_nonce'] = cls.make_dir_write_nonce()
          
       ent_attrs['nonce_ts'] = cls.make_nonce_ts()
       
@@ -1224,7 +1225,8 @@ class MSEntry( storagetypes.Object ):
          return new_capacity 
       
       # update parent write nonce as well, so clients discover it (i.e. only write a new shard)
-      cls.__write_msentry( whole_parent, num_shards, write_nonce=random.randint( -2**63, 2**63 - 1 )  )
+      # cls.__write_msentry( whole_parent, num_shards, write_nonce=random.randint( -2**63, 2**63 - 1 )  )
+      cls.__write_msentry( whole_parent, num_shards )
       
       return new_capacity
    
@@ -1383,7 +1385,8 @@ class MSEntry( storagetypes.Object ):
          child_ent = MSEntry( key=storagetypes.make_key( MSEntry, MSEntry.make_key_name( volume_id, child_id ) ) )
          child_ent.populate( volume.num_shards, **ent_attrs )
          
-         parent_shard = MSEntry.update_shard( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
+         # parent_shard = MSEntry.update_shard( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
+         parent_shard = MSEntry.update_shard( volume.num_shards, parent_ent )
          
          futs = storagetypes.put_multi_async( [child_ent, child_ent.write_shard, parent_shard] )
          
@@ -1594,7 +1597,6 @@ class MSEntry( storagetypes.Object ):
       storagetypes.wait_futures( [ent_fut] )
       
       ent = ent_fut.get_result()
-      
       return (0, ent)
 
 
@@ -1878,11 +1880,11 @@ class MSEntry( storagetypes.Object ):
           # stale 
           return (-errno.EAGAIN, None )
 
-      if src.write_nonce > src_attrs['write_nonce']:
+      if src.ftype == MSENTRY_TYPE_FILE and src.write_nonce > src_attrs['write_nonce']:
           # stale 
           return (-errno.EAGAIN, None )
 
-      if src.xattr_nonce > src_attrs['xattr_nonce']:
+      if src.ftype == MSENTRY_TYPE_DIR and src.xattr_nonce == src_attrs['xattr_nonce']:
           # stale 
           return (-errno.EAGAIN, None )
 
@@ -2117,7 +2119,8 @@ class MSEntry( storagetypes.Object ):
       ent_idx = yield MSEntryIndex.ReadIndex( volume_id, ent.file_id, async=True )
       
       # update parent status and free the dead child's dir index
-      yield MSEntry.update_shard_async( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
+      # yield MSEntry.update_shard_async( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
+      yield MSEntry.update_shard_async( volume.num_shards, parent_ent )
       
       ent_key = storagetypes.make_key( MSEntry, MSEntry.make_key_name( volume_id, ent.file_id ) )
       nh_key_name = MSEntryNameHolder.make_key_name( volume_id, parent_id, ent.name )

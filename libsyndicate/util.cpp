@@ -1430,7 +1430,14 @@ char* SG_strdup_or_die( char const* str ) {
    return ret;
 }
 
-// get task ID (no glibc wrapper around this...)
-pid_t gettid(void) {
-   return syscall( __NR_gettid );
+unsigned long long int md_pthread_self(void) {
+   union {
+      pthread_t t;
+      unsigned long long i;
+   } syndicate_thread;
+
+   memset( &syndicate_thread, 0, sizeof(syndicate_thread) );
+   syndicate_thread.t = pthread_self();
+   return syndicate_thread.i;
 }
+

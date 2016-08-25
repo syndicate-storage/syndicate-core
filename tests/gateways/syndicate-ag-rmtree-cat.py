@@ -53,7 +53,8 @@ if __name__ == "__main__":
     if os.path.exists(testdir):
         shutil.rmtree(testdir)
 
-    inner_dir = os.path.join(testdir, "to_remove")
+    inner_dir = os.path.join(testdir, "to_remove_1", "to_remove_2", "to_remove_3")
+    rmdir = os.path.join(testdir, "to_remove_1")
     os.makedirs(inner_dir)
 
     # put a file to publish
@@ -77,8 +78,8 @@ if __name__ == "__main__":
     ug_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
     # remove inner dir, and have the AG refresh
-    shutil.rmtree(inner_dir)
-    exitcode, out = testlib.run( REFRESH_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', ug_gateway_name, '/to_remove', valgrind=True )
+    shutil.rmtree(rmdir)
+    exitcode, out = testlib.run( REFRESH_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', ug_gateway_name, '/to_remove_1', valgrind=True )
     testlib.save_output( output_dir, "syndicate-refresh", out )
 
     if exitcode != 0:

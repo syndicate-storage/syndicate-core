@@ -854,6 +854,22 @@ int SG_manifest_block_set_hash( struct SG_manifest_block* block, unsigned char* 
    return 0;
 }
 
+int SG_manifest_block_set_logical_write( struct SG_manifest_block* block, uint64_t offset, uint64_t len ) {
+   block->logical_write_offset = offset;
+   block->logical_write_len = len;
+   return 0;
+}
+
+uint64_t SG_manifest_block_get_logical_write_offset( struct SG_manifest_block* block ) {
+   return block->logical_write_offset;
+}
+
+uint64_t SG_manifest_block_get_logical_write_len( struct SG_manifest_block* block ) {
+   return block->logical_write_len;
+}
+
+
+uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest );
 // get the manifest volume ID 
 uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest ) {
    
@@ -1312,7 +1328,7 @@ int SG_manifest_serialize_blocks_to_request_protobuf( struct SG_manifest* manife
 // serialize a block to a protobuf 
 // return 0 on success
 // return -ENOMEM on OOM 
-int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock ) {
+int SG_manifest_block_serialize_to_protobuf_ex( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock, bool include_logical_write_data ) {
   
    // sanity check...
    if( block->hash == NULL && block->hash_len != 0 ) {
@@ -1331,6 +1347,11 @@ int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG
       if( block->type != 0 ) {
          mblock->set_chunk_type( block->type );
       }
+
+      if( include_logical_write_data ) {
+         mblock->set_logical_offset( block->logical_write_offset );
+         mblock->set_logical_len( block->logical_write_len );
+      }
    }
    catch( bad_alloc& ba ) {
       
@@ -1338,6 +1359,10 @@ int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG
    }
    
    return 0;
+}
+
+int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock) {
+   return SG_manifest_block_serialize_to_protobuf_ex( block, mblock, false );
 }
 
 

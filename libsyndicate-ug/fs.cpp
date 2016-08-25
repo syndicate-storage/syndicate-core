@@ -43,9 +43,11 @@ static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_e
    
    if( type == FSKIT_ENTRY_TYPE_FILE ) {
       dest->type = MD_ENTRY_FILE;
+      dest->size = fskit_entry_get_size( src );
    }
    else if( type == FSKIT_ENTRY_TYPE_DIR ) {
       dest->type = MD_ENTRY_DIR;
+      dest->size = 4096;
    }
    else {
       // invalid 
@@ -84,7 +86,6 @@ static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_e
    
    dest->owner = SG_gateway_user_id( gateway );
    dest->mode = fskit_entry_get_mode( src );
-   dest->size = fskit_entry_get_size( src );
    dest->parent_id = parent_id;
    
    dest->max_read_freshness = conf->default_read_freshness;
@@ -224,7 +225,10 @@ static int UG_fs_mkdir( struct fskit_core* fs, struct fskit_route_metadata* rout
    // inode data 
    struct UG_inode* inode = NULL;
    
-   rc = UG_fs_create_or_mkdir( fs, route_metadata, fent, mode, NULL, &inode );
+   // caller-given inode data 
+   struct md_entry* caller_inode_data = (struct md_entry*)fskit_route_metadata_get_cls( route_metadata );
+
+   rc = UG_fs_create_or_mkdir( fs, route_metadata, fent, mode, caller_inode_data, &inode );
    if( rc != 0 ) {
       
       return rc;
@@ -825,7 +829,7 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
       
       md_cache_evict_file( cache, UG_inode_file_id( inode ), UG_inode_file_version( inode ), 0 );
    }
-   
+
    return rc;
 }
 

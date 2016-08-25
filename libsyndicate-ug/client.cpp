@@ -251,7 +251,7 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 // return 0 on success 
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM
-static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data ) {
+static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
    struct md_entry inode_data;
@@ -260,7 +260,6 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    struct SG_gateway* gateway = UG_state_gateway( state );
    struct ms_client* ms = SG_gateway_ms( gateway );
    
-   int64_t write_nonce = 0;
    struct md_entry inode_data_out;
    memset( &inode_data_out, 0, sizeof(struct md_entry) );
    
@@ -274,6 +273,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    fent = fskit_entry_ref( fs, path, &rc );
    if( fent == NULL ) {
       
+      SG_debug("fskit_entry_ref('%s') failed\n", path );
       return rc;
    }
    
@@ -281,11 +281,10 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    
-   write_nonce = UG_inode_write_nonce( inode );
-   
-   rc = UG_inode_export( &inode_data, inode, 0 );
+   rc = UG_inode_export( &inode_data, inode, parent_id );
    if( rc != 0 ) {
       
+      SG_debug("UG_inode_export('%s') rc = %d\n", path, rc );
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, path, fent );
       return rc;
@@ -294,6 +293,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
    if( rc != 0 ) {
        
+      SG_debug("UG_inode_export_xattr_hash('%s') rc = %d\n", path, rc );
       fskit_entry_unlock( fent );
       fskit_entry_unref( fs, path, fent );
       md_entry_free( &inode_data );
@@ -314,8 +314,10 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
    }
 
    inode_data.xattr_hash = xattr_hash;
+   inode_data.write_nonce = write_nonce;
    
    // send the update along
+   SG_debug("update '%s'\n", path);
    rc = ms_client_update( ms, &inode_data_out, &inode_data );
    
    inode_data.xattr_hash = NULL;
@@ -364,7 +366,7 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
 // return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
 // return -EREMOTEIO if there was a network-level error 
 // return non-zero error if the write was processed remotely, but failed remotely
-static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data ) {
+static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
    struct md_entry inode_out;
@@ -405,7 +407,9 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
    struct fskit_entry* fent = NULL;
    struct UG_inode* inode = NULL;
    uint64_t coordinator_id = 0;
-   
+   uint64_t parent_id = 0;
+   int64_t write_nonce = 0;
+
    // ensure fresh first
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -413,22 +417,22 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
       SG_error("UG_consistency_path_ensure_fresh('%s') rc = %d\n", path, rc );
       return rc;
    }
-   
-   // look up coordinator 
-   fent = fskit_entry_ref( fs, path, &rc );
+
+   fent = UG_inode_resolve_path_and_parent( fs, path, true, &rc, &parent_id );
    if( fent == NULL ) {
-   
-      return rc;  
+      SG_error("UG_inode_resolve_path_and_parent('%s') rc = %d\n", path, rc );
+      return rc;
    }
    
-   fskit_entry_rlock( fent );
+   fskit_entry_ref_entry( fent );
    
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    coordinator_id = UG_inode_coordinator_id( inode );
+   write_nonce = UG_inode_write_nonce( inode );
    
    fskit_entry_unlock( fent );
    
-   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data ), UG_update_remote( state, path, write_data ), &rc );
+   UG_try_or_coordinate( gateway, path, coordinator_id, UG_update_local( state, path, write_data, parent_id, write_nonce ), UG_update_remote( state, path, write_data, parent_id, write_nonce ), &rc );
    
    ref_rc = fskit_entry_unref( fs, path, fent );
    if( ref_rc != 0 ) {
@@ -481,12 +485,26 @@ int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent 
 }
 
 
-// mkdir(2)
+// POSIX-y mkdir(2)
 // forward to fskit, which will take care of communicating with the MS
 int UG_mkdir( struct UG_state* state, char const* path, mode_t mode ) {
    
    return fskit_mkdir( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
+
+
+// more advanced mkdir, setting extra syndicate-specific fields
+int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struct md_entry* ent_data ) {
+   
+   // sanity check 
+   if( ent_data->type != MD_ENTRY_DIR ) {
+      return -EINVAL;
+   }
+
+   SG_debug("max read/write, size: (%d, %d, %" PRIu64 ")\n", ent_data->max_read_freshness, ent_data->max_write_freshness, ent_data->size);
+   return fskit_mkdir_ex( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ), (void*)ent_data );
+}
+
 
 // unlink(2)
 // forward to fskit, which will take care of communicating with the MS and garbage-collecting blocks
@@ -537,7 +555,7 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
    int rc = 0;
-   struct stat sb;
+   struct md_entry mdsb;
    UG_handle_t* dh = NULL;
    struct md_entry** listing = NULL;
    char* path = NULL;
@@ -549,6 +567,8 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
    if( root_path_dup == NULL ) {
       return -ENOMEM;
    }
+
+   memset( &mdsb, 0, sizeof(struct md_entry));
 
    vector<char*> path_stack;
 
@@ -564,13 +584,13 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
       path = path_stack.at( path_stack.size() - 1 );
 
-      rc = UG_stat( state, path, &sb );
+      rc = UG_stat_raw( state, path, &mdsb );
       if( rc != 0 ) {
          SG_error("UG_stat('%s') rc = %d\n", path, rc );
          goto UG_rmtree_cleanup;
       }
 
-      if( S_ISREG(sb.st_mode) ) {
+      if( mdsb.type == MD_ENTRY_FILE ) {
          // file--unlink
          SG_debug("Remove file '%s'\n", path);
          rc = UG_unlink( state, path );
@@ -580,13 +600,15 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
          }
          path_stack.pop_back();
          SG_safe_free(path);
+         md_entry_free(&mdsb);
       }
-      else if( S_ISDIR(sb.st_mode) ) {
+      else if( mdsb.type == MD_ENTRY_DIR ) {
 
          SG_debug("Remove children of directory '%s'\n", path);
          dh = UG_opendir( state, path, &rc );
          if( dh == NULL ) {
             SG_error("UG_opendir('%s') rc = %d\n", path, rc );
+            md_entry_free(&mdsb);
             goto UG_rmtree_cleanup;
          }
          
@@ -595,6 +617,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
             rc = UG_readdir( state, &listing, 65536, dh ); 
             if( rc < 0 ) {
                UG_closedir(state, dh);
+               md_entry_free(&mdsb);
                SG_error("UG_readdir('%s') rc = %d\n", path, rc );
                goto UG_rmtree_cleanup;
             }
@@ -608,10 +631,16 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
             if( num_children == 0 ) {
                SG_debug("No children in '%s'\n", path);
+               if( listing != NULL ) {
+                  UG_free_dir_listing(listing);
+               }
+               else {
+                  SG_warn("No children given in '%s'\n", path);
+               }
                break;
             }
 
-            SG_debug("Read %zu children\n", num_children );
+            SG_debug("Read %zu children from '%s'\n", num_children, path );
             for( size_t i = 0; i < num_children; i++ ) {
 
                // delete each file while we're still fresh
@@ -623,6 +652,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                if( child_path == NULL ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
@@ -633,6 +663,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                   UG_closedir(state, dh);
                   SG_error("UG_unlink('%s') rc = %d\n", child_path, rc );
                   SG_safe_free(child_path);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
@@ -645,16 +676,19 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
             
                // push back each directory 
                if( listing[i]->type != MD_ENTRY_DIR ) {
+                  SG_debug("Skip non-directory '%s'\n", listing[i]->name);
                   continue;
                }
 
                // skip the current directory
-               if( listing[i]->file_id == sb.st_ino ) {
+               if( listing[i]->file_id == mdsb.file_id ) {
+                  SG_debug("Skip current directory %" PRIX64 " '%s'\n", listing[i]->file_id, listing[i]->name);
                   continue;
                }
 
-               // skip the parent 
-               if( listing[i]->parent_id == sb.st_ino ) {
+               // skip the parent THIS IS STILL BUGGY 
+               if( listing[i]->file_id == mdsb.parent_id ) {
+                  SG_debug("Skip parent directory %" PRIX64 " '%s'\n", listing[i]->file_id, listing[i]->name);
                   continue;
                }
 
@@ -664,10 +698,11 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                if( child_path == NULL ) {
                   UG_free_dir_listing(listing);
                   UG_closedir(state, dh);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
 
-               SG_debug("Directory: '%s' ('%s', %" PRIX64 ", %" PRIX64 ")\n", child_path, listing[i]->name, listing[i]->file_id, sb.st_ino );
+               SG_debug("Directory: '%s' ('%s', %" PRIX64 ", %" PRIX64 ")\n", child_path, listing[i]->name, listing[i]->file_id, mdsb.file_id );
 
                try {
                   path_stack.push_back(child_path);
@@ -675,6 +710,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
                catch( bad_alloc& ba ) {
                   UG_closedir(state, dh);
                   UG_free_dir_listing(listing);
+                  md_entry_free(&mdsb);
                   goto UG_rmtree_cleanup;
                }
             }
@@ -684,6 +720,7 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
          // done!
          UG_closedir(state, dh);
+         md_entry_free(&mdsb);
             
          if( empty ) {
             // maybe empty now
@@ -1274,6 +1311,7 @@ int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t 
 // return 0 on success.
 // return -ENOMEM on OOM
 // return -EBADF if fi is NULL or refers to a directory 
+// fi->fent must *NOT* be locked!
 int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* ret_block_version, unsigned char* ret_hash, UG_handle_t* fi ) {
 
    struct fskit_entry* fent = NULL;
@@ -1316,7 +1354,7 @@ int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* ret_blo
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_getblock_out;
@@ -1421,7 +1459,7 @@ int UG_putblockinfo( struct UG_state* state, uint64_t block_id, int64_t block_ve
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_putblock_out;
@@ -1505,7 +1543,7 @@ int UG_manifest_export( struct UG_state* ug, struct SG_manifest* manifest, UG_ha
 
    // ensure fresh 
    rc = UG_consistency_inode_ensure_fresh( gateway, fskit_file_handle_get_path( fi->fh ), inode );
-   if( rc != 0 ) {
+   if( rc < 0 ) {
       SG_error("UG_consistency_inode_ensure_fresh('%s' (%" PRIX64 ")) rc = %d\n", fskit_file_handle_get_path( fi->fh ), file_id, rc );
       fskit_file_handle_unlock( fi->fh );
       goto UG_manifest_export_out;
@@ -1839,7 +1877,8 @@ UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_ent
       *ret_rc = -ENOMEM;
       return NULL;
    }
- 
+
+   SG_debug("UG_publish %" PRIX64 "\n", ent_data->file_id ); 
    fh = fskit_create_ex( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ), ent_data->mode, (void*)ent_data, ret_rc );
    
    if( fh == NULL ) {

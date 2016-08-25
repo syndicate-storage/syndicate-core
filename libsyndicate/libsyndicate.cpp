@@ -296,6 +296,9 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
       SG_error("%s", "Failed to load our volume certificate\n");
       return -EPERM;
    }
+   
+   SG_debug("Volume cert: (volume_id=%" PRIu64 ", version=%" PRIu64 ", owner_id=%" PRIu64 ", blocksize=%" PRIu64 ")\n", 
+         volume_cert->volume_id(), volume_cert->volume_version(), volume_cert->owner_id(), volume_cert->blocksize() );
 
    // sanity checks...
    if( volume_cert->volume_id() != gateway_cert.volume_id() ) {
@@ -1069,10 +1072,10 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
       else if( strcmp( key, SG_CONFIG_DEBUG_LOCK ) == 0 ) {
 
          if( strcasecmp( value, "true" ) == 0 || strcasecmp( value, "yes" ) == 0 || strcasecmp( value, "y" ) == 0 ) {
-            conf->debug_lock = 1;
+            conf->debug_lock = true;
          }
          else if( strcasecmp( value, "false" ) == 0 || strcasecmp( value, "no" ) == 0 || strcasecmp( value, "n" ) == 0 ) {
-            conf->debug_lock = 0;
+            conf->debug_lock = false;
          }
          else {
 
@@ -2376,7 +2379,6 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 
    // if root, preserve but clear these fields set by the MS
    // (in order to verify volume owner signature)
-   int64_t write_nonce = msent->write_nonce();
    int64_t xattr_nonce = msent->xattr_nonce();
    string ms_signature = msent->ms_signature();
    string xattr_hash;
@@ -2416,7 +2418,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 
        // restore original directory values
        // xattrs are trusted for directories only if the client trusts the MS.
-       msent->set_write_nonce( 1 );
+       // msent->set_write_nonce( 1 );
        msent->set_xattr_nonce( 1 );
        msent->clear_xattr_hash();
    }
@@ -2427,8 +2429,8 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    msent->set_capacity( 16 );
    msent->clear_ms_signature();
 
-   // SG_debug("%s", "Verify:\n");
-   // msent->PrintDebugString();
+   SG_debug("%s", "Verify:\n");
+   msent->PrintDebugString();
 
    rc = md_verify< ms::ms_entry >( pubkey, msent );
 
@@ -2441,7 +2443,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    if( msent->type() == MD_ENTRY_DIR ) {
 
        // restore
-       msent->set_write_nonce( write_nonce );
+       // msent->set_write_nonce( write_nonce );
        msent->set_xattr_nonce( xattr_nonce );
 
        if( has_xattr_hash ) {
@@ -2514,8 +2516,8 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
        msent.clear_xattr_hash();
    }
 
-   // SG_debug("from %s:%d, sign:\n", file, lineno);
-   // msent.PrintDebugString();
+   SG_debug("from %s:%d, sign:\n", file, lineno);
+   msent.PrintDebugString();
 
    rc = md_sign< ms::ms_entry >( privkey, &msent );
    if( rc != 0 ) {
@@ -2626,6 +2628,10 @@ static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* cli
    char* certs_path = NULL;
    char* expanded_path = NULL;
    size_t expanded_path_len = 0;
+
+   if( opts->debug_level > 0 ) {
+       md_debug(conf, opts->debug_level);
+   }
 
    if( config_path == NULL ) {
 
@@ -2893,7 +2899,7 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
    conf->connect_timeout = 15;
 
    conf->portnum = -1;
-   conf->transfer_timeout = 600;
+   conf->transfer_timeout = 60;    // 10 minutes default
 
    conf->owner = 0;
    conf->usermask = 0377;

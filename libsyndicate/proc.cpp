@@ -466,7 +466,9 @@ static int SG_proc_wait( struct SG_proc* proc, int* child_rc, int timeout ) {
       *child_rc = rc;
       return 0;
    }
-   
+  
+   SG_debug("Wait for %d to die\n", proc->pid);
+
    while( 1 ) {
       
       // wait for a child to die...
@@ -1144,10 +1146,14 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
 
       // pass along I/O hints, if given 
       dreq->set_io_type( reqdat->io_hints.io_type );
-      if( reqdat->io_hints.io_type != SG_IO_NONE ) {
+      dreq->set_io_context( reqdat->io_hints.io_context );
+      if( reqdat->io_hints.io_type == SG_IO_READ || reqdat->io_hints.io_type == SG_IO_WRITE ) {
           dreq->set_offset( reqdat->io_hints.offset );
           dreq->set_len( reqdat->io_hints.len );
-          dreq->set_io_context( reqdat->io_hints.io_context );
+      }
+      else {
+         dreq->set_offset( 0 );
+         dreq->set_len( 0 );
       }
 
       if( reqdat->io_hints.block_vec != NULL ) {
@@ -1851,7 +1857,11 @@ int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const en
          
          // will send input 
          close( inpipe[1] );
-         dup2( inpipe[0], STDIN_FILENO );
+         rc = dup2( inpipe[0], STDIN_FILENO );
+         if( rc < 0 ) {
+            rc = errno;
+            _exit(rc);
+         }
       }
       
       // send stdout to p[1]
@@ -1869,14 +1879,14 @@ int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const en
          _exit(rc);
       }
       
-      // close everything else but stdout
+      // close everything else but standard streams
       for( int i = 0; i < max_fd; i++ ) {
          
          if( i != STDOUT_FILENO && i != STDIN_FILENO && i != STDERR_FILENO ) {
             close( i );
          }
       }
-      
+
       // run the command 
       if( env != NULL ) {
          rc = execve( cmd_path, argv, env );
@@ -1973,19 +1983,29 @@ int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const en
       }
       
       // wait for child
-      rc = waitpid( pid, &status, 0 );
-      if( rc < 0 ) {
-         
-         rc = -errno;
-         SG_error("waitpid(%d) rc = %d\n", pid, rc );
-         
-         if( alloced ) {
+      // mask EINTR
+      while( 1 ) {
+          rc = waitpid( pid, &status, 0 );
+          if( rc >= 0 ) {
+             break;
+          }
+          if( rc < 0 ) {
             
-            free( *output );
-            *output = NULL;
+            rc = -errno;
+            SG_error("waitpid(%d) rc = %d\n", pid, rc );
+           
+            if( rc == -EINTR ) {
+               continue;
+            }
+
+            if( alloced ) {
+               
+               free( *output );
+               *output = NULL;
+            }
+            
+            return rc;
          }
-         
-         return rc;
       }
       
       if( WIFEXITED( status ) ) {

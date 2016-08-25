@@ -387,9 +387,12 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    struct SG_chunk next_block;
    struct SG_manifest_block* block_info = NULL;
 
+   uint64_t max_connections = 10;
+
    UG_block_gateway_map_t block_gateway_idx;        // map block ID to the index into gateway_ids for the next gateway to try
    int gateway_idx = 0;
    SG_manifest_block_iterator itr;
+   CURL* curl = NULL;
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
 
    set<uint64_t> blocks_in_flight;                  // set of blocks being downloaded right now (keyed by ID)
@@ -455,7 +458,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       return -ENOMEM;
    }
 
-   rc = md_download_loop_init( dlloop, SG_gateway_dl( gateway ), MIN( (unsigned)ms->max_connections, SG_manifest_get_block_count( block_requests ) ) );
+   rc = md_download_loop_init( dlloop, SG_gateway_dl( gateway ), MIN( max_connections, SG_manifest_get_block_count( block_requests ) ) );
    if( rc != 0 ) {
       
       SG_error("md_download_loop_init rc = %d\n", rc );
@@ -468,10 +471,13 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    
    itr = SG_manifest_block_iterator_begin( block_requests );
 
+   SG_debug("Initialize read download loop %p for %" PRIX64 " with %" PRIu64 " contexts\n", dlloop, SG_manifest_get_file_id(block_requests), MIN( max_connections, SG_manifest_get_block_count( block_requests ) ) ); 
+   SG_debug("Will download %zu blocks for %" PRIX64 " with %p\n", block_gateway_idx.size(), SG_manifest_get_file_id(block_requests), dlloop);
+
    // download each block 
-   do {
+   while( block_gateway_idx.size() > 0 ) {
       
-      // start as many downloads as we can 
+      // start as many downloads as we can
       while( block_gateway_idx.size() > 0 ) {
         
          // cycle through the manifest of blocks to fetch 
@@ -479,7 +485,8 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
             itr = SG_manifest_block_iterator_begin( block_requests );
 
             if( cycled_through ) {
-               // all download slots are filled 
+               // all download slots are filled
+               SG_debug("Cycled through %p\n", dlloop); 
                cycled_through = false;
                break;
             }
@@ -518,6 +525,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          if( rc != 0 ) {
             
             if( rc == -EAGAIN ) {
+               SG_debug("All download slots in %p are full\n", dlloop);
                rc = 0;
                break;
             }
@@ -532,9 +540,12 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          // start this block
          rc = SG_request_data_init_block( gateway, fs_path, SG_manifest_get_file_id(block_requests), SG_manifest_get_file_version(block_requests), block_id, SG_manifest_block_version( block_info ), &reqdat );
          if( rc != 0 ) {
+            SG_error("SG_request_data_init_block(%" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "]) rc = %d\n", 
+                      SG_manifest_get_file_id(block_requests), SG_manifest_get_file_version(block_requests), block_id, SG_manifest_block_version( block_info ), rc );
             break;
          }
 
+         // NOTE: extra download ref 
          rc = SG_client_get_block_async( gateway, &reqdat, gateway_ids[ gateway_idx ], dlloop, dlctx );
          SG_request_data_free( &reqdat );
 
@@ -565,16 +576,23 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
              break;
          }
 
-         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ) );
+         SG_debug("Will download %" PRIX64 "[%" PRIu64 ".%" PRId64 "] with %p in %p\n", SG_manifest_get_file_id(block_requests), block_id, SG_manifest_block_version( block_info ), dlctx, dlloop );
+         SG_debug("download loop %p has %d downloads\n", dlloop, md_download_loop_num_initialized(dlloop));
 
          // started at least one block; try to start more 
          cycled_through = false;
       }
      
       if( rc != 0 ) {
+         SG_debug("Will abort download loop %p\n", dlloop);
          break;
       }
-      
+     
+      if( md_download_loop_num_initialized(dlloop) == 0 && block_gateway_idx.size() == 0 ) {
+         SG_debug("Download loop is dead; no more downloads (%p)\n", dlloop);
+         break;
+      }
+
       // wait for at least one of the downloads to finish 
       rc = md_download_loop_run( dlloop );
       if( rc != 0 ) {
@@ -585,6 +603,7 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
          else {
             // done!
             rc = 0;
+            SG_debug("download loop %p is done\n", dlloop);
          }
          break;
       }
@@ -621,7 +640,14 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
             break;
          }
 
-             
+         // done with this download
+         SG_debug("Finished with download context %p\n", dlctx);
+         curl = NULL;
+         rc = md_download_context_unref_free( dlctx, &curl );
+         if( curl != NULL ) {
+             curl_easy_cleanup( curl );
+         }
+
          ///////////////////////////////////////////////////// 
          char debug_buf[52];
          memset(debug_buf, 0, 52);
@@ -665,16 +691,24 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
       }
       
       if( rc != 0 ) {
+         SG_debug("Will abort download loop %p\n", dlloop);
          break;
-      }
-      
-   } while( md_download_loop_running( dlloop ) );
-   
+      }     
+   }
+
+   SG_debug("Read finished: md_download_loop_running(%p) == %d, block_gateway_idx.size() == %zu\n", dlloop, md_download_loop_running(dlloop), block_gateway_idx.size() );
+
    // failure?
    if( rc != 0 ) {
       
+      SG_debug("Abort download loop %p\n", dlloop);
       md_download_loop_abort( dlloop );
       rc = -EIO;
+
+      // unref failed downloads 
+      // (do this twice on abort, since we have to clear out
+      // downloads that were in-flight when we aborted)
+      SG_client_download_async_cleanup_loop( dlloop );
    }
     
    SG_client_download_async_cleanup_loop( dlloop );
@@ -1223,6 +1257,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    }
 
    // optimization: cache last read block, but only if no writes occurred while we were fetching remote blocks
+   /*
    fskit_entry_wlock( fent );
    
    if( file_version == UG_inode_file_version( inode ) && write_nonce == UG_inode_write_nonce( inode ) ) {
@@ -1249,6 +1284,7 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    }
    
    fskit_entry_unlock( fent );
+   */
 
 UG_read_impl_fail:
 

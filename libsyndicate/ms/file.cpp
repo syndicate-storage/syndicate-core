@@ -492,7 +492,6 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
       return rc;
    }
    
-   // connect (TODO: connection pool)
    curl = curl_easy_init();
    if( curl == NULL ) {
       
@@ -530,7 +529,8 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
    curl_easy_setopt( curl, CURLOPT_HEADERFUNCTION, ms_client_timing_header_func );
    curl_easy_setopt( curl, CURLOPT_WRITEHEADER, &timing );
   
-   // run 
+   // run
+   SG_debug("MS RPC op %d\n", request->op);
    rc = md_download_run( curl, MS_MAX_MSG_SIZE, &buf, &buflen );
    
    curl_easy_cleanup( curl );
@@ -601,8 +601,7 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
          ms::ms_entry* msent = reply.mutable_listing()->mutable_entries(0);
          rc = ms_entry_verify( client, msent );
          if( rc != 0 ) {
-            SG_error("Invalid entry %" PRIX64 "\n", reply.listing().entries(0).file_id() );
-               
+            SG_error("Invalid entry %" PRIX64 "\n", msent->file_id());
             ms_client_timing_free( &timing );
             return -EBADMSG;
          }
@@ -675,10 +674,10 @@ static int ms_client_create_or_mkdir( struct ms_client* client, struct md_entry*
    uint64_t new_file_id = ms_client_make_file_id();
    
    // request a particular file ID
-   ent->file_id = new_file_id;
    ms_client_create_initial_fields( ent );
+   ent->file_id = new_file_id;
    
-   SG_debug("desired file_id: %" PRIX64 "\n", ent->file_id );
+   SG_debug("desired file_id: %" PRIX64 " from %" PRIX64 "\n", ent->file_id, old_file_id );
    
    // sign the request
    rc = md_entry_sign( client->gateway_key, ent, &sig, &sig_len );
@@ -905,7 +904,7 @@ int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct
             if( ent->type == MD_ENTRY_DIR ) {
                 
                 // MS controls directory consistency information 
-                ent_out->write_nonce = result.ent->write_nonce;
+                ent_out->write_nonce = ent->write_nonce; //result.ent->write_nonce;
             }
             else {
                 

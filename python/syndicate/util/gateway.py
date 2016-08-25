@@ -305,7 +305,7 @@ def request_byte_len( request ):
    """
    
    if hasattr(request, "io_type") and hasattr(request, "len") and request.io_type in [DriverRequest.READ, DriverRequest.WRITE]:
-       # gateway-given offset hint
+       # gateway-given length hint
        return request.len
 
    return None

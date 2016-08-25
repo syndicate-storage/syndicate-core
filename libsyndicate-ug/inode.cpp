@@ -253,7 +253,12 @@ int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode
    fskit_entry_set_ctime( fent, &ts );
 
    // set size
-   fskit_entry_set_size( fent, inode_data->size );
+   if( inode_data->type == MD_ENTRY_DIR ) {
+      fskit_entry_set_size( fent, 4096 );
+   }
+   else {
+      fskit_entry_set_size( fent, inode_data->size );
+   }
 
    return 0;
 }
@@ -888,6 +893,8 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
 // NOTE: for files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
 int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, struct md_entry* ent_data, struct UG_inode** ret_inode_data ) {
 
+   SG_debug("UG_inode_publish %" PRIX64 "\n", fskit_entry_get_file_id(fent) );
+
    int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
 
@@ -921,6 +928,7 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
    }
 
    // update the child with the new inode number
+   SG_debug("UG_inode_publish %" PRIX64 " renamed to %" PRIX64 "\n", fskit_entry_get_file_id( fent ), inode_data_out.file_id );
    fskit_entry_set_file_id( fent, inode_data_out.file_id );
    fskit_entry_set_mode( fent, inode_data_out.mode );
    fskit_entry_set_owner( fent, inode_data_out.owner );
@@ -1596,7 +1604,7 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
 // resolve a path to an inode and it's parent's information
 // return a pointer to the locked fskit_entry on success, and set *parent_id
 // return NULL on error, and set *rc to non-zero
-static struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id ) {
+struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id ) {
 
    struct resolve_parent {
 
@@ -1842,6 +1850,10 @@ size_t UG_inode_sync_queue_len( struct UG_inode* inode ) {
    return inode->sync_queue->size();
 }
 
+bool UG_inode_is_dirty( struct UG_inode* inode ) {
+   return inode->dirty;
+}
+
 // setters
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
    SG_manifest_set_file_version( &inode->manifest, version );
@@ -1944,6 +1956,13 @@ void UG_inode_set_creating( struct UG_inode* inode, bool val ) {
 void UG_inode_set_dirty( struct UG_inode* inode, bool val ) {
    inode->dirty = val;
 }
+
+/*
+void UG_inode_set_dirty_region( struct UG_inode* inode, uint64_t offset, uint64_t len ) {
+   inode->dirty_write_offset = offset;
+   inode->dirty_write_len = len;
+}
+*/
 
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent ) {
    inode->entry = ent;

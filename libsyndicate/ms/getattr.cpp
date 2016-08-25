@@ -69,7 +69,6 @@ static int ms_client_get_metadata_begin( struct ms_client* client, struct ms_pat
    SG_debug("%s download %p = %d, url %s\n", (do_getchild ? "GETCHILD" : "GETATTR"), dlctx, request_id, url );
    
    // set up curl 
-   // TODO connection pool
    curl = curl_easy_init();
    if( curl == NULL ) {
       
@@ -168,7 +167,6 @@ static int ms_client_get_metadata_end( struct ms_client* client, ms_path_t* path
       
       md_download_context_set_cls( dlctx, NULL );
 
-      // TODO connection pool
       md_download_context_unref_free( dlctx, &curl );
       if( curl != NULL ) {
          curl_easy_cleanup( curl );
@@ -185,7 +183,6 @@ static int ms_client_get_metadata_end( struct ms_client* client, ms_path_t* path
    rc = ms_client_listing_read_entry( client, dlctx, &ent, &listing_error );
    
    // done with the download 
-   // TODO connection pool
    md_download_context_set_cls( dlctx, NULL );
    md_download_context_unref_free( dlctx, &curl );
    if( curl != NULL ) {
@@ -262,6 +259,7 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
    int* attempts = NULL;
    int num_processed = 0;
    int request_id = 0;
+   CURL* curl = NULL;
    struct md_download_context* dlctx = NULL;
    
    if( path->size() == 0 ) {
@@ -461,6 +459,11 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
          if( dlstate != NULL ) { 
              ms_client_get_metadata_context_free( dlstate );
              SG_safe_free( dlstate );
+         }
+         
+         md_download_context_unref_free( dlctx, &curl );
+         if( curl != NULL ) {
+             curl_easy_cleanup( curl );
          }
       }
    }

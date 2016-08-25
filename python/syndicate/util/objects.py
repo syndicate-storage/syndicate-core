@@ -2131,7 +2131,7 @@ class Gateway( StubObject ):
       
       Return new args, kw, extra
       """
-      
+     
       if method_name in ["read_gateway", "list_gateways"]:
          
          # good to go 
@@ -2148,23 +2148,7 @@ class Gateway( StubObject ):
                 raise Exception("Invalid query arguments '%s': not a dict" % args)
              
          return args, kw, extras
-     
-      if method_name in ["delete_gateway"]:
-         # need either owner's key or admin's key 
-         owner_username = getattr(lib, "email", None)
-         if owner_username is not None:
-             owner_privkey = storagelib.load_private_key( config, "user", owner_username )
-             if owner_privkey is None:
-                 raise MissingKeyException("Missing private key for '%s'" % owner_username)
-
-         args = [lib.name]
-         kwargs = {}
-         extras = {
-             "name": lib.name
-         }
-         return args, kw, extras
-
-
+    
       # otherwise, we're creating/updating/deleting
       if not hasattr(lib, "name"):
          raise Exception("Missing gateway name")
@@ -2178,7 +2162,7 @@ class Gateway( StubObject ):
       if existing_gateway_cert is not None and method_name == "create_gateway":
          raise CertExistsException("Certificate already exists for '%s'.  If this is an error, remove it from '%s'" % (gateway_name, conf.object_file_path(config, "gateway", gateway_name) + ".cert"))
       
-      elif existing_gateway_cert is None and method_name == "update_gateway":
+      elif existing_gateway_cert is None and method_name in ["update_gateway", "delete_gateway"]:
          raise MissingCertException("No certificate on file for '%s'." % (gateway_name))
     
       # find volume ID
@@ -2205,6 +2189,33 @@ class Gateway( StubObject ):
          volume_id = existing_gateway_cert.volume_id
          volume_name_or_id = str(volume_id)
          existing_volume_cert = load_volume_cert( config, str(volume_id) )
+ 
+      if method_name in ["delete_gateway"]:
+
+         # need either owner's key or admin's key 
+         owner_username = getattr(lib, "email", None)
+         if owner_username is None:
+             # try configured one
+             owner_username = config['username']
+
+         owner_id = None
+         owner_privkey = storagelib.load_private_key( config, "user", owner_username )
+         if owner_privkey is None:
+             raise MissingKeyException("Missing private key for '%s'" % owner_username)
+
+         owner_id = load_user_id( config, owner_username )
+         if owner_id is None:
+            raise Exception("Unable to determine user ID of '%s'" % owner_username)
+
+         args = [lib.name]
+         kwargs = {}
+         extras = {
+             "name": lib.name,
+             "volume_id": volume_id,
+             "owner_id": owner_id
+         }
+         return args, kw, extras
+
 
       gateway_name = lib.name
       gateway_type = getattr(lib, "gateway_type", None)
@@ -2536,21 +2547,41 @@ class Gateway( StubObject ):
          if method_name in ['create_gateway', 'update_gateway', 'delete_gateway'] or extras['changed_caps']:
 
             if not config.has_key('no_reload') or not config['no_reload']:
-                gateway_cert = extras['gateway_cert']
+                gateway_cert = extras.get('gateway_cert', None)
+                owner_id = None
+                volume_id = None
+                gateway_id = None
+                gateway_name = None
+
+                if gateway_cert is not None:
+                    owner_id = gateway_cert.owner_id
+                    volume_id = gateway_cert.volume_id
+                    gateway_id = gateway_cert.gateway_id
+                    gateway_name = gateway_cert.name
+
+                else:
+                    # only happens on delete
+                    assert method_name == 'delete_gateway'
+                    assert extras.has_key('volume_id')
+                    assert extras.has_key('owner_id')
+                    assert extras.has_key('name')
+                    owner_id = extras['owner_id']
+                    volume_id = extras['volume_id']
+                    gateway_name = extras['name']
 
                 if method_name == 'update_gateway' and not extras['need_volume_reload']:
 
                     # just updating the gateway
-                    log.info( "Reloading gateway '%s'" % gateway_cert.name )
-                    gateway_status = reloader.send_reload( config, gateway_cert.owner_id, gateway_cert.volume_id, gateway_cert.gateway_id )
+                    log.info( "Reloading gateway '%s'" % gateway_name )
+                    gateway_status = reloader.send_reload( config, owner_id, volume_id, gateway_id )
                     if gateway_status != 0:
-                        log.warn( "Failed to reload gateway '%s'" % gateway_cert.name )
+                        log.warn( "Failed to reload gateway '%s'" % gateway_name )
                         log.warn( "If this gateway is running, you can try reloading it manually with the 'reload_gateway' command" )
 
                 else:
-                    failed = do_volume_reload( config, gateway_cert.owner_id, gateway_cert.volume_id )
-                    if extras['gateway_name'] in failed:
-                        failed.remove( extras['gateway_name'] )
+                    failed = do_volume_reload( config, owner_id, volume_id )
+                    if gateway_name in failed:
+                        failed.remove( gateway_name )
 
                     if len(failed) > 0:
                         log.warn( "Some gateways failed to reload.  Either they are not running, or we could not contact them:" )

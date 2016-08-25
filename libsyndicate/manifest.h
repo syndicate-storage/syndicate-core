@@ -36,6 +36,8 @@ struct SG_manifest_block {
    size_t hash_len;
    
    bool dirty;          // if true, then this block represents locally-written data
+   uint64_t logical_write_offset;   // logical offset of the write that created this block (ancillary data; not serialized by default)
+   uint64_t logical_write_len;      // logical length of the write that created this block (ancillary data; not serialized by default)
 };
 
 // map block ID to block 
@@ -113,6 +115,7 @@ int SG_manifest_clear_nofree( struct SG_manifest* manifest );
 
 int SG_manifest_block_set_version( struct SG_manifest_block* block, int64_t version );
 int SG_manifest_block_set_hash( struct SG_manifest_block* block, unsigned char* hash );
+int SG_manifest_block_set_logical_write( struct SG_manifest_block* block, uint64_t offset, uint64_t len );
 
 // getters 
 uint64_t SG_manifest_block_id( struct SG_manifest_block* block );
@@ -120,6 +123,8 @@ int64_t SG_manifest_block_version( struct SG_manifest_block* block );
 int SG_manifest_block_type( struct SG_manifest_block* block );
 bool SG_manifest_block_is_dirty( struct SG_manifest_block* block );
 unsigned char* SG_manifest_block_hash( struct SG_manifest_block* block );
+uint64_t SG_manifest_block_get_logical_write_offset( struct SG_manifest_block* block );
+uint64_t SG_manifest_block_get_logical_write_len( struct SG_manifest_block* block );
 
 uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest );
 uint64_t SG_manifest_get_file_id( struct SG_manifest* manifest );
@@ -145,6 +150,7 @@ int SG_manifest_block_hash_eq( struct SG_manifest* manifest, uint64_t block_id, 
 int SG_manifest_serialize_to_protobuf( struct SG_manifest* manifest, SG_messages::Manifest* mmsg );
 int SG_manifest_serialize_blocks_to_request_protobuf( struct SG_manifest* manifest, SG_messages::Request* request );
 int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock );
+int SG_manifest_block_serialize_to_protobuf_ex( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock, bool include_logical_write_data );
 
 // debugging
 int SG_manifest_print( struct SG_manifest* manifest );

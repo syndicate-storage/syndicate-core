@@ -203,7 +203,8 @@ class MSCertBundleRequestHandler( webapp2.RequestHandler ):
          self.response.headers['Location'] = hdr
          response_end( self, 302, "Location: %s" % hdr, "text/plain" )
          return
-      
+     
+      logging.info("Serve volume %s (%s)" % (volume_id, volume_cert_version))
       response_end( self, 200, cert_bundle.SerializeToString(), "application/octet-stream" )
       return 
       

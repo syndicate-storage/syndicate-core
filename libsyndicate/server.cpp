@@ -142,9 +142,9 @@ static int SG_server_stat_request( struct SG_gateway* gateway, struct md_HTTP_re
 // * reject a request if the requested entity is not found, or does not have the requisite permissions.
 // * redirect a request if the request refers to a stale version of the entity.
 // redirect a request if it is to a stale version, or to a file we don't coordinate
-// return 0 if handled 
+// return 0 if handled (will populate resp) 
 // return 1 if not handled, but the request is sound (i.e. the caller should service it)
-// return negative on error 
+// return negative on error (will populate resp)
 static int SG_server_redirect_request( struct SG_gateway* gateway, struct md_HTTP_response* resp, struct SG_request_data* reqdat, mode_t mode ) {
    
    int rc = 0;
@@ -824,7 +824,7 @@ int SG_server_HTTP_GET_block( struct SG_gateway* gateway, struct SG_request_data
       rc = 0;
       SG_chunk_free( &block );
    }
-   if( rc < 0 ) {
+   else if( rc != 0 ) {
       
       // failure 
       SG_chunk_free( &block );
@@ -991,7 +991,7 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
       SG_chunk_free( &serialized_manifest );
       rc = 0;
    }
-   if( rc != 0 ) {
+   else if( rc != 0 ) {
       
       // failed 
       SG_chunk_free( &serialized_manifest );
@@ -1238,7 +1238,7 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
       SG_request_data_free( reqdat ); 
       return -EINVAL;
    }
-   
+
    return 0;
 }
 
@@ -1390,6 +1390,7 @@ int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Reque
 // reqdat and request_msg must be heap-allocated; the I/O subsystem will take ownership
 // return 0 on success 
 // return -ENOMEM on OOM 
+// on failure, set up the resp with an appropriate HTTP status (the caller should not do this)
 int SG_server_HTTP_IO_start( struct SG_gateway* gateway, int type, SG_server_IO_completion io_cb, struct SG_request_data* reqdat, SG_messages::Request* request_msg,
                              struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
    
@@ -1400,6 +1401,8 @@ int SG_server_HTTP_IO_start( struct SG_gateway* gateway, int type, SG_server_IO_
    io = SG_CALLOC( struct SG_server_io, 1 );
    if( io == NULL ) {
       
+      md_HTTP_create_response_builtin( resp, 500 );
+      md_HTTP_connection_resume( con_data, resp );
       return -ENOMEM;
    }
 
@@ -1419,6 +1422,8 @@ int SG_server_HTTP_IO_start( struct SG_gateway* gateway, int type, SG_server_IO_
    
       SG_error("md_HTTP_connection_suspend rc = %d\n", rc );
       
+      md_HTTP_create_response_builtin( resp, 500 );
+      md_HTTP_connection_resume( con_data, resp );
       SG_safe_free( io );
       return rc;
    }
@@ -1532,6 +1537,7 @@ int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
    }
    
    // resume the connection so we can send back the response
+   SG_debug("Finish response on connection %p\n", con_data);
    rc = md_HTTP_connection_resume( con_data, resp );
    if( rc != 0 ) {
       
@@ -1876,6 +1882,8 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    uint64_t* block_vec = NULL;
    int block_vec_len = 0;
    int next_block_vec = 0;
+
+   memset( &io_hints, 0, sizeof(struct SG_IO_hints));
    
    // sanity check 
    if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
@@ -2050,7 +2058,10 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
          reqdat->block_id = request_msg->blocks(i).block_id();
          reqdat->block_version = request_msg->blocks(i).block_version();
 
-         SG_IO_hints_init( &io_hints, SG_IO_WRITE, reqdat->block_id * blocksize, blocksize );
+         SG_debug("Block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] from logical write (%" PRIu64 ", %" PRIu64 ")\n",
+               reqdat->file_id, reqdat->file_version, reqdat->block_id, reqdat->block_version, request_msg->blocks(i).logical_offset(), request_msg->blocks(i).logical_len() );
+
+         SG_IO_hints_init( &io_hints, SG_IO_WRITE, request_msg->blocks(i).logical_offset(), request_msg->blocks(i).logical_len() );
          SG_IO_hints_set_context( &io_hints, io_context );
          SG_IO_hints_set_block_vec( &io_hints, block_vec, block_vec_len );
          SG_request_data_set_IO_hints( reqdat, &io_hints );
@@ -2117,7 +2128,6 @@ SG_server_HTTP_POST_PUTCHUNKS_finish:
 
 // handle a REFRESH request: feed the request into the implementation's "refresh" callback
 // this is called as part of an IO completion.
-// NOTE: reqdat must be a getxattr request
 // return 0 on success
 // return -ENOSYS if not implemented 
 // return -EINVAL if the request does not contain xattr information
@@ -2131,15 +2141,17 @@ static int SG_server_HTTP_POST_REFRESH( struct SG_gateway* gateway, struct SG_re
       
       return -ENOSYS;
    }
-  
+ 
+   SG_debug("Begin refresh %" PRIX64 ".%" PRId64 "(%s)\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path);
+
    // forward to implementation 
    rc = SG_gateway_impl_refresh( gateway, reqdat );
-   if( rc != 0 ) {
-      SG_error("SG_gateway_impl_refresh( %" PRIX64 ".%" PRId64 " (%s) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-   }
+
+   SG_debug("End refresh %" PRIX64 ".%" PRId64 " (%s), rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
 
    return rc;
 }
+
 
 // handle a SETXATTR request: feed the request into the implementation's "setxattr" callback.
 // this is called as part of an IO completion.
@@ -2293,7 +2305,8 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
       if( rc == -EAGAIN ) {
          
          // only failed since we're missing the certificate.
-         // try to get it and have the requester try again 
+         // try to get it and have the requester try again
+         SG_debug("Unknown gateway %" PRIu64 "; trying to reload\n", request_msg->src_gateway_id() );
          SG_gateway_start_reload( gateway );
          return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
       }
@@ -2321,6 +2334,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
           SG_safe_delete( request_msg );
       
           // yup, need a reload 
+          SG_debug("%s", "Need to reload volume first\n");
           SG_gateway_start_reload( gateway );
           return md_HTTP_create_response_builtin( resp, SG_HTTP_TRYAGAIN );
        }
@@ -2395,7 +2409,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                if( rc != 0 ) {
                   
                   SG_error("SG_server_HTTP_IO_start( WRITE(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-                  md_HTTP_create_response_builtin( resp, 500 );
                   break;
                }
             }
@@ -2439,8 +2452,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                // start refresh 
                rc = SG_server_HTTP_IO_start( gateway, SG_SERVER_IO_WRITE, SG_server_HTTP_POST_REFRESH, reqdat, request_msg, con_data, resp );
                if( rc != 0 ) {
-                  SG_error("SG_server_HTTP_IO_START( RELOAD(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-                  md_HTTP_create_response_builtin( resp, 500 );
+                  SG_error("SG_server_HTTP_IO_start( REFRESH(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
                   break;
                }
             }
@@ -2494,7 +2506,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                if( rc != 0 ) {
                   
                   SG_error("SG_server_HTTP_IO_START( TRUNCATE(%" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-                  md_HTTP_create_response_builtin( resp, 500 );
                   break;
                }
             }
@@ -2548,7 +2559,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                if( rc != 0 ) {
                   
                   SG_error("SG_server_HTTP_IO_start( RENAME( %" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-                  md_HTTP_create_response_builtin( resp, 500 );
                   break;
                }
             }
@@ -2603,7 +2613,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
                if( rc != 0 ) {
                   
                   SG_error("SG_server_HTTP_IO_start( DETACH( %" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-                  md_HTTP_create_response_builtin( resp, 500 );
                   break;
                }
             }
@@ -2621,7 +2630,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
             SG_error("SG_server_HTTP_IO_start( DELETECHUNKS( %" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n",
                      reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
 
-            md_HTTP_create_response_builtin( resp, 500 );
             break;
          }
       
@@ -2635,7 +2643,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
          if( rc != 0 ) {
             
             SG_error("SG_server_HTTP_IO_start( PUTCHUNKS( %" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
-            md_HTTP_create_response_builtin( resp, 500 );
             break;
          }
          
@@ -2666,7 +2673,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
             if( rc != 0 ) {
                
                SG_error("SG_server_HTTP_IO_start( SETXATTR( %" PRIX64 ".%" PRId64 ".%s (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->xattr_name, reqdat->fs_path, rc );
-               md_HTTP_create_response_builtin( resp, 500 );
                break;
             }
          }
@@ -2698,7 +2704,6 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
             if( rc != 0 ) {
                
                SG_error("SG_server_HTTP_IO_start( REMOVEXATTR( %" PRIX64 ".%" PRId64 ".%s (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->xattr_name, reqdat->fs_path, rc );
-               md_HTTP_create_response_builtin( resp, 500 );
                break;
             }
          }

@@ -226,11 +226,13 @@ static int UG_impl_stat_block( struct SG_gateway* gateway, struct SG_request_dat
    if( mode != NULL ) {
       *mode = fskit_entry_get_mode( fent );
    }
+   
+   fskit_entry_unlock( fent );
+
    if( entity_info != NULL ) {
       rc = UG_getblockinfo( ug, reqdat->block_id, &block_version, NULL, fi );
    }
 
-   fskit_entry_unlock( fent );
    fskit_file_handle_unlock( fi->fh );
    inode = NULL;
 

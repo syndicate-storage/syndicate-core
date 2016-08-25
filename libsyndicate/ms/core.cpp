@@ -503,7 +503,6 @@ int ms_client_download( struct ms_client* client, char const* url, char** buf, o
    
    memset( &timing, 0, sizeof(struct ms_client_timing) );
    
-   // connect (TODO: connection pool)
    curl = curl_easy_init();  
    if( curl == NULL ) {
       return -ENOMEM;

@@ -55,11 +55,10 @@
 #include <openssl/evp.h>
 #include <math.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>        // for gettid()
 #include <zlib.h>
 
-#define SG_WHERESTR "%05d:%05d: [%16s:%04u] %s: "
-#define SG_WHEREARG (int)getpid(), (int)gettid(), __FILE__, __LINE__, __func__
+#define SG_WHERESTR "%ld.%ld %05d:%016llx: [%16s:%04u] %s: "
+#define SG_WHEREARG (int)getpid(), md_pthread_self(), __FILE__, __LINE__, __func__
 
 extern int _SG_DEBUG_MESSAGES;
 extern int _SG_INFO_MESSAGES;
@@ -68,10 +67,10 @@ extern int _SG_ERROR_MESSAGES;
 
 #define SG_MAX_VERBOSITY 2
 
-#define SG_debug( format, ... ) do { if( _SG_DEBUG_MESSAGES ) { printf( SG_WHERESTR "DEBUG: " format, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
-#define SG_info( format, ... ) do { if( _SG_INFO_MESSAGES ) { printf( SG_WHERESTR "INFO: " format, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
-#define SG_warn( format, ... ) do { if( _SG_WARN_MESSAGES ) { fprintf(stderr, SG_WHERESTR "WARN: " format, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
-#define SG_error( format, ... ) do { if( _SG_ERROR_MESSAGES ) { fprintf(stderr, SG_WHERESTR "ERROR: " format, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
+#define SG_debug( format, ... ) do { if( _SG_DEBUG_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); printf( SG_WHERESTR "DEBUG: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
+#define SG_info( format, ... ) do { if( _SG_INFO_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); printf( SG_WHERESTR "INFO: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
+#define SG_warn( format, ... ) do { if( _SG_WARN_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf(stderr, SG_WHERESTR "WARN: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
+#define SG_error( format, ... ) do { if( _SG_ERROR_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf(stderr, SG_WHERESTR "ERROR: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
 
 #define SG_CALLOC(type, count) (type*)calloc( sizeof(type) * (count), 1 )
 #define SG_FREE_LIST(list, freefunc) do { if( (list) != NULL ) { for(unsigned int __i = 0; (list)[__i] != NULL; ++ __i) { if( (list)[__i] != NULL ) { freefunc( (list)[__i] ); (list)[__i] = NULL; }} free( (list) ); } } while(0)
@@ -192,9 +191,8 @@ off_t md_response_buffer_size( md_response_buffer_t* rb );
 void* md_memdup( void* buf, size_t len );
 char* SG_strdup_or_die( char const* str );
 
-// linux-specific...
-pid_t gettid(void);
-
+// portable cast pthread_t to uint64_t 
+unsigned long long int md_pthread_self(void);
 }
 
 
