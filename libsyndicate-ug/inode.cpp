@@ -253,7 +253,12 @@ int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode
    fskit_entry_set_ctime( fent, &ts );
 
    // set size
-   fskit_entry_set_size( fent, inode_data->size );
+   if( inode_data->type == MD_ENTRY_DIR ) {
+      fskit_entry_set_size( fent, 4096 );
+   }
+   else {
+      fskit_entry_set_size( fent, inode_data->size );
+   }
 
    return 0;
 }

@@ -43,9 +43,11 @@ static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_e
    
    if( type == FSKIT_ENTRY_TYPE_FILE ) {
       dest->type = MD_ENTRY_FILE;
+      dest->size = fskit_entry_get_size( src );
    }
    else if( type == FSKIT_ENTRY_TYPE_DIR ) {
       dest->type = MD_ENTRY_DIR;
+      dest->size = 4096;
    }
    else {
       // invalid 
@@ -84,7 +86,6 @@ static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_e
    
    dest->owner = SG_gateway_user_id( gateway );
    dest->mode = fskit_entry_get_mode( src );
-   dest->size = fskit_entry_get_size( src );
    dest->parent_id = parent_id;
    
    dest->max_read_freshness = conf->default_read_freshness;
