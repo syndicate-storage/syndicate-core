@@ -198,9 +198,11 @@ int UG_vacuum_context_restore( struct UG_vacuum_context* vctx, struct UG_inode* 
    
    int rc = 0;
    
-   // put back replaced blocks 
-   rc = SG_manifest_patch_nocopy( UG_inode_replaced_blocks( inode ), vctx->old_blocks, false );
-   SG_manifest_clear_nofree( vctx->old_blocks );
+   // put back replaced blocks
+   if( vctx->old_blocks != NULL ) { 
+       rc = SG_manifest_patch_nocopy( UG_inode_replaced_blocks( inode ), vctx->old_blocks, false );
+       SG_manifest_clear_nofree( vctx->old_blocks );
+   }
    
    if( rc != 0 ) {
       SG_error("SG_manifest_patch_nocopy rc = %d\n", rc );
