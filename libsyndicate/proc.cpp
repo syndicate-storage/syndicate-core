@@ -1133,7 +1133,13 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
       dreq->set_path( string(reqdat->fs_path) );
       dreq->set_block_size( block_size );
       
-      if( SG_request_is_manifest( reqdat ) ) {
+      if( SG_request_is_rename_hint( reqdat ) ) {
+          dreq->set_new_path( string(reqdat->new_path) );
+          dreq->set_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+          dreq->set_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+          dreq->set_request_type( SG_messages::DriverRequest::RENAME_HINT );
+      }
+      else if( SG_request_is_manifest( reqdat ) ) {
           dreq->set_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
           dreq->set_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
           dreq->set_request_type( SG_messages::DriverRequest::MANIFEST );
