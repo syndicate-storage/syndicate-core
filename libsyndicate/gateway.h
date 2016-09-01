@@ -78,6 +78,9 @@ struct SG_request_data {
 
    // ID of the requesting gateway (optional) 
    uint64_t src_gateway_id;
+
+   // on rename, this is the new path
+   char* new_path;
 };
 
 // gateway chunk of data, with known length
@@ -131,6 +134,9 @@ struct SG_gateway {
    
    // rename a file 
    int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, char const*, void* );
+
+   // hint that a rename has occurred
+   int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, char const*, void* );
    
    // delete a file 
    int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* );
@@ -202,6 +208,7 @@ void SG_impl_stat( struct SG_gateway* gateway, int (*impl_stat)( struct SG_gatew
 void SG_impl_stat_block( struct SG_gateway* gateway, int (*impl_stat_block)( struct SG_gateway*, struct SG_request_data*, struct SG_request_data*, mode_t*, void* ) );
 void SG_impl_truncate( struct SG_gateway* gateway, int (*impl_truncate)( struct SG_gateway*, struct SG_request_data*, uint64_t, void* ) );
 void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) );
+void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) );
 void SG_impl_serialize( struct SG_gateway* gateway, int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) );
 void SG_impl_deserialize( struct SG_gateway* gateway, int (*impl_deserialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) );
 void SG_impl_detach( struct SG_gateway* gateway, int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* ) );
@@ -232,6 +239,7 @@ bool SG_request_is_block( struct SG_request_data* reqdat );
 bool SG_request_is_manifest( struct SG_request_data* reqdat );
 bool SG_request_is_getxattr( struct SG_request_data* reqdat );
 bool SG_request_is_listxattr( struct SG_request_data* reqdat );
+bool SG_request_is_rename_hint( struct SG_request_data* reqdat );
 void SG_request_data_free( struct SG_request_data* reqdat );
 
 // I/O hints
@@ -296,6 +304,7 @@ int SG_gateway_impl_stat( struct SG_gateway* gateway, struct SG_request_data* re
 int SG_gateway_impl_stat_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_request_data* out_reqdat, mode_t* mode );
 int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t new_size );
 int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path );
+int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path );
 int SG_gateway_impl_detach( struct SG_gateway* gateway, struct SG_request_data* reqdat );
 int SG_gateway_impl_refresh( struct SG_gateway* gateway, struct SG_request_data* reqdat );
 int SG_gateway_impl_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk );

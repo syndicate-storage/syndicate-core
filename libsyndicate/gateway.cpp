@@ -483,15 +483,23 @@ int SG_request_data_dup( struct SG_request_data* dest, struct SG_request_data* s
    SG_request_data_init( dest );
    
    char* fs_path = SG_strdup_or_null( src->fs_path );
-   if( fs_path == NULL ) {
+   if( fs_path == NULL && src->fs_path != NULL ) {
       
       return -ENOMEM;
    }
    
+   char* new_path = SG_strdup_or_null( src->new_path );
+   if( new_path == NULL && src->new_path != NULL ) {
+
+      SG_safe_free( fs_path );
+      return -ENOMEM;
+   }
+
    memcpy( dest, src, sizeof(struct SG_request_data) );
    
    // deep copy
    dest->fs_path = fs_path;
+   dest->new_path = new_path;
    return 0;
 }
 
@@ -504,13 +512,22 @@ bool SG_request_is_block( struct SG_request_data* reqdat ) {
    return (reqdat->block_id != SG_INVALID_BLOCK_ID);
 }
 
-// is this a request for a manifest?
+// is this a request for a manifest?  can also mean a request for a RENAME_HINT
 // return true if so 
 // return false if not 
 bool SG_request_is_manifest( struct SG_request_data* reqdat ) {
    
    return (reqdat->block_id == SG_INVALID_BLOCK_ID && !reqdat->getxattr && !reqdat->listxattr &&
           !reqdat->removexattr && !reqdat->setxattr);
+}
+
+
+// is this a request for a rename hint?
+// return true if so
+// return false if not 
+bool SG_request_is_rename_hint( struct SG_request_data* reqdat ) {
+
+   return SG_request_is_manifest( reqdat ) && reqdat->new_path != NULL;
 }
 
 
@@ -535,6 +552,9 @@ bool SG_request_is_listxattr( struct SG_request_data* reqdat ) {
 void SG_request_data_free( struct SG_request_data* reqdat ) {
    if( reqdat->fs_path != NULL ) {
       SG_safe_free( reqdat->fs_path );
+   }
+   if( reqdat->new_path != NULL ) {
+      SG_safe_free( reqdat->new_path );
    }
    if( reqdat->xattr_name != NULL ) {
       SG_safe_free( reqdat->xattr_name );
@@ -1677,6 +1697,11 @@ void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_g
    gateway->impl_rename = impl_rename;
 }
 
+// set the gateway implementation rename routine 
+void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) ) {
+   gateway->impl_rename_hint = impl_rename_hint;
+}
+
 // set the gateway implementation detach routine 
 void SG_impl_detach( struct SG_gateway* gateway, int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_detach = impl_detach;
@@ -2262,6 +2287,34 @@ int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* 
       if( rc != 0 ) {
          
          SG_error("gateway->impl_rename( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
+      }
+      
+      return rc;
+   }
+   else {
+      
+      return -ENOSYS;
+   }
+}
+
+
+// hint that a file was renamed
+// the implementation does not need to take any action, unlike rename
+// return 0 on success 
+// return -ENOSYS if not defined 
+// return non-zero on implementation error 
+int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path ) {
+   
+   int rc = 0;
+   
+   if( gateway->impl_rename_hint != NULL ) {
+      
+      reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
+      rc = (*gateway->impl_rename_hint)( gateway, reqdat, new_path, gateway->cls );
+      
+      if( rc != 0 ) {
+         
+         SG_error("gateway->impl_rename_hint( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
       }
       
       return rc;
