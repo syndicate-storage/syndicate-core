@@ -1176,6 +1176,10 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
       return -ENOMEM;
    }
    
+   if( reqdat->fs_path == NULL ) {
+      return -ENOMEM;
+   }
+
    reqdat->volume_id = request_msg->volume_id();
    reqdat->file_id = request_msg->file_id();
    reqdat->file_version = request_msg->file_version();
@@ -1222,9 +1226,31 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
    }
    else if( request_msg->has_new_manifest_mtime_sec() && request_msg->has_new_manifest_mtime_nsec() ) {
       
-      // manifest
+      // manifest or rename hint
       reqdat->manifest_timestamp.tv_sec = request_msg->new_manifest_mtime_sec();
       reqdat->manifest_timestamp.tv_nsec = request_msg->new_manifest_mtime_nsec();
+
+      if( request_msg->request_type() == SG_messages::Request::RENAME_HINT ) {
+         if( request_msg->has_new_fs_path() ) {
+            try {
+               reqdat->new_path = SG_strdup_or_null( request_msg->new_fs_path().c_str() );
+            }
+            catch( bad_alloc& ba ) {
+               SG_request_data_free( reqdat );
+               return -ENOMEM;
+            }
+
+            if( reqdat->new_path == NULL ) {
+               SG_request_data_free( reqdat );
+               return -ENOMEM;
+            }
+         }
+         else {
+            // invalid 
+            SG_request_data_free( reqdat );
+            return -EINVAL;
+         }
+      }
    }
    else if( request_msg->blocks_size() > 0 ) {
       
@@ -1273,6 +1299,7 @@ uint64_t SG_server_request_capabilities( uint64_t request_type ) {
       }
       
       case SG_messages::Request::DETACH:
+      case SG_messages::Request::RENAME_HINT:
       case SG_messages::Request::RENAME: {
          
          caps_required = SG_CAP_WRITE_DATA | SG_CAP_WRITE_METADATA;
@@ -1671,7 +1698,7 @@ static int SG_server_HTTP_POST_TRUNCATE( struct SG_gateway* gateway, struct SG_r
 }
 
 
-// handle a RENAME request: feed the request to the implementation's "rename" callback.
+// handle a RENAME (or RENAME_HINT) request: feed the request to the implementation's "rename" callback.
 // this is called as part of an IO completion.
 // return 0 on success 
 // return -ENOMEM on OOM 
@@ -1683,31 +1710,37 @@ static int SG_server_HTTP_POST_RENAME( struct SG_gateway* gateway, struct SG_req
    char* new_path;      // guarantee NULL-terminated
    
    // sanity check 
-   if( gateway->impl_rename == NULL ) {
+   if( gateway->impl_rename == NULL && gateway->impl_rename_hint == NULL ) {
       
       return -ENOSYS;
    }
    
    // sanity check--must have new path 
-   if( !request_msg->has_new_fs_path() ) {
+   if( reqdat->new_path == NULL ) {
       
       return -EINVAL;
    }
    
-   new_path = SG_CALLOC( char, request_msg->new_fs_path().size() + 1 );
-   if( new_path == NULL ) {
+   new_path = SG_strdup_or_null( reqdat->new_path );
+   if( new_path == NULL && reqdat->new_path != NULL ) {
       
       return -ENOMEM;
    }
    
-   strncpy( new_path, request_msg->new_fs_path().c_str(), request_msg->new_fs_path().size() );
-   
-   // do the rename 
-   rc = SG_gateway_impl_rename( gateway, reqdat, new_path );
+   // do the rename
+   char const* hint = "";
+   rc = -ENOSYS;
+   if( request_msg->request_type() == SG_messages::Request::RENAME && gateway->impl_rename != NULL ) {
+       rc = SG_gateway_impl_rename( gateway, reqdat, new_path );
+   }
+   else if( request_msg->request_type() == SG_messages::Request::RENAME_HINT && gateway->impl_rename_hint != NULL ) {
+       rc = SG_gateway_impl_rename_hint( gateway, reqdat, new_path );
+       hint = "_hint";
+   }
    
    if( rc != 0 ) {
       
-      SG_error("SG_gateway_impl_rename( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
+      SG_error("SG_gateway_impl_rename%s( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", hint, reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
    }
    
    SG_safe_free( new_path );
@@ -2512,7 +2545,31 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
          }
          break;
       }
-      
+
+      case SG_messages::Request::RENAME_HINT: {
+
+         // hint that a file we're interested in was renamed
+         // (example: a UG renames a file, and has to tell the RGs)
+         // requires reqdat to be a manifest 
+         if( !SG_request_is_manifest( reqdat ) ) {
+            
+            SG_error("RENAME_HINT request on '%s' (/%" PRIX64 "/%" PRId64 ") is not a manifest request\n", reqdat->fs_path, reqdat->file_id, reqdat->file_version );
+            md_HTTP_create_response_builtin( resp, 400 );
+            rc = -EINVAL;
+            break;
+         }
+
+         // pass along...
+         rc = SG_server_HTTP_IO_start( gateway, SG_SERVER_IO_WRITE, SG_server_HTTP_POST_RENAME, reqdat, request_msg, con_data, resp );
+         if( rc != 0 ) {
+            
+            SG_error("SG_server_HTTP_IO_start( RENAME_HINT( %" PRIX64 ".%" PRId64 " (%s)) ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, rc );
+            break;
+         }
+         
+         break;
+      }
+
       case SG_messages::Request::RENAME: {
          
          // are we the coordinator?
@@ -2524,10 +2581,10 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
              break;
          }
 
-         // requires reqdat to be a manifest 
-         else if( !SG_request_is_manifest( reqdat ) ) {
+         // requires reqdat to be a rename hint
+         else if( !SG_request_is_rename_hint( reqdat ) ) {
             
-            SG_error("Request on '%s' (/%" PRIX64 "/%" PRId64 ") is not a manifest request\n", reqdat->fs_path, reqdat->file_id, reqdat->file_version );
+            SG_error("RENAME request on '%s' (/%" PRIX64 "/%" PRId64 ") is not a manifest request\n", reqdat->fs_path, reqdat->file_id, reqdat->file_version );
             md_HTTP_create_response_builtin( resp, 400 );
             rc = -EINVAL;
             break;
