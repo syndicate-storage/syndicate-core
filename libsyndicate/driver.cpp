@@ -847,6 +847,7 @@ int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char 
    if( json_text == NULL ) {
       
       // not found
+      json_object_put( toplevel_obj );
       return -ENOENT;
    }
    
@@ -854,6 +855,7 @@ int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char 
    if( ret == NULL ) {
       
       // OOM 
+      json_object_put( toplevel_obj );
       return -ENOMEM;
    }
    
@@ -861,6 +863,7 @@ int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char 
    *value = ret;
    *value_len = json_len;
    
+   json_object_put( toplevel_obj );
    return rc;
 }
 
