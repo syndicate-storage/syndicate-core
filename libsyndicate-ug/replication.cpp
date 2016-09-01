@@ -349,12 +349,15 @@ static int UG_replica_make_write_delta( struct SG_manifest* whole_manifest, UG_d
 }
 
 
-// create the replica control-plane message out of the blocks and (if we're the coordinator) the manifest
-// all blocks in flushed_blocks need to be dirty. 
+// create the replica control-plane message.
+// This can be a PUTCHUNKS command, in which case, the message will contain blocks and (if we're the coordinator) the manifest
+//    all blocks in flushed_blocks need to be dirty in this case
+// This can also be a RENAME_HINT command, in which case,the new_path argument and manifest will be used.
 // return 0 on success, and populate *request and *serialized_manifest.  Does *NOT* calculate size and offset fields in the request
 // return -ENOMEM on OOM 
-static int UG_replica_context_make_controlplane_message( struct UG_state* ug, char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest,
-                                                         UG_dirty_block_map_t* flushed_blocks, SG_messages::Request* request, struct SG_chunk* serialized_manifest ) {
+// return -EINVAL on invalid arguments
+static int UG_replica_context_make_controlplane_message( struct UG_state* ug, uint64_t request_type, char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest,
+                                                         UG_dirty_block_map_t* flushed_blocks, char const* new_path, SG_messages::Request* request, struct SG_chunk* serialized_manifest ) {
    
    int rc = 0;
    int num_chunks = 0;
@@ -365,6 +368,14 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    struct SG_chunk manifest_chunk;
    uint64_t coordinator_id = UG_inode_coordinator_id( inode );
    bool we_are_coordinator = (UG_inode_coordinator_id( inode ) == SG_gateway_id( gateway ));
+
+   if( request_type != SG_messages::Request::PUTCHUNKS && request_type != SG_messages::Request::RENAME_HINT ) {
+      return -EINVAL;
+   }
+
+   if( request_type == SG_messages::Request::RENAME_HINT && new_path == NULL ) {
+      return -EINVAL;
+   }
 
    memset( &manifest_chunk, 0, sizeof(struct SG_chunk) );
 
@@ -381,7 +392,7 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    }
    
    if( flushed_blocks != NULL ) {
-      chunks_capacity += flushed_blocks->size();
+       chunks_capacity += flushed_blocks->size();
    }
 
    chunk_info = SG_manifest_block_alloc( chunks_capacity );
@@ -430,7 +441,13 @@ static int UG_replica_context_make_controlplane_message( struct UG_state* ug, ch
    }
 
    // generate the message, but don't sign it yet (still need to add data-plane metadata)
-   rc = SG_client_request_PUTCHUNKS_setup_ex( gateway, request, &reqdat, coordinator_id, chunk_info, num_chunks, false );
+   if( request_type == SG_messages::Request::PUTCHUNKS ) {
+       rc = SG_client_request_PUTCHUNKS_setup_ex( gateway, request, &reqdat, coordinator_id, chunk_info, num_chunks, false );
+   }
+   else {
+       rc = SG_client_request_RENAME_HINT_setup( gateway, request, &reqdat, coordinator_id, &chunk_info[0], new_path );
+   }
+   
    if( rc != 0 ) {
 
       goto UG_replica_context_make_controlplane_message_fail;
@@ -598,15 +615,12 @@ UG_replica_context_make_dataplane_message_fail:
 // return 0 on success
 // return -ENOMEM on OOM 
 // return -EINVAL on invalid input (i.e. a non-dirty inode)
-int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug,
-                             char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
+int UG_replica_context_init_ex( struct UG_replica_context* rctx, struct UG_state* ug, uint64_t request_type, char const* fs_path,
+                               char const* new_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
    
    int rc = 0;
    SG_messages::Request* controlplane = NULL;
    struct SG_chunk serialized_manifest;
-   // int dataplane_fd = -1;
-   // char* fd_buf = NULL;
-   // struct stat sb;
    uint64_t* affected_blocks = NULL;
    size_t num_affected_blocks = 0;
    size_t total_bytes = 0;
@@ -616,6 +630,10 @@ int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* u
    memset( rctx, 0, sizeof( struct UG_replica_context ) );
    
    if( flushed_blocks != NULL ) {
+
+      if( inode == NULL ) {
+         return -EINVAL;
+      }
 
       affected_blocks = SG_CALLOC( uint64_t, flushed_blocks->size() );
       if( affected_blocks == NULL ) {
@@ -695,7 +713,7 @@ int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* u
       return rc;
    }
 
-   rc = UG_replica_context_make_controlplane_message( ug, fs_path, inode, manifest, flushed_blocks, controlplane, &serialized_manifest );
+   rc = UG_replica_context_make_controlplane_message( ug, request_type, fs_path, inode, manifest, flushed_blocks, new_path, controlplane, &serialized_manifest );
    if( rc != 0 ) {
 
       UG_replica_context_free( rctx );
@@ -747,6 +765,23 @@ int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* u
    return rc;
 }
 
+
+// short-hand for making a PUTCHUNKS request
+int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug, char const* fs_path,
+                             struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
+
+   return UG_replica_context_init_ex( rctx, ug, SG_messages::Request::PUTCHUNKS, fs_path, NULL, inode, manifest, flushed_blocks );
+}
+
+
+// short-hand for making a RENAME_HINT request
+int UG_replica_context_init_rename_hint( struct UG_replica_context* rctx, struct UG_state* ug, char const* old_path, char const* new_path,
+                                         struct UG_inode* inode, struct SG_manifest* manifest ) {
+
+   return UG_replica_context_init_ex( rctx, ug, SG_messages::Request::RENAME_HINT, old_path, new_path, inode, manifest, NULL );
+}
+
+   
 
 // free up a replica context 
 // always succeeds 
