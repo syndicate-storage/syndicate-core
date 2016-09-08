@@ -36,7 +36,7 @@ Description: Syndicate User Gateway (UG)
 Package: libsyndicate1-dev
 Architecture: any
 Section: libdevel
-Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev, libattr1-dev, libmicrohttpd-dev, libfskit1-dev, libjson0-dev, libcurl4-gnutls-dev
+Depends: ${misc:Depends}, libsyndicate1 (= ${binary:Version}), libssl-dev, libattr1-dev, libmicrohttpd-dev (>= 0.9.44), libfskit1-dev, libjson0-dev, libcurl4-gnutls-dev
 Description: Syndicate libraries, dev
  Syndicate creates global read/write storage volumes on top of existing systems,
  but while preserving end-to-end domain-specific storage invariants.
