@@ -19,6 +19,8 @@
 #include "libsyndicate/manifest.h"
 #include "libsyndicate/url.h"
 
+static int SG_server_dataplane_auth( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, int* ret_chunks_fd );
+
 // connection initialization handler for embedded HTTP server
 // return 0 on success 
 // return -ENOMEM on OOM
@@ -1708,33 +1710,109 @@ static int SG_server_HTTP_POST_RENAME( struct SG_gateway* gateway, struct SG_req
    
    int rc = 0;
    char* new_path;      // guarantee NULL-terminated
+   struct SG_chunk deserialized_manifest_chunk;
+   int chunks_fd = 0;
+   char* chunks_mmap = NULL;
+   uint64_t offset = 0;
+   uint64_t size = 0;
+   struct SG_chunk chunk;
+   struct stat sb;
+   struct SG_IO_hints io_hints;
+   int64_t io_context = md_random64();
+   char const* hint = "";
    
    // sanity check 
    if( gateway->impl_rename == NULL && gateway->impl_rename_hint == NULL ) {
-      
       return -ENOSYS;
    }
    
-   // sanity check--must have new path 
+   // sanity check 
    if( reqdat->new_path == NULL ) {
-      
       return -EINVAL;
    }
    
+   if( request_msg->blocks_size() != 1 ) {
+      return -EINVAL;
+   }
+
+   if( !request_msg->blocks(0).has_chunk_type() ) {
+      return -EINVAL;
+   }
+
+   if( request_msg->blocks(0).chunk_type() != SG_messages::ManifestBlock::MANIFEST ) {
+      return -EINVAL;
+   }
+
+   // authenticate the data
+   rc = SG_server_dataplane_auth( gateway, reqdat, request_msg, con_data, &chunks_fd );
+   if( rc != 0 ) {
+      SG_error("SG_server_dataplane_auth rc = %d\n", rc );
+      return rc;
+   }
+
+   // get size
+   rc = fstat( chunks_fd, &sb );
+   if( rc != 0 ) {
+
+      rc = -errno;
+      SG_error("fstat rc = %d\n", rc );
+      return -EPERM;
+   }
+
+   // new path
    new_path = SG_strdup_or_null( reqdat->new_path );
    if( new_path == NULL && reqdat->new_path != NULL ) {
       
       return -ENOMEM;
    }
+
+   // map the chunk into RAM
+   chunks_mmap = (char*)mmap( NULL, sb.st_size, PROT_READ, MAP_PRIVATE, chunks_fd, 0 );
+   if( chunks_mmap == MAP_FAILED ) {
+
+      rc = -errno;
+      SG_error("mmap rc = %d (length = %jd)\n", rc, sb.st_size );
+
+      rc = -ENODATA;
+      SG_safe_free( new_path );
+      return rc;
+   }
+
+   // type, offset and size of chunk
+   offset = request_msg->blocks(0).offset();
+   size = request_msg->blocks(0).size();
+
+   SG_debug("Load serialized manifest chunk 0 [offset %" PRIu64 ", size %" PRIu64 "]\n", offset, size );
+
+   // set up a chunk 
+   SG_chunk_init( &chunk, chunks_mmap + offset, size );
+
+   // deserialize 
+   rc = SG_gateway_impl_deserialize( gateway, reqdat, &chunk, &deserialized_manifest_chunk );
+   if( rc != 0 ) {
+
+      SG_error("SG_gateway_impl_deserialize(0) rc = %d\n", rc );
+      rc = -ENODATA;
+      goto SG_server_HTTP_POST_RENAME_finish;
+   }
+
+   // fill in request details
+   reqdat->manifest_timestamp.tv_sec = request_msg->blocks(0).block_id(); 
+   reqdat->manifest_timestamp.tv_nsec = request_msg->blocks(0).block_version();
+   reqdat->block_id = SG_INVALID_BLOCK_ID;
+   reqdat->block_version = 0;
    
+   SG_IO_hints_init( &io_hints, SG_IO_WRITE, 0, 0 );
+   SG_IO_hints_set_context( &io_hints, io_context );
+   SG_request_data_set_IO_hints( reqdat, &io_hints );
+
    // do the rename
-   char const* hint = "";
    rc = -ENOSYS;
    if( request_msg->request_type() == SG_messages::Request::RENAME && gateway->impl_rename != NULL ) {
-       rc = SG_gateway_impl_rename( gateway, reqdat, new_path );
+       rc = SG_gateway_impl_rename( gateway, reqdat, &deserialized_manifest_chunk, new_path );
    }
    else if( request_msg->request_type() == SG_messages::Request::RENAME_HINT && gateway->impl_rename_hint != NULL ) {
-       rc = SG_gateway_impl_rename_hint( gateway, reqdat, new_path );
+       rc = SG_gateway_impl_rename_hint( gateway, reqdat, &deserialized_manifest_chunk, new_path );
        hint = "_hint";
    }
    
@@ -1743,8 +1821,21 @@ static int SG_server_HTTP_POST_RENAME( struct SG_gateway* gateway, struct SG_req
       SG_error("SG_gateway_impl_rename%s( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", hint, reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
    }
    
+SG_server_HTTP_POST_RENAME_finish:
+
    SG_safe_free( new_path );
+   SG_chunk_free( &deserialized_manifest_chunk );
    
+   if( chunks_mmap != MAP_FAILED ) {
+       
+       int unmap_rc = munmap( chunks_mmap, size );
+       if( unmap_rc != 0 ) {
+
+           unmap_rc = -errno;
+           SG_error("munmap rc = %d\n", unmap_rc );
+       }
+   }
+
    return rc;
 }
 
@@ -1886,44 +1977,24 @@ SG_server_HTTP_POST_DELETECHUNKS_finish:
 }
 
 
-// handle a PUTCHUNKS request: deserialize each chunk into a block or manifest, and feed them into the implementation's "put block" and "put manifest" callbacks.
-// this is called as part of an IO completion.
-// return 0 on success
-// return -ENOSYS if not implemented 
-// return -EINVAL if the request does not contain block information
-// return -EBADMSG if the block's hash does not match the hash given on the control plane
-// return -ENODATA if we failed to load the data into the gateway
-// return -EPERM on internal error
-// return -errno on fchmod, lseek, mmap failure
-static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
-   
+// authenticate a data-plane message.
+// make the data-plane message read-only
+// SIDE-EFFECT: make the data-plane message on-disk read-only
+// return 0 on success, and set *ret_chunks_fd to be the fd to the on-disk message
+// return -EINVAL on invalid request_msg
+// return -EPERM if we couldn't access the dataplane data
+// return -ENODATA if the dataplane message wasn't big enough
+// return -EBADMSG on integrity check failure
+static int SG_server_dataplane_auth( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, int* ret_chunks_fd ) {
+
    int rc = 0;
-   int chunks_fd = 0;
-   struct stat sb;
-   int chunk_type = 0;
-   char* chunks_mmap = NULL;
-   struct SG_chunk chunk;
    struct SG_manifest_block chunk_info;
    unsigned char chunk_hash[SG_BLOCK_HASH_LEN];
+   int chunks_fd = -1;
    uint64_t offset = 0;
    uint64_t size = 0;
-   struct SG_chunk deserialized_chunk;
-   struct SG_IO_hints io_hints;
-   struct ms_client* ms = SG_gateway_ms( gateway );
-   uint64_t blocksize = ms_client_get_volume_blocksize( ms );
-   int64_t io_context = md_random64();
-   uint64_t* block_vec = NULL;
-   int block_vec_len = 0;
-   int next_block_vec = 0;
-
-   memset( &io_hints, 0, sizeof(struct SG_IO_hints));
+   int chunk_type = 0;
    
-   // sanity check 
-   if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
-      
-      return -ENOSYS;
-   }
-
    // sanity check: need chunk type, offset, hash, and size for each block 
    for( int i = 0; i < request_msg->blocks_size(); i++ ) {
       
@@ -1961,21 +2032,13 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
       SG_error("md_HTTP_upload_get_field_buffer( '%s' ) rc = %d\n", SG_SERVER_POST_FIELD_DATA_PLANE, rc );
       return -EPERM;
    }
-   
+ 
    // read-only...
-   rc = fchmod( chunks_fd, 0400 );
+   rc = fchmod( chunks_fd, 0600 );
    if( rc != 0 ) {
       
       rc = -errno;
       SG_error("fchmod rc = %d\n", rc );
-      return -EPERM;
-   }
-
-   rc = fstat( chunks_fd, &sb );
-   if( rc != 0 ) {
-
-      rc = -errno;
-      SG_error("fstat rc = %d\n", rc );
       return -EPERM;
    }
 
@@ -2026,6 +2089,66 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    }
    
    lseek( chunks_fd, 0, SEEK_SET );
+   *ret_chunks_fd = chunks_fd;
+   return 0;
+}
+
+// handle a PUTCHUNKS request: deserialize each chunk into a block or manifest, and feed them into the implementation's "put block" and "put manifest" callbacks.
+// this is called as part of an IO completion.
+// return 0 on success
+// return -ENOSYS if not implemented 
+// return -EINVAL if the request does not contain block information
+// return -EBADMSG if the block's hash does not match the hash given on the control plane
+// return -ENODATA if we failed to load the data into the gateway
+// return -EPERM on internal error
+// return -errno on fchmod, lseek, mmap failure
+static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
+   
+   int rc = 0;
+   int chunks_fd = 0;
+   struct stat sb;
+   int chunk_type = 0;
+   char* chunks_mmap = NULL;
+   struct SG_chunk chunk;
+   uint64_t offset = 0;
+   uint64_t size = 0;
+   struct SG_chunk deserialized_chunk;
+   struct SG_IO_hints io_hints;
+   int64_t io_context = md_random64();
+   uint64_t* block_vec = NULL;
+   int block_vec_len = 0;
+   int next_block_vec = 0;
+
+   memset( &io_hints, 0, sizeof(struct SG_IO_hints));
+   
+   // sanity check 
+   if( gateway->impl_put_block == NULL || gateway->impl_put_manifest == NULL ) {
+      
+      return -ENOSYS;
+   }
+
+   // authenticate the data
+   rc = SG_server_dataplane_auth( gateway, reqdat, request_msg, con_data, &chunks_fd );
+   if( rc != 0 ) {
+      SG_error("SG_server_dataplane_auth rc = %d\n", rc );
+      return rc;
+   }
+
+   // get size
+   rc = fstat( chunks_fd, &sb );
+   if( rc != 0 ) {
+
+      rc = -errno;
+      SG_error("fstat rc = %d\n", rc );
+      return -EPERM;
+   }
+
+   if( sb.st_size == 0 ) {
+
+      SG_error("Invalid data plane of length %jd\n", sb.st_size);
+      rc = -ENODATA;
+      return rc;
+   }
 
    block_vec_len = 0;
    next_block_vec = 0;
@@ -2055,7 +2178,7 @@ static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_
    if( chunks_mmap == MAP_FAILED ) {
 
       rc = -errno;
-      SG_error("mmap rc = %d\n", rc );
+      SG_error("mmap rc = %d (length = %jd)\n", rc, sb.st_size );
 
       rc = -ENODATA;
       goto SG_server_HTTP_POST_PUTCHUNKS_finish;
