@@ -61,6 +61,13 @@ if __name__ == "__main__":
     gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
     cat_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
 
+    # look up reader gateway
+    cat_gateway_info = testlib.read_gateway( config_dir, cat_gateway_name )
+    cat_gateway_id = cat_gateway_info['g_id']
+
+    volume_info = testlib.read_volume( config_dir, volume_name )
+    volume_id = volume_info['volume_id']
+
     random_part = hex(random.randint(0, 2**32-1))[2:]
     output_paths = []
 
@@ -82,7 +89,6 @@ if __name__ == "__main__":
     if exitcode != 0:
         stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
         raise Exception("%s exited %s" % (PUT_PATH, exitcode))
-
 
     for i in xrange(0, NUM_FILES):
         input_path = output_paths[i]
@@ -114,6 +120,9 @@ if __name__ == "__main__":
             path = output_path_samedir
         else:
             path = output_path_newdir
+
+        # clear the cache first, to make sure we fetch the new manifest from the RG
+        testlib.clear_cache( config_dir, gateway_id=cat_gateway_id, volume_id=volume_id )
 
         exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path, valgrind=True )
         testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
