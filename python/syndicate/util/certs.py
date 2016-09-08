@@ -24,6 +24,7 @@ import base64
 import shutil
 import binascii
 import json 
+import time
 
 from Crypto.Hash import SHA256 as HashAlg
 from Crypto.PublicKey import RSA as CryptoKey
@@ -714,47 +715,77 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
     Do not call this method directly.
     """
 
-    cached_gateway_certs = gateway_certs_load_cached( config, cert_bundle, exclude=exclude )
-    cached_gateways = dict( [ (c.gateway_id, c) for c in cached_gateway_certs ] )
+    attempts = 3
+    count = 0
+    cert_bundle_certs = {}
+    no_cache = []
 
-    remote_gateway_ids = []
+    while count < attempts:
 
-    for block in cert_bundle.blocks:
+        cached_gateway_certs = gateway_certs_load_cached( config, cert_bundle, exclude=exclude+no_cache )
+        cached_gateways = dict( [ (c.gateway_id, c) for c in cached_gateway_certs ] )
 
-        gateway_id = block.block_id
-        gateway_version = block.block_version 
+        cert_bundle_certs.update( cached_gateways )
 
-        if gateway_id in exclude:
-            continue 
+        remote_gateway_ids = []
 
-        if gateway_id in cached_gateways.keys():
-            gateway_cert = cached_gateways[ block.block_id ]
-            if gateway_cert.version < gateway_version:
-                # cached cert is stale
-                del cached_gateways[ gateway_id ]
+        for block in cert_bundle.blocks:
+
+            gateway_id = block.block_id
+            gateway_version = block.block_version 
+
+            if gateway_id in exclude:
+                continue 
+
+            if gateway_id in cached_gateways.keys():
+                gateway_cert = cached_gateways[ block.block_id ]
+                if gateway_cert.version < gateway_version:
+                    # cached cert is stale
+                    del cached_gateways[ gateway_id ]
+                    remote_gateway_ids.append( gateway_id )
+
+            else:
+                # not cached 
                 remote_gateway_ids.append( gateway_id )
 
+        # fetch remote
+        download_failed = []
+        missing = []
+        for gateway_id in remote_gateway_ids:
+
+            if gateway_id in exclude:
+                continue
+
+            gateway_cert = get_gateway_cert( config, gateway_id, check_cache=False )
+            if gateway_cert is None:
+                log.error("Failed to download gateway cert %s" % gateway_id)
+                download_failed.append( gateway_id )
+
+            elif not is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
+                # NOTE: includes the case where the downloaded cert is stale
+                log.error("Bundle is missing certificate for gateway %s" % gateway_id)
+                missing.append( gateway_id )
+            
+            else:
+                cert_bundle_certs[ gateway_id ] = gateway_cert
+
+        if len(missing) == 0 and len(download_failed) == 0:
+            # done!
+            break
+
         else:
-            # not cached 
-            remote_gateway_ids.append( gateway_id )
+            count += 1
+            if count >= attempts:
+                raise Exception("Missing certs: '%s'; couldn't download: '%s'" % (",".join([str(g) for g in missing]), ",".join([str(g) for g in download_failed])))
 
-    # fetch remote
-    for gateway_id in remote_gateway_ids:
+            else:
+                # got possibly stale data
+                # forcibly fetch these
+                no_cache += missing
+                time.sleep(1.0)
+                continue
 
-        if gateway_id in exclude:
-            continue
-
-        gateway_cert = get_gateway_cert( config, gateway_id, check_cache=False )
-        if gateway_cert is None:
-            raise Exception("Failed to fetch gateway cert for %s" % gateway_id )
-
-        if not is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
-            # NOTE: includes the case where the downloaded cert is stale
-            raise Exception("Gateway cert for %s not in the cert bundle" % gateway_id )
-             
-        cached_gateways[ gateway_id ] = gateway_cert
-
-    return [ cached_gateways[gateway_id] for gateway_id in cached_gateways.keys() ]
+    return [ cert_bundle_certs[gateway_id] for gateway_id in cert_bundle_certs.keys() ]
 
 
 def get_all_user_certs( config, user_ids ):
