@@ -268,7 +268,7 @@ UG_impl_stat_block_out:
 // return -EBUSY if the given path is being renamed already
 // return -ESTALE if the node is not local
 // return -errno on error 
-static int UG_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path, void* cls ) {
+static int UG_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path, void* cls ) {
    
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    
