@@ -1693,12 +1693,12 @@ void SG_impl_truncate( struct SG_gateway* gateway, int (*impl_truncate)( struct 
 }
 
 // set the gateway implementation rename routine 
-void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) ) {
+void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
    gateway->impl_rename = impl_rename;
 }
 
 // set the gateway implementation rename routine 
-void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) ) {
+void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
    gateway->impl_rename_hint = impl_rename_hint;
 }
 
@@ -2275,14 +2275,14 @@ int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data
 // return 0 on success 
 // return -ENOSYS if not defined 
 // return non-zero on implementation error 
-int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path ) {
+int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
    
    int rc = 0;
    
    if( gateway->impl_rename != NULL ) {
       
       reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
-      rc = (*gateway->impl_rename)( gateway, reqdat, new_path, gateway->cls );
+      rc = (*gateway->impl_rename)( gateway, reqdat, serialized_manifest, new_path, gateway->cls );
       
       if( rc != 0 ) {
          
@@ -2303,14 +2303,14 @@ int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* 
 // return 0 on success 
 // return -ENOSYS if not defined 
 // return non-zero on implementation error 
-int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path ) {
+int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
    
    int rc = 0;
    
    if( gateway->impl_rename_hint != NULL ) {
       
       reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
-      rc = (*gateway->impl_rename_hint)( gateway, reqdat, new_path, gateway->cls );
+      rc = (*gateway->impl_rename_hint)( gateway, reqdat, serialized_manifest, new_path, gateway->cls );
       
       if( rc != 0 ) {
          
