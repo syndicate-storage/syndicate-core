@@ -248,11 +248,8 @@ def request_to_storage_path( request ):
    if request.request_type == DriverRequest.BLOCK:
        prefix = os.path.join( prefix, "%s/%s" % (request.block_id, request.block_version) )
 
-   elif request.request_type == DriverRequest.MANIFEST:
+   elif request.request_type in [DriverRequest.MANIFEST, DriverRequest.RENAME_HINT]:
        prefix = os.path.join( prefix, "manifest/%s.%s" % (request.manifest_mtime_sec, request.manifest_mtime_nsec))
-
-   elif request.request_type == DriverRequest.RENAME_HINT:
-       return None
 
    else:
        print >> sys.stderr, "Invalid driver request type '%s'" % request.request_type
