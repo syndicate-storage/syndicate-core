@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+#
 # Protocol Buffers - Google's data interchange format
 # Copyright 2008 Google Inc.  All rights reserved.
 # https://developers.google.com/protocol-buffers/
@@ -28,12 +30,43 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Copyright 2007 Google Inc. All Rights Reserved.
+"""Tests for google.protobuf.text_encoding."""
 
-__version__ = '3.0.0'
+try:
+  import unittest2 as unittest  #PY26
+except ImportError:
+  import unittest
 
-if __name__ != '__main__':
-  try:
-    __import__('pkg_resources').declare_namespace(__name__)
-  except ImportError:
-    __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+from google.protobuf import text_encoding
+
+TEST_VALUES = [
+    ("foo\\rbar\\nbaz\\t",
+     "foo\\rbar\\nbaz\\t",
+     b"foo\rbar\nbaz\t"),
+    ("\\'full of \\\"sound\\\" and \\\"fury\\\"\\'",
+     "\\'full of \\\"sound\\\" and \\\"fury\\\"\\'",
+     b"'full of \"sound\" and \"fury\"'"),
+    ("signi\\\\fying\\\\ nothing\\\\",
+     "signi\\\\fying\\\\ nothing\\\\",
+     b"signi\\fying\\ nothing\\"),
+    ("\\010\\t\\n\\013\\014\\r",
+     "\x08\\t\\n\x0b\x0c\\r",
+     b"\010\011\012\013\014\015")]
+
+
+class TextEncodingTestCase(unittest.TestCase):
+  def testCEscape(self):
+    for escaped, escaped_utf8, unescaped in TEST_VALUES:
+      self.assertEqual(escaped,
+                        text_encoding.CEscape(unescaped, as_utf8=False))
+      self.assertEqual(escaped_utf8,
+                        text_encoding.CEscape(unescaped, as_utf8=True))
+
+  def testCUnescape(self):
+    for escaped, escaped_utf8, unescaped in TEST_VALUES:
+      self.assertEqual(unescaped, text_encoding.CUnescape(escaped))
+      self.assertEqual(unescaped, text_encoding.CUnescape(escaped_utf8))
+
+
+if __name__ == "__main__":
+  unittest.main()

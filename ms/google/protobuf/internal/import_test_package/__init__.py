@@ -28,12 +28,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Copyright 2007 Google Inc. All Rights Reserved.
+"""Sample module importing a nested proto from itself."""
 
-__version__ = '3.0.0'
-
-if __name__ != '__main__':
-  try:
-    __import__('pkg_resources').declare_namespace(__name__)
-  except ImportError:
-    __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+from google.protobuf.internal.import_test_package import outer_pb2 as myproto
