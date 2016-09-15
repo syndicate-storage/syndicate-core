@@ -730,6 +730,7 @@ static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* rout
 // return -EREMOTEIO on remote error (e.g. on the MS or RGs)
 // return -errno on network error 
 // NOTE: inode->entry must be write-locked
+// TODO: pass "on-rename" hint, since the inode will have already been destroyed on rename
 static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
    
    int rc = 0;
