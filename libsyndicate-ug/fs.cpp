@@ -738,7 +738,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    
    struct md_entry inode_data;
-   struct SG_request_data reqdat;       // for the driver
    
    struct UG_vacuum_context* vctx = NULL;
    bool vacuum_again = true;
@@ -770,7 +769,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
             rc = -ENOMEM;
             
             md_entry_free( &inode_data );
-            SG_request_data_free( &reqdat );
             UG_inode_set_deleting( inode, false );
             
             return rc;
@@ -782,7 +780,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
             SG_error("UG_vacuum_context_init('%s') rc = %d\n", fs_path, rc );
             
             md_entry_free( &inode_data );
-            SG_request_data_free( &reqdat );
             SG_safe_free( vctx );
             UG_inode_set_deleting( inode, false );
             return rc;
@@ -818,7 +815,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
    
    if( rc != 0 ) {
       
-      SG_request_data_free( &reqdat );
       UG_inode_set_deleting( inode, false );
       SG_error("ms_client_delete('%s') rc = %d\n", fs_path, rc );
       return rc;
@@ -1086,6 +1082,7 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
 
    // preserve a few key details
    new_fent_metadata->version = old_fent_metadata->version + 1;
+   old_fent_metadata->version += 1;
    new_fent_metadata->manifest_mtime_sec = old_fent_metadata->manifest_mtime_sec;
    new_fent_metadata->manifest_mtime_nsec = old_fent_metadata->manifest_mtime_nsec;
    new_fent_metadata->xattr_nonce = old_fent_metadata->xattr_nonce;
@@ -1115,7 +1112,8 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    struct ms_client* ms = SG_gateway_ms( gateway );
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct UG_replica_context* rctx = NULL;
-   struct UG_vacuum_context* vctx = NULL;
+   struct UG_vacuum_context* vctx_old = NULL;
+   struct UG_vacuum_context* vctx_new = NULL;
    struct UG_vacuumer* vacuumer = UG_state_vacuumer( ug );
 
    struct md_entry old_fent_metadata;
@@ -1148,11 +1146,14 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       return rc;
    }
 
-   // prepare the vacuum request
-   vctx = UG_vacuum_context_new();
-   if( vctx == NULL ) {
+   // prepare the vacuum requests
+   vctx_old = UG_vacuum_context_new();
+   vctx_new = UG_vacuum_context_new();
+   if( vctx_old == NULL || vctx_new == NULL ) {
      
      // OOM 
+     SG_safe_free( vctx_old );
+     SG_safe_free( vctx_new );
      md_entry_free( &old_fent_metadata );
      md_entry_free( &new_fent_metadata );
      SG_manifest_free( &new_manifest );
@@ -1160,17 +1161,32 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    }
 
    // will vacuum the old inode, removing its old manifest
-   rc = UG_vacuum_context_init( vctx, ug, old_path, old_inode, NULL );
+   rc = UG_vacuum_context_init( vctx_old, ug, old_path, old_inode, NULL );
    if( rc != 0 ) {
       
       // OOM 
       md_entry_free( &old_fent_metadata );
       md_entry_free( &new_fent_metadata );
       SG_manifest_free( &new_manifest );
-      SG_safe_free( vctx );
+      SG_safe_free( vctx_old );
+      SG_safe_free( vctx_new );
       return rc;
    }
-   
+  
+   // will vacuum the new inode, removing its old blocks and manifests 
+   rc = UG_vacuum_context_init( vctx_new, ug, new_path, new_inode, NULL );
+   if( rc != 0 ) {
+
+      // OOM 
+      md_entry_free( &old_fent_metadata );
+      md_entry_free( &new_fent_metadata );
+      SG_manifest_free( &new_manifest );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      SG_safe_free( vctx_new );
+      return -ENOMEM;
+   }
+
    // prepare the replication request for the new manifest
    rctx = UG_replica_context_new();
    if( rctx == NULL ) {
@@ -1179,8 +1195,10 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       md_entry_free( &old_fent_metadata );
       md_entry_free( &new_fent_metadata );
       SG_manifest_free( &new_manifest );
-      UG_vacuum_context_free( vctx );
-      SG_safe_free( vctx );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      UG_vacuum_context_free( vctx_new );
+      SG_safe_free( vctx_new );
       return -ENOMEM;
    }
 
@@ -1204,8 +1222,10 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       md_entry_free( &old_fent_metadata );
       md_entry_free( &new_fent_metadata );
       SG_manifest_free( &new_manifest );
-      UG_vacuum_context_free( vctx );
-      SG_safe_free( vctx );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      UG_vacuum_context_free( vctx_new );
+      SG_safe_free( vctx_new );
       SG_safe_free( rctx );
       return rc;
    }
@@ -1224,19 +1244,22 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       
       md_entry_free( &old_fent_metadata );
       md_entry_free( &new_fent_metadata );
-      UG_vacuum_context_free( vctx );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      UG_vacuum_context_free( vctx_new );
+      SG_safe_free( vctx_new );
       UG_replica_context_free( rctx );
       SG_safe_free( rctx );
-      SG_safe_free( vctx );
       
       return rc;
    }
- 
+
    // do the rename on the MS
    rc = ms_client_rename( ms, &old_dest_out, &old_fent_metadata, &new_fent_metadata );
    
    md_entry_free( &old_fent_metadata );
    md_entry_free( &new_fent_metadata );
+   md_entry_free( &old_dest_out );
    UG_replica_context_free( rctx );
    SG_safe_free( rctx );
    
@@ -1245,20 +1268,23 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       // failed to rename on the MS
       SG_error("ms_client_rename( '%s', '%s' ) rc = %d\n", old_path, new_path, rc );
    
-      UG_vacuum_context_free( vctx );
-      SG_safe_free( vctx );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
 
+      UG_vacuum_context_free( vctx_new );
+      SG_safe_free( vctx_new );
       return rc;
    }
   
    // remove the old manifest
    old_manifest_modtime = UG_inode_old_manifest_modtime( old_inode );
-   UG_vacuum_context_set_manifest_modtime( vctx, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
+   UG_vacuum_context_set_manifest_modtime( vctx_old, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
 
    // garbate-collect 
+   SG_debug("Vacuum '%s'\n", old_path);
    while( 1 ) {
       
-      rc = UG_vacuum_run( vacuumer, vctx );
+      rc = UG_vacuum_run( vacuumer, vctx_old );
       if( rc != 0 ) {
          
          SG_error("UG_vacuum_run('%s') rc = %d, retrying...\n", old_path, rc );
@@ -1267,9 +1293,26 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       
       break;
    }
+    
+   // vacuum the new inode 
+   SG_debug("Vacuum '%s'\n", new_path);
+   while( 1 ) {
       
-   UG_vacuum_context_free( vctx );
-   SG_safe_free( vctx );
+      rc = UG_vacuum_run( vacuumer, vctx_new );
+      if( rc != 0 ) {
+         
+         SG_error("UG_vacuum_run('%s') rc = %d, retrying...\n", new_path, rc );
+         continue;
+      }
+      
+      break;
+   }
+
+   UG_vacuum_context_free( vctx_new );
+   SG_safe_free( vctx_new );
+
+   UG_vacuum_context_free( vctx_old );
+   SG_safe_free( vctx_old );
    return rc;
 }
 
@@ -1355,7 +1398,7 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
 // return 0 on success
 // return -ENOMEM on OOM 
 // return -errno if we had a network error
-// fent and dest will NOT be locked 
+// fent and dest will both be write-locked
 static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* new_path, struct fskit_entry* dest ) {
    
    int rc = 0;
