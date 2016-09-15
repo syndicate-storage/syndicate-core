@@ -647,10 +647,10 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
       struct UG_dirty_block* block = &itr->second;
 
       // finish flushing (NOTE: regenerates block hash)
-      rc = UG_dirty_block_flush_finish( block );
+      rc = UG_dirty_block_flush_finish_keepbuf( block );
       if( rc != 0 ) {
          
-         SG_error("UG_dirty_block_flush_finish( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
+         SG_error("UG_dirty_block_flush_finish_keepbuf( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
                   UG_inode_file_id( inode ), UG_inode_file_version( inode ), UG_dirty_block_id( block ), UG_dirty_block_version( block ), rc );
         
          return rc; 
@@ -836,10 +836,16 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
       UG_dirty_block_set_dirty( &itr->second, true );
       UG_dirty_block_set_logical_write( &itr->second, offset, buf_len );
+
+      if( UG_dirty_block_buf( &itr->second )->len == 0 ) {
+         SG_error("FATAL: block %p has zero length\n", UG_dirty_block_buf( &itr->second )->data);
+         exit(1);
+      }
    }
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
 
+   /*
    // don't flush the last block; keep it in RAM, so a subsequent write does not need to fetch it from disk.
    // Instead, just add it to the inode's set of dirty blocks.
    // Do not commit it, but be sure that it is unshared.
@@ -882,6 +888,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
       // owned by inode, so remove
       write_blocks.erase( itr );
    }
+   */
 
    // flush the rest of the written blocks, and synchronize them with the manifest.
    // back up the old dirty block and old replicated block data, so we can evict and vacuum them (respectively)
