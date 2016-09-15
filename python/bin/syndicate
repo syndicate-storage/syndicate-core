@@ -26,6 +26,8 @@ import shutil
 import base64
 import stat
 import copy
+import socket
+import random
 
 import syndicate.ms.jsonrpc as jsonrpc
 import syndicate.ms.msconfig as msconfig
@@ -427,7 +429,7 @@ def parse_argv( argv ):
    """
     
    parser = conf.build_parser( argv[0], conf.CONFIG_DESCRIPTION, conf.CONFIG_OPTIONS )
-   opts, _ = parser.parse_known_args( argv[1:] ) 
+   opts, _ = parser.parse_known_args( argv[1:] )
    method_name, args, kw = read_params( getattr(opts, 'params', [] ) )
    
    return (opts, method_name, args, kw )
@@ -656,7 +658,7 @@ def main( argv ):
    uses OpenID to authenticate the user with the MS's OpenID provider.
    * Sends the request, receives the response, and performs any method-specific post-processing.
    """
-   
+  
    # get opts, methodname, args 
    opts, method_name, args, kw = parse_argv( argv )
    if method_name == "setup":
@@ -699,6 +701,7 @@ def main( argv ):
            sys.exit(0)
        except Exception, e:
            log.exception(e)
+           print >> sys.stderr, traceback.format_exc()
            print >> sys.stderr, 'Failed to reload certs'
            sys.exit(1)
 
@@ -875,6 +878,168 @@ def main( argv ):
 
        else:
            sys.exit(0)
+
+   elif method_name == "amd_server_setup":
+       # set up automount server
+       if len(args) < 1:
+           print >> sys.stderr, "Usage: %s amd_server_setup ['autofill' | portnum [private_key_path]]" % sys.argv[0]
+           sys.exit(1)
+
+       config_dir = CONFIG['config_dir']
+       key_path = os.path.join(config_dir, "amd-server.pkey")
+       autofill = False
+
+       if args[0] == 'autofill':
+           # testing purposes 
+           autofill = True
+
+       server_portnum = None
+       if autofill:
+           server_portnum = 33334
+       
+       else:
+           try:
+               server_portnum = int(args[0])
+           except:
+               print >> sys.stderr, "Invalid portnum"
+               sys.exit(1)
+
+       privkey_pem = None
+       if len(args) > 2 and not autofill:
+           private_key_path = args[1]
+           try:
+               with open(private_key_path, "r") as f:
+                   privkey_pem = f.read()
+           except:
+               print >> sys.stderr, "Failed to read '%s'" % private_key_path
+               sys.exit(1)
+       
+       else:
+           print >> sys.stderr, "Generating server keypair..."
+           pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
+       
+       # stash...
+       if os.path.exists(key_path):
+           if autofill:
+               # overwrite by default
+               os.unlink(key_path)
+
+           else:
+               while True:
+                   do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
+                   if do_unlink.lower() in ['yes', 'y']:
+                       os.unlink(key_path)
+                       break
+                   else:
+                       print "Please type 'yes' or 'no'"
+
+       storage.write_key( key_path, privkey_pem, overwrite=True )
+        
+       # update config file 
+       conf.write_config_section( CONFIG['config_path'], "amd-server", {"portnum": server_portnum, "private_key": key_path} )
+       sys.exit(0)
+
+
+   elif method_name == "amd_client_setup":
+       # set up automount client
+       if len(args) > 1 and args[1] in ['-h', '--help', 'help']:
+           print >> sys.stderr, "Usage: %s amd_client_setup ['autofill'|private_key_path]" % sys.argv[0]
+           sys.exit(1)
+
+       config_dir = CONFIG['config_dir']
+       key_path = os.path.join(config_dir, "amd-client.pkey")
+       autofill = False
+
+       # generate key
+       privkey_pem = None
+       if len(args) > 0:
+           private_key_path_or_autofill = args[0]
+           if private_key_path_or_autofill == 'autofill':
+               # used for testing purposes
+               autofill = True
+           
+           else:
+               private_key_path = private_key_path_or_autofill
+               try:
+                   with open(private_key_path, "r") as f:
+                       privkey_pem = f.read()
+               except:
+                   print >> sys.stderr, "Failed to read '%s'" % private_key_path
+                   sys.exit(1)
+      
+       if privkey_pem is None:
+           print >> sys.stderr, "Generating client keypair..."
+           pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
+
+
+       # defaults
+       amd_conf = {
+           'private_key': key_path,
+           'mounts': os.path.join(config_dir, 'mounts'),
+           'logdir': os.path.join(config_dir, 'amd-logs'),
+           'hostname': socket.gethostname()
+       }
+
+       if autofill:
+           # pick sensible defaults
+           chars = list("abcdefghijklmnopqrstuvwxyz")
+           random.shuffle(chars)
+
+           amd_conf['server'] = 'http://localhost:33334'        # default portnum is 33334
+           amd_conf['instance_id'] = 'instance-%s' % "".join(chars[0:10])
+           amd_conf['portnum'] = 33335
+           amd_conf['poll_interval'] = 30
+
+       field_names = {
+            'server': 'Automount server URL',
+            'private_key': 'Client private key path',
+            'instance_id': 'Instance ID',
+            'mounts': 'Mounts directory',
+            'portnum': 'Automount client push port number',
+            'poll_interval': 'Server poll interval',
+            'logdir': 'Log directory',
+            'hostname': 'Client hostname'
+       }
+
+       if not autofill:
+           for field in field_names.keys():
+               value = None
+               if amd_conf.get(field, None) is None:
+                   while True:
+                       try:
+                           value = raw_input("(required) %s: " % field_names[field])
+                           if len(value) == 0:
+                               print >> sys.stderr, "Value required"
+                           
+                           amd_conf[field] = value
+                           break
+
+                       except KeyboardInterrupt:
+                           print >> sys.stderr, "Abort"
+                           sys.exit(1)
+
+               else:
+                   value = raw_input("%s (default: '%s'): " % (field_names[field], amd_conf[field]) )
+                   if len(value) > 0:
+                       amd_conf[field] = value
+
+           # stash...
+           if os.path.exists(key_path):
+               while True:
+                   do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
+                   if do_unlink.lower() in ['yes', 'y']:
+                       os.unlink(key_path)
+                       break
+                   else:
+                       print "Please type 'yes' or 'no'"
+
+
+       if not os.path.exists(key_path):
+          storage.write_key( key_path, privkey_pem, overwrite=True )
+
+       conf.write_config_section( CONFIG['config_path'], "amd-client", amd_conf )
+       sys.exit(0)
+
 
    # debug
    for opt in CONFIG.keys():
