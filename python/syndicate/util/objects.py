@@ -49,7 +49,11 @@ from Crypto import Random
 from Crypto.Signature import PKCS1_PSS as CryptoSigner
 from Crypto.Protocol.KDF import PBKDF2
 
-log = conf.log
+DEBUG = False
+if os.environ.get("SYNDICATE_DEBUG", None) is not None:
+    DEBUG = True
+
+log = conf.get_logger("syndicate.util.objects", debug=DEBUG)
 
 SECRETS_PAD_KEY = "__syndicate_pad__"
 
@@ -965,7 +969,12 @@ def do_volume_reload( config, user_id, volume_id ):
     failed = []
     for gateway_name, rc in statuses.items():
         if not rc:
-            failed.append(gateway_name)
+            if rc == False:
+                failed.append(gateway_name)
+            else:
+                # didn't even try
+                log.info("BUG: Did not even try to reload %s" % gateway_name)
+                failed.append(gateway_name)
 
     return failed
 
@@ -1674,6 +1683,8 @@ class Volume( StubObject ):
       
       When creating, updating, or deleting:
         generate a volume certificate and a new volume certificate bundle version vector.
+
+      TODO: this method is a ball of mud.  See if we can clean it up.
       """
       
       if method_name in ["read_volume", "list_volumes", "list_public_volumes", "list_archive_volumes"]:
@@ -1913,18 +1924,18 @@ class Volume( StubObject ):
                log.error("Could not determine name of Volume.  You will need to manaully delete its public key from your Syndicate key directory.")
             
             else:
-               
                remove_volume_cert( config, volume_name )
-               
-         volume_cert = extras['volume_cert']
+              
+         if extras.has_key('volume_cert'):
+             volume_cert = extras['volume_cert']
 
-         # propagate to all write and coordinate gateways
-         if not config.has_key('no_reload') or not config['no_reload']:
-             failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
-             if len(failed) > 0:
-                 log.warn("Some gateways failed to reload.  Either they are not running, or the could not be contacted:")
-                 log.warn("   " + "\n   ".join(sorted(failed)))
-                 log.warn("If they are running, you can try reloading them manually with the `reload_gateway` directive.")
+             # propagate to all write and coordinate gateways
+             if not config.has_key('no_reload') or not config['no_reload']:
+                 failed = do_volume_reload( config, volume_cert.owner_id, volume_cert.volume_id )
+                 if len(failed) > 0:
+                     log.warn("Some gateways failed to reload.  Either they are not running, or the could not be contacted:")
+                     log.warn("   " + "\n   ".join(sorted(failed)))
+                     log.warn("If they are running, you can try reloading them manually with the `reload_gateway` directive.")
           
             
 
@@ -2125,11 +2136,13 @@ class Gateway( StubObject ):
    @classmethod 
    def PreProcessArgs( cls, config, method_name, args, kw, extras, lib ):
       """
-      Post-parsing processing: generate a gateway certificate as the sole argument, if we're creating, updating, or deleting
+      Post-parsing processing: generate a gateway certificate as the sole argument, if we're creating or updating.
       
       If we're creating a gateway (something only the volume admin can do), then put a new volume cert bundle as well.
       
       Return new args, kw, extra
+
+      TODO: this method is a ball of mud.  See if we can clean it up.
       """
      
       if method_name in ["read_gateway", "list_gateways"]:
@@ -2154,7 +2167,10 @@ class Gateway( StubObject ):
          raise Exception("Missing gateway name")
       
       gateway_name = lib.name
-      
+      volume_id = None 
+      volume_name = None 
+      volume_name_or_id = None
+
       # see if there is already a cert on file 
       existing_gateway_cert = load_gateway_cert( config, lib.name )
       
@@ -2162,34 +2178,60 @@ class Gateway( StubObject ):
       if existing_gateway_cert is not None and method_name == "create_gateway":
          raise CertExistsException("Certificate already exists for '%s'.  If this is an error, remove it from '%s'" % (gateway_name, conf.object_file_path(config, "gateway", gateway_name) + ".cert"))
       
-      elif existing_gateway_cert is None and method_name in ["update_gateway", "delete_gateway"]:
+      elif existing_gateway_cert is None and method_name == "update_gateway":
          raise MissingCertException("No certificate on file for '%s'." % (gateway_name))
     
-      # find volume ID
-      volume_id = None 
-      volume_name = None 
-      volume_name_or_id = None
+      elif existing_gateway_cert is None and method_name == "delete_gateway":
+         # no cert on file, but we need to be able to delete.
+         # this will only work if the caller is the administrator.
+         log.debug("Looking up gateway '%s'" % gateway_name)
+         
+         import syndicate.util.client as ms_client
+         rpc_client = ms_client.make_rpc_client( config )
+         gateway_info = None
+         try:
+            gateway_info = ms_client.ms_rpc( rpc_client, "read_gateway", gateway_name )
+         except Exception, e:
+            log.exception(e)
+            raise MissingCertException("Failed to fetch certificate information for '%s'" % gateway_name)
+
+         if gateway_info is None:
+            # already deleted 
+            return args, kw, {'already_deleted': True}
+
+         volume_id = gateway_info['volume_id']
+         volume_name_or_id = str(volume_id)
+      
+
+      # find volume info
       existing_volume_cert = None 
 
       if hasattr(lib, "volume_id"):
-          volume_id = lib.volume_id
-          volume_name_or_id = str(volume_id)
+         volume_id = lib.volume_id
+         volume_name_or_id = str(volume_id)
 
       elif hasattr(lib, "volume_name"):
-          volume_name = lib.volume_name
-          volume_name_or_id = volume_name
-      
+         volume_name = lib.volume_name
+         volume_name_or_id = volume_name
+     
+      # find volume ID
       if volume_name_or_id is not None:
          existing_volume_cert = load_volume_cert( config, volume_name_or_id )
          if existing_volume_cert is not None:
-             volume_id = existing_volume_cert.volume_id
+            volume_id = existing_volume_cert.volume_id
+         else:
+            log.warning("Volume cert for '%s' not present" % volume_name_or_id)
 
       elif existing_gateway_cert is not None:
          # get volume cert, and then volume name 
          volume_id = existing_gateway_cert.volume_id
          volume_name_or_id = str(volume_id)
          existing_volume_cert = load_volume_cert( config, str(volume_id) )
- 
+
+      else:
+          if method_name not in ['create_gateway']:
+              log.warning("Gateway cert for '%s' not present" % lib.name)
+
       if method_name in ["delete_gateway"]:
 
          # need either owner's key or admin's key 
@@ -2212,10 +2254,12 @@ class Gateway( StubObject ):
          extras = {
              "name": lib.name,
              "volume_id": volume_id,
-             "owner_id": owner_id
+             "owner_id": owner_id,
+             "need_volume_reload": True
          }
          return args, kw, extras
 
+      assert volume_id is not None, "Volume ID not detected"
 
       gateway_name = lib.name
       gateway_type = getattr(lib, "gateway_type", None)
@@ -2495,6 +2539,8 @@ class Gateway( StubObject ):
       """
       Process extra information generated by parsing arguments.
       Called after the RPC completes (result is the returned data)
+      
+      TODO: this method is a ball of mud.  See if we can clean it up.
       """
       
       import syndicate.util.reload as reloader
@@ -2505,7 +2551,11 @@ class Gateway( StubObject ):
       if method_name not in ["create_gateway", "update_gateway", "delete_gateway", "remove_user_from_volume"]:
           # nothing to store
           return 
-      
+     
+      if method_name == 'delete_gateway' and 'already_deleted' in extras and extras['already_deleted']:
+          # nothing to do 
+          return
+
       if type(result) == bool or not result.has_key('error'):
          
          # store private key and cert, if we have it
