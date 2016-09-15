@@ -653,7 +653,15 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
    if( UG_inode_export_match_name( inode, inode_data ) <= 0 ) {
 
       // inode got renamed
-      SG_debug("%" PRIX64 ": old name = '%s', new name = '%s'\n", inode_data->file_id, fent_name, inode_data->name );
+      SG_debug("%" PRIX64 ": old name = '%s', new name = '%s'; do rename\n", inode_data->file_id, UG_inode_name_ref( inode ), inode_data->name );
+
+      // change inode name 
+      rc = UG_inode_set_name( inode, inode_data->name );
+      if( rc != 0 ) {
+         
+         // OOM 
+         return rc;
+      }
 
       rc = fskit_entry_rename_in_directory( parent, fent, fent_name, inode_data->name );
       if( rc != 0 ) {
