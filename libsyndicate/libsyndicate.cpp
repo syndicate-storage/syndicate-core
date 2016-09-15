@@ -527,6 +527,13 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
       return rc;
    }
 
+   if( md_get_debug_level() > 0 ) {
+      rc = md_conf_add_envar( c, "SYNDICATE_DEBUG=1" );
+      if( rc != 0 ) {
+         return rc;
+      }
+   }
+
    // success!
    if( !c->is_client ) {
 
