@@ -1022,6 +1022,12 @@ int SG_server_HTTP_GET_handler( struct md_HTTP_connection_data* con_data, struct
     
    int rc = 0;
 
+   // ping request?
+   if( strcmp(con_data->url_path, "/PING") == 0 ) {
+      rc = md_HTTP_create_response_builtin( resp, 200 );
+      return rc;
+   }
+
    reqdat = SG_CALLOC( struct SG_request_data, 1 );
    if( reqdat == NULL ) {
       return -ENOMEM;
@@ -2520,7 +2526,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
 
    // dispatch operation 
    switch( request_msg->request_type() ) {
-      
+     
       case SG_messages::Request::WRITE: {
          // are we the coordinator?
          if( SG_gateway_id( gateway ) != reqdat->coordinator_id ) {
