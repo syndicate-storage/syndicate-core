@@ -1823,7 +1823,14 @@ int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const en
    if( cmd_path == NULL ) {
       return -EINVAL;
    }
-   
+  
+   SG_debug("Subprocess(%s) ", cmd_path);
+   for( int i = 0; argv[i] != NULL; i++ ) {
+       fprintf(stderr, "%s ", argv[i]);
+   }
+   fprintf(stderr, "\n");
+   fflush(stderr);
+
    // open the pipes
    rc = pipe( outpipe );
    if( rc != 0 ) {
