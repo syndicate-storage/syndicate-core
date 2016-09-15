@@ -818,7 +818,6 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
    if( UG_inode_export_match_name( dest, src ) <= 0 ) {
 
       SG_error("%" PRIX64 ": src->name == '%s', dest->name == '%s'\n", src->file_id, src->name, dest->name );
-
       return -EINVAL;
    }
 
@@ -1202,9 +1201,20 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
       }
       else {
 
+         //////////////////////////////////////////
+         char debug_buf[52];
+         memset( debug_buf, 0, 52 );
+         for( unsigned int i = 0; i < (50 / 3) && i < UG_dirty_block_buf(dirty_block)->len; i++ ) {
+            char nbuf[5];
+            memset(nbuf, 0, 5);
+            snprintf(nbuf, 4, " %02X", *(UG_dirty_block_buf(dirty_block)->data + i));
+            strcat(debug_buf, nbuf);
+         }
+         //////////////////////////////////////////
+
          // evict old dirty block
-         SG_debug("Replace dirty block %" PRIu64 ".%" PRId64 " with %" PRIu64 ".%" PRId64 "\n",
-               UG_dirty_block_id( old_dirty_block ), UG_dirty_block_version( old_dirty_block ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+         SG_debug("Replace dirty block %" PRIu64 ".%" PRId64 " with %" PRIu64 ".%" PRId64 " (%s)\n",
+               UG_dirty_block_id( old_dirty_block ), UG_dirty_block_version( old_dirty_block ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), debug_buf);
 
          UG_dirty_block_evict_and_free( cache, inode, old_dirty_block );
          UG_inode_dirty_blocks(inode)->erase( old_dirty_block_itr );
@@ -1223,8 +1233,19 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
    // not present.  put in place.
    try {
 
-      SG_debug("Insert dirty block %" PRIu64 ".%" PRId64 "\n",
-            UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+      //////////////////////////////////////////
+      char debug_buf[52];
+      memset( debug_buf, 0, 52 );
+      for( unsigned int i = 0; i < (50 / 3) && i < UG_dirty_block_buf(dirty_block)->len; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", *(UG_dirty_block_buf(dirty_block)->data + i));
+         strcat(debug_buf, nbuf);
+      }
+      //////////////////////////////////////////
+
+      SG_debug("Insert dirty block %" PRIu64 ".%" PRId64 " (%s)\n",
+            UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), debug_buf);
 
       (*UG_inode_dirty_blocks( inode ))[ UG_dirty_block_id( dirty_block ) ] = *dirty_block;
    }
@@ -1721,6 +1742,10 @@ char* UG_inode_name( struct UG_inode* inode ) {
    return SG_strdup_or_null( inode->name );
 }
 
+char* UG_inode_name_ref( struct UG_inode* inode ) {
+   return inode->name;
+}
+
 uint64_t UG_inode_file_id( struct UG_inode* inode ) {
    return SG_manifest_get_file_id( &inode->manifest );
 }
@@ -1855,6 +1880,19 @@ bool UG_inode_is_dirty( struct UG_inode* inode ) {
 }
 
 // setters
+int UG_inode_set_name( struct UG_inode* inode, char const* name ) {
+   if( inode->name != NULL ) {
+      char* name_dup = SG_strdup_or_null( name );
+      if( name_dup == NULL ) {
+         return -ENOMEM;
+      }
+
+      SG_safe_free( inode->name );
+      inode->name = name_dup;
+   }
+   return 0;
+}
+
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
    SG_manifest_set_file_version( &inode->manifest, version );
 }
