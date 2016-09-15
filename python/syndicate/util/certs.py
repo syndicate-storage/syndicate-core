@@ -25,6 +25,7 @@ import shutil
 import binascii
 import json 
 import time
+import random
 
 from Crypto.Hash import SHA256 as HashAlg
 from Crypto.PublicKey import RSA as CryptoKey
@@ -38,7 +39,7 @@ import config as conf
 import syndicate.protobufs.ms_pb2 as ms_pb2
 import syndicate.protobufs.sg_pb2 as sg_pb2
 
-log = conf.log
+log = conf.get_logger("syndicate-certs")
 
 def syndicate_public_key_name( ms_url ):
     """
@@ -544,7 +545,7 @@ def is_volume_cert_in_bundle( cert_bundle, volume_cert ):
     return True
 
 
-def is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
+def is_gateway_cert_in_bundle( cert_bundle, gateway_cert, check_only_stale=False ):
     """
     Is the gateway certificate in the cert bundle?
     """
@@ -560,14 +561,17 @@ def is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
             log.error("Gateway '%s' owner mismatch: %s != %s" % (gateway_cert.name, str(block.owner_id), str(gateway_cert.owner_id)))
             return False
 
-        if (gateway_cert.caps | block.caps) != block.caps:
-            # caps escalation
-            log.error("Gateway '%s' capability escalation: %x != %x" % (gateway_cert.name, block.caps, gateway_cert.caps))
-            return False 
-
         if gateway_cert.version < block.block_version:
             # stale 
             log.error("Gateway '%s' is stale (%s < %s)" % (gateway_cert.name, gateway_cert.version, block.block_version))
+            return False 
+
+        if check_only_stale:
+            return True
+
+        if (gateway_cert.caps | block.caps) != block.caps:
+            # caps escalation
+            log.error("Gateway '%s' capability escalation: %x != %x" % (gateway_cert.name, block.caps, gateway_cert.caps))
             return False 
 
         # found!
@@ -762,10 +766,17 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
                 download_failed.append( gateway_id )
 
             elif not is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
-                # NOTE: includes the case where the downloaded cert is stale
-                log.error("Bundle is missing certificate for gateway %s" % gateway_id)
-                missing.append( gateway_id )
+                if is_gateway_cert_in_bundle( cert_bundle, gateway_cert, check_only_stale=True ):
+                    # the case where the downloaded cert is stale
+                    # try again
+                    log.error("Stale gateway cert: no bundle match for cert for gateway %s" % gateway_id)
+                    missing.append( gateway_id )
             
+                else:
+                    # the case where the downloaded cert is invalid
+                    log.error("Invalid gateway cert for %s" % gateway_id)
+                    download_failed.append( gateway_id )
+                    missing.append( gateway_id )
             else:
                 cert_bundle_certs[ gateway_id ] = gateway_cert
 
@@ -782,7 +793,10 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
                 # got possibly stale data
                 # forcibly fetch these
                 no_cache += missing
-                time.sleep(1.0)
+                # delay = 2**(count + 1) + random.random() * (2**count)
+                delay = 1.0
+                log.error("Missing: '%s', couldn't download: '%s'.  Trying again in %s seconds" % (",".join([str(g) for g in missing]), ",".join([str(g) for g in download_failed]), delay))
+                time.sleep( delay )
                 continue
 
     return [ cert_bundle_certs[gateway_id] for gateway_id in cert_bundle_certs.keys() ]
