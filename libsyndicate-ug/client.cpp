@@ -785,6 +785,13 @@ int UG_rename( struct UG_state* state, char const* path, char const* newpath ) {
       SG_error( "UG_consistency_manifest_ensure_fresh('%s') rc = %d\n", path, rc );
       return rc;
    }
+ 
+   // refresh new manifest, since it's about to be blown away (we want to blow away the right one)
+   rc = UG_consistency_manifest_ensure_fresh( gateway, newpath );
+   if( rc != 0 ) {
+      SG_error( "UG_consistency_manifest_ensure_fresh('%s') rc = %d\n", path, rc );
+      return rc;
+   }
 
    return fskit_rename( UG_state_fs( state ), path, newpath, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
