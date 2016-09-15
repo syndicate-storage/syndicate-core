@@ -41,6 +41,9 @@ import syndicate.util.gateway as gateway
 import syndicate.protobufs.ms_pb2 as ms_pb2
 import syndicate.protobufs.sg_pb2 as sg_pb2
 
+import syndicate.ms.msconfig as msconfig
+from syndicate.ms.msconfig import *
+
 from syndicate.util.objects import MissingKeyException, MissingCertException, CertExistsException 
 
 import syndicate.syndicate as libsyndicate
@@ -52,11 +55,11 @@ from Crypto.Signature import PKCS1_PSS as CryptoSigner
 
 
 #-------------------------------
-def make_gateway_name( gateway_type, volume_name, host ):
+def make_gateway_name( instance_id, gateway_type, volume_name, host ):
     """
     Generate a name for a gateway
     """
-    return "%s-%s-%s" % (volume_name, gateway_type, host)    
+    return "%s.%s-%s-%s" % (instance_id, volume_name, gateway_type, host)    
 
 
 #-------------------------------
@@ -527,7 +530,7 @@ def default_gateway_pkey_generator( config, volume_name ):
     """
     Default gateway private key generator.
     """
-    _, privkey_pem = crypto.generate_key_pair( crypto.OBJECT_KEY_SIZE )
+    _, privkey_pem = crypto.generate_key_pair( OBJECT_KEY_SIZE )
     return privkey_pem
 
 
