@@ -1254,7 +1254,8 @@ void SG_gateway_set_cls( struct SG_gateway* gateway, void* cls ) {
 // signal the main loop to exit 
 // always succeeds
 int SG_gateway_signal_main( struct SG_gateway* gateway ) {
-   
+ 
+   SG_debug("%s", "signaled\n");  
    gateway->running = false;
    sem_post( &gateway->config_sem );
    
@@ -1353,12 +1354,15 @@ static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int re
    gateway->num_config_reload_waiters = 0;
 
    mboxes = gateway->config_reload_mboxes;
-   gateway->config_reload_mboxes = 0;
+   gateway->config_reload_mboxes = NULL;
 
    pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
 
    for( uint64_t i = 0; i < num_waiters; i++ ) {
       *(mboxes[i]) = reload_rc;
+   }
+
+   for( uint64_t i = 0; i < num_waiters; i++ ) {
       sem_post( &gateway->config_finished_sem );
    }
 
@@ -1468,6 +1472,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       
       // signaled to die?
       if( !gateway->running ) {
+         SG_debug("%s", "Gateway died, exiting...\n");
          break;
       }
 
@@ -1500,7 +1505,8 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
          rc = -ENOMEM;
          break;
       }
-      
+     
+      SG_debug("%s", "Reloading certificates\n");
       rc = md_certs_reload( conf, &syndicate_pubkey, &user_cert, &volume_owner_cert, volume_cert, gateway_certs );
       if( rc != 0 ) {
          
@@ -1618,7 +1624,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       SG_gateway_wakeup_config_waiters( gateway, 0 );
    }
 
-   SG_debug("%s", "Leaving main loop\n");
+   SG_debug("Leaving main loop, rc = %d\n", rc);
    
    return rc;
 }
