@@ -1765,8 +1765,10 @@ class MSEntry( storagetypes.Object ):
 
       dest will be put into the filesystem, and src will be deleted.
       The old dest will be returned, if overwritten.
+
+      dest_attrs contains all the attrs the resulting file will have
       
-      Only src's coordinator can rename it.
+      Only src's coordinator can rename it.  It will lead to a reversioning
       """
       
       rc = MSEntry.check_mutate_attrs( src_attrs )
@@ -1874,9 +1876,13 @@ class MSEntry( storagetypes.Object ):
           logging.error("Src/Dest mismatch: missing in src=%s, missing in dest=%s" % (",".join(missing_src), ",".join(missing_dest)))
           return (-errno.EINVAL, None)
 
-     
-      # must be fresh 
-      if src.version > src_attrs['version']:
+      # must be fresh
+      if src.ftype == MSENTRY_TYPE_FILE and src.version < src_attrs['version']:
+          # stale 
+          return (-errno.EAGAIN, None )
+
+      if dest is not None and dest.ftype == MSENTRY_TYPE_FILE and dest.version <= dest_attrs['version']:
+          # dest version must *exceed* current version
           # stale 
           return (-errno.EAGAIN, None )
 
@@ -1902,7 +1908,7 @@ class MSEntry( storagetypes.Object ):
          return (-errno.EINVAL, None)
 
       # src parent vs src parent from db... 
-      if src_parent.file_id != src_parent_id:
+      if src_parent.file_id != src.parent_id:
          logging.error("Mismatch src parent ID")
          return (-errno.EINVAL, None)
 
@@ -1985,7 +1991,7 @@ class MSEntry( storagetypes.Object ):
       
       if dest is not None:
          dest_delete_fut = MSEntry.__delete_finish_async( volume, dest_parent, dest )
-      
+    
       src_write_fut = MSEntry.__write_msentry_async( src, volume.num_shards, write_base=True, **dest_attrs )
       
       futs = [src_write_fut, new_nameholder_fut]
