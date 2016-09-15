@@ -77,8 +77,7 @@ if __name__ == "__main__":
 
     # start the RG 
     rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, rg_gateway_name )
-    time.sleep(1)
-    if rg_proc.poll() is not None:
+    if not testlib.gateway_ping( 31112, 15 ):
         stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
 

@@ -154,8 +154,7 @@ if __name__ == "__main__":
     testlib.update_gateway( config_dir, RG_gateway_name, "driver=%s" % RG_DRIVER )
 
     rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name, valgrind=True )
-    time.sleep(5)
-    if rg_proc.poll() is not None:
+    if not testlib.gateway_ping( 32110, 15 ):
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
 
     # put the file

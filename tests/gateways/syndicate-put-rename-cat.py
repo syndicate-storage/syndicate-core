@@ -53,8 +53,7 @@ if __name__ == "__main__":
     testlib.update_gateway( config_dir, RG_gateway_name, "port=31112", "driver=%s" % RG_DRIVER )
 
     rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name, valgrind=True )
-    time.sleep(1)
-    if rg_proc.poll() is not None:
+    if not testlib.gateway_ping( 31112, 15 ):
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
 
     # should cause the RG to get updated that there's a new gateway 
@@ -64,6 +63,10 @@ if __name__ == "__main__":
     # look up reader gateway
     cat_gateway_info = testlib.read_gateway( config_dir, cat_gateway_name )
     cat_gateway_id = cat_gateway_info['g_id']
+
+    # look up RG 
+    rg_gateway_info = testlib.read_gateway( config_dir, RG_gateway_name )
+    rg_gateway_id = rg_gateway_info['g_id']
 
     volume_info = testlib.read_volume( config_dir, volume_name )
     volume_id = volume_info['volume_id']
@@ -123,13 +126,14 @@ if __name__ == "__main__":
 
         # clear the cache first, to make sure we fetch the new manifest from the RG
         testlib.clear_cache( config_dir, gateway_id=cat_gateway_id, volume_id=volume_id )
+        testlib.clear_cache( config_dir, gateway_id=rg_gateway_id, volume_id=volume_id )
 
         exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', cat_gateway_name, path, valgrind=True )
         testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
         
         if exitcode != 0:
             stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-            raise Exception("%s exited %s" % (PUT_PATH, exitcode)) 
+            raise Exception("%s exited %s" % (CAT_PATH, exitcode)) 
 
         # check for correctnes 
         if expected_data not in out:

@@ -25,6 +25,7 @@ ENV_DEFAULTS = {
     "SYNDICATE_RG_ROOT": "/usr/local/bin/",
     "SYNDICATE_UG_ROOT": "/usr/local/bin/",
     "SYNDICATE_AG_ROOT": "/usr/local/bin/",
+    "SYNDICATE_AMD_ROOT": "/usr/local/bin/",
     "SYNDICATE_PYTHON_ROOT": "/usr/local/lib/python2.7/dist-packages/",
     "SYNDICATE_TOOL": "/usr/local/bin/syndicate",
     "SYNDICATE_MS_KEYDIR": "./ms_src",
