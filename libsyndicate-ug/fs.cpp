@@ -1011,16 +1011,8 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
    unsigned char* old_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
    unsigned char* new_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
     
-   struct ms_client* ms = SG_gateway_ms( gateway );
-   
-   if( old_xattr_hash == NULL ) {
-      
+   if( old_xattr_hash == NULL || new_xattr_hash == NULL ) {
       SG_safe_free( new_xattr_hash );
-      return -ENOMEM;
-   }
-
-   if( new_xattr_hash == NULL ) {
-
       SG_safe_free( old_xattr_hash );
       return -ENOMEM;
    }
@@ -1028,8 +1020,8 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
    rc = UG_inode_export( old_fent_metadata, old_inode, old_parent_id );
    if( rc != 0 ) {
       
-      SG_safe_free( old_xattr_hash );
       SG_safe_free( new_xattr_hash );
+      SG_safe_free( old_xattr_hash );
 
       SG_error("UG_inode_export(%s) rc = %d\n", old_path, rc );
       return rc;
@@ -1038,29 +1030,21 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
    rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), old_inode, old_xattr_hash );
    if( rc != 0 ) {
       
-      SG_safe_free( old_xattr_hash );
       SG_safe_free( new_xattr_hash );
+      SG_safe_free( old_xattr_hash );
       md_entry_free( old_fent_metadata );
       
       SG_error("UG_inode_export_xattr_hash(%s) rc = %d\n", old_path, rc );
       return rc;
    }
    
+   memcpy( new_xattr_hash, old_xattr_hash, SHA256_DIGEST_LENGTH );
+
    if( new_inode != NULL ) {
       
       rc = UG_inode_export( new_fent_metadata, new_inode, new_parent_id );
       if( rc != 0 ) {
          
-         md_entry_free( old_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         SG_error("UG_inode_export(%s) rc = %d\n", new_path, rc );
-         return rc;
-      }
-
-      rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), new_inode, new_xattr_hash );
-      if( rc != 0 ) {
-
          md_entry_free( old_fent_metadata );
          SG_safe_free( old_xattr_hash );
          SG_safe_free( new_xattr_hash );
@@ -1095,23 +1079,21 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
 
       // switch parent 
       new_fent_metadata->parent_id = new_parent_id;
-
-      // generate xattr hash 
-      rc = ms_client_xattr_hash( new_xattr_hash, ms_client_get_volume_id( ms ), new_fent_metadata->file_id, new_fent_metadata->xattr_nonce, NULL, NULL, NULL );
-      if( rc != 0 ) {
-         
-         SG_error("ms_client_xattr_hash(%s) rc = %d\n", new_path, rc );
-         md_entry_free( old_fent_metadata );
-         md_entry_free( new_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         return -EPERM;
-      }
    }
    
    old_fent_metadata->xattr_hash = old_xattr_hash;
    new_fent_metadata->xattr_hash = new_xattr_hash;
- 
+
+   // preserve a few key details
+   new_fent_metadata->version = old_fent_metadata->version + 1;
+   new_fent_metadata->manifest_mtime_sec = old_fent_metadata->manifest_mtime_sec;
+   new_fent_metadata->manifest_mtime_nsec = old_fent_metadata->manifest_mtime_nsec;
+   new_fent_metadata->xattr_nonce = old_fent_metadata->xattr_nonce;
+
+   if( old_fent_metadata->type == MD_ENTRY_FILE ) {
+       new_fent_metadata->write_nonce = old_fent_metadata->write_nonce + 1;
+   }
+
    return 0;
 }
 
@@ -1165,7 +1147,7 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       md_entry_free( &new_fent_metadata );
       return rc;
    }
- 
+
    // prepare the vacuum request
    vctx = UG_vacuum_context_new();
    if( vctx == NULL ) {
@@ -1206,7 +1188,14 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    clock_gettime( CLOCK_REALTIME, &new_manifest_modtime );
    SG_manifest_set_modtime( &new_manifest, new_manifest_modtime.tv_sec, new_manifest_modtime.tv_nsec );
    SG_manifest_set_file_version( &new_manifest, old_fent_metadata.version + 1 );
- 
+
+   new_fent_metadata.manifest_mtime_sec = new_manifest_modtime.tv_sec;
+   new_fent_metadata.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
+   new_fent_metadata.version = SG_manifest_get_file_version(&new_manifest);
+
+   SG_debug("Duplicated manifest '%s': %zu blocks, ts=%ld.%ld (version %" PRId64 ")\n",
+         old_path, SG_manifest_get_block_count( &new_manifest ), SG_manifest_get_file_version(&new_manifest), new_manifest_modtime.tv_sec, new_manifest_modtime.tv_nsec );
+
    // make the request to rename this inode
    rc = UG_replica_context_init_rename_hint( rctx, ug, old_path, new_path, old_inode, &new_manifest );
    if( rc != 0 ) {
@@ -1365,7 +1354,8 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
 // In the UG, this simply tells the MS to rename the entry if we're the coordinator, or tell the coordinator to do so if we're not.
 // return 0 on success
 // return -ENOMEM on OOM 
-// return -errno if we had a network error 
+// return -errno if we had a network error
+// fent and dest will NOT be locked 
 static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* new_path, struct fskit_entry* dest ) {
    
    int rc = 0;
