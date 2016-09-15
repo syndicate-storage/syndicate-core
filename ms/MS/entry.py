@@ -1855,6 +1855,7 @@ class MSEntry( storagetypes.Object ):
       # file rename request originated from src's coordinator
       if src.ftype == MSENTRY_TYPE_FILE and src.coordinator_id != gateway.g_id:
          # not the coordinator--refresh
+         logging.error("src is stale: coordinator %s != %s" % (src.coordinator_id != gateway.g_id))
          return (-errno.EAGAIN, None)
 
       # src and dest must match on most fields... 
@@ -1877,21 +1878,19 @@ class MSEntry( storagetypes.Object ):
           return (-errno.EINVAL, None)
 
       # must be fresh
-      if src.ftype == MSENTRY_TYPE_FILE and src.version < src_attrs['version']:
-          # stale 
+      if src.ftype == MSENTRY_TYPE_FILE and src_attrs['version'] <= src.version:
+          # stale
+          logging.error("src is stale: version %s <= %s" % (src.version, src_attrs['version']))
           return (-errno.EAGAIN, None )
 
-      if dest is not None and dest.ftype == MSENTRY_TYPE_FILE and dest.version <= dest_attrs['version']:
-          # dest version must *exceed* current version
+      if src.ftype == MSENTRY_TYPE_FILE and src_attrs['write_nonce'] <= src.write_nonce:
           # stale 
+          logging.error("src is stale: write nonce %s > %s" % (src.write_nonce, src_attrs['write_nonce']))
           return (-errno.EAGAIN, None )
 
-      if src.ftype == MSENTRY_TYPE_FILE and src.write_nonce > src_attrs['write_nonce']:
+      if src.ftype == MSENTRY_TYPE_DIR and src.xattr_nonce == src_attrs['write_nonce']:
           # stale 
-          return (-errno.EAGAIN, None )
-
-      if src.ftype == MSENTRY_TYPE_DIR and src.xattr_nonce == src_attrs['xattr_nonce']:
-          # stale 
+          logging.error("src is stale: write nonce %s == %s" % (src.write_nonce, src_attrs['write_nonce']))
           return (-errno.EAGAIN, None )
 
       # does dest parent exist?
@@ -1951,7 +1950,7 @@ class MSEntry( storagetypes.Object ):
       # if dest exists and is distinct from src, proceed to delete it.
       if dest is not None and dest.file_id != src.file_id:
          delete_dest = True
-         dest_delete_fut = MSEntry.__delete_begin_async( volume, dest )
+         dest_delete_fut = MSEntry.__delete_begin_async( volume, dest, check_vacuum=False )
       
       # while we're at it, make sure we're not moving src to a subdirectory of itself
       src_verify_absent = MSEntry.__rename_verify_no_loop_async( volume, src_file_id, dest_parent )
@@ -1971,18 +1970,12 @@ class MSEntry( storagetypes.Object ):
          dest_empty_rc = dest_delete_fut.get_result()
       
       if dest_empty_rc != 0:
-         # dest is not empty, but we were about to rename over it
-         if delete_dest:
-            MSEntry.__delete_undo( dest )
-           
-         logging.error("dest is not empty")
+         # dest is not empty or has unvacuumed data, but we were about to rename over it
+         logging.error("dest is not empty or has unvacuumed data")
          return (dest_empty_rc, None)
       
       if src_absent_rc != 0:
          # src is its own parent
-         if delete_dest:
-            MSEntry.__delete_undo( dest )
-         
          logging.error("src is its own parent")
          return (src_absent_rc, None)
       
@@ -2023,10 +2016,11 @@ class MSEntry( storagetypes.Object ):
    
    @classmethod
    @storagetypes.concurrent
-   def __delete_begin_async( cls, volume, ent ):
+   def __delete_begin_async( cls, volume, ent, check_vacuum=True ):
       """
       Begin deleting an entry by marking it as deleted.
       Verify that it is empty if it is a directory.
+      If it's a file, verify that all blocks and manifests have been vacuumed
       """
       
       ent_cache_key_name = MSEntry.make_key_name( ent.volume_id, ent.file_id )
@@ -2060,7 +2054,7 @@ class MSEntry( storagetypes.Object ):
          
                
       # otherwise, ent is a file.  Make sure there are no outstanding writes that need to be vacuumed 
-      else:
+      elif check_vacuum:
          
          # log check---there must be no outstanding writes 
          vacuum_log_head_list = yield MSEntryVacuumLog.Peek( ent.volume_id, ent.file_id, async=True )
@@ -2073,7 +2067,8 @@ class MSEntry( storagetypes.Object ):
             # uncache 
             storagetypes.memcache.delete( ent_cache_key_name )
             
-            # not permitted 
+            # not permitted
+            logging.error("Unvacuumed data for /%s/%s" % (ent.volume_id, ent.file_id))
             storagetypes.concurrent_return( -errno.EAGAIN )
       
       # safe to delete
@@ -2160,9 +2155,10 @@ class MSEntry( storagetypes.Object ):
       yield ent.put_async()
       storagetypes.concurrent_return( 0 )
 
+
    @classmethod
    def __delete_undo( cls, ent ):
-      delete_undo_fut = MSEntry.__delete_undo( ent )
+      delete_undo_fut = MSEntry.__delete_undo_async( ent )
       delete_undo_fut.get_result()
       return 0
 
