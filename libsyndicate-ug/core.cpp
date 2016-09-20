@@ -187,9 +187,11 @@ int UG_RG_context_init( struct UG_state* state, struct UG_RG_context* rctx ) {
 // free an RG context's memory 
 int UG_RG_context_free( struct UG_RG_context* rctx ) {
 
-   SG_safe_free( rctx->rg_status );
-   SG_safe_free( rctx->rg_ids );
-   memset( rctx, 0, sizeof(struct UG_RG_context) );
+   if( rctx != NULL ) {
+       SG_safe_free( rctx->rg_status );
+       SG_safe_free( rctx->rg_ids );
+       memset( rctx, 0, sizeof(struct UG_RG_context) );
+   }
    return 0;
 }
 
