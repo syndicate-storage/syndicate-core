@@ -928,7 +928,7 @@ int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct
 
 // change coordinator ownership of a file on the MS, synchronously
 // Sign the entry if we haven't already.
-// Populate *ent_out with the data on the MS.  The caller must free it.
+// Populate *ent_out with the data on the MS.  The caller must free it.  It will include the latest version and write nonce
 // return 0 on success, and give back the write nonce and new coordinator ID of the file
 // return -EINVAL if the xattr hash is missing from ent
 // return negative on error
@@ -1024,11 +1024,11 @@ int ms_client_coordinate( struct ms_client* client, struct md_entry* ent_out, st
 
 // rename from src to dest, synchronously
 // Sign the src entry if we haven't already.
-// return 0 on success, and populate *old_dest_out with the replaced file/directory metadata
+// return 0 on success
 // return -EXDEV if the volumes do not agree between src and dest 
 // return -EINVAL if dest is NULL
 // return negative on error 
-int ms_client_rename( struct ms_client* client, struct md_entry* old_dest_out, struct md_entry* src, struct md_entry* dest ) {
+int ms_client_rename( struct ms_client* client, struct md_entry* src, struct md_entry* dest ) {
    
    // sanity check
    if( src->volume != dest->volume ) {
@@ -1047,13 +1047,27 @@ int ms_client_rename( struct ms_client* client, struct md_entry* old_dest_out, s
    unsigned char* sig = NULL;
    size_t sig_len = 0;
    
-   int64_t write_nonce = src->write_nonce;
+   int64_t src_write_nonce = src->write_nonce;
+   int64_t dest_write_nonce = src->write_nonce;
+   uint64_t src_parent_id = src->parent_id;
+   uint64_t dest_parent_id = dest->parent_id;
    
    memset( &req, 0, sizeof(struct ms_client_request) );
    memset( &result, 0, sizeof(struct ms_client_request_result) );
    
-   src->write_nonce = write_nonce + 1;
-   
+   if( src->type == MD_ENTRY_FILE ) { 
+       src->write_nonce = src_write_nonce + 1;
+       dest->write_nonce = dest_write_nonce + 1;
+   }
+   else {
+       src->write_nonce = md_random64();
+       dest->write_nonce = md_random64();
+   }
+
+   // swap parent IDs (so we'll end up with a signed entry with the right parent)
+   src->parent_id = dest_parent_id;
+   dest->parent_id = src_parent_id;
+
    // sign the request 
    rc = md_entry_sign( client->gateway_key, src, &sig, &sig_len );
    if( rc != 0 ) {
@@ -1100,16 +1114,6 @@ int ms_client_rename( struct ms_client* client, struct md_entry* old_dest_out, s
          SG_error("ERR: MS file_rename rc = %d\n", result.rc );
          rc = result.rc;
       }
-      else {
-        
-         // got old dest, if we got one 
-         if( result.ent != NULL ) { 
-             rc = md_entry_dup2( result.ent, old_dest_out );
-         }
-         else {
-            memset( old_dest_out, 0, sizeof(struct md_entry));
-         }
-      }
    }
 
    SG_safe_free( src->ent_sig );
@@ -1120,7 +1124,10 @@ int ms_client_rename( struct ms_client* client, struct md_entry* old_dest_out, s
    dest->ent_sig = NULL;
    dest->ent_sig_len = 0;
 
-   src->write_nonce = write_nonce;
+   src->write_nonce = src_write_nonce;
+   dest->write_nonce = dest_write_nonce;
+   src->parent_id = src_parent_id;
+   dest->parent_id = dest_parent_id;
    
    ms_client_request_result_free( &result );
    
