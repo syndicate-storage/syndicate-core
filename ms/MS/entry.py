@@ -2090,7 +2090,6 @@ class MSEntry( storagetypes.Object ):
       for attrname in all_write_attrs:
          dest_attrs[attrname] = src_attrs[attrname]
 
-      logging.info("write %s: %s" % (new_name, dest_attrs))
       src_write_fut = MSEntry.__write_msentry_async( src, volume.num_shards, write_base=True, **dest_attrs )
       
       futs = [src_write_fut, new_nameholder_fut]
