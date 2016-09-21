@@ -1628,7 +1628,8 @@ off_t UG_seek( UG_handle_t* fi, off_t pos, int whence ) {
 
 
 // close(2)
-// forward to fskit
+// fsync, and then close.
+// forward both to fskit.
 int UG_close( struct UG_state* state, UG_handle_t *fi ) {
 
    int rc = 0;
@@ -1641,6 +1642,14 @@ int UG_close( struct UG_state* state, UG_handle_t *fi ) {
       return -EBADF;
    }
    
+   // sync
+   rc = fskit_fsync( UG_state_fs( state ), fi->fh );
+   if( rc != 0 ) {
+      SG_error("fskit_fsync(%p) rc = %d\n", fi, rc);
+      return rc;
+   }
+
+   // close
    rc = fskit_close( UG_state_fs( state ), fi->fh );
    
    if( rc == 0 ) {
