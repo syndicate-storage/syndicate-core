@@ -33,6 +33,7 @@ RENAME_PATH = os.path.join(testconf.SYNDICATE_UG_ROOT, "syndicate-rename")
 RG_PATH = os.path.join(testconf.SYNDICATE_RG_ROOT, "syndicate-rg")
 RG_DRIVER = os.path.join(testconf.SYNDICATE_PYTHON_ROOT, "syndicate/rg/drivers/disk" )
 NUM_FILES = 2
+NUM_RENAMES = 3
 
 def stop_and_save( output_dir, proc, out_path, save_name ):
     exitcode, out = testlib.stop_gateway( proc, out_path )
@@ -93,25 +94,56 @@ if __name__ == "__main__":
         stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
         raise Exception("%s exited %s" % (PUT_PATH, exitcode))
 
-    for i in xrange(0, NUM_FILES):
-        input_path = output_paths[i]
-        output_path_samedir = output_paths[i] + "-renamed"
-        output_path_newdir = "/newdir/" + output_paths[i] + "-renamed"
-        output_path = None
+    # do several renames
+    for j in xrange(0, NUM_RENAMES):
+        for i in xrange(0, NUM_FILES):
+            input_path = output_paths[i]
+            output_path_samedir = output_paths[i] + "-renamed"
+            output_path_newdir = "/newdir/" + output_paths[i] + "-renamed"
+            output_path = None
 
-        # alternate between renaming into the same directory versus a new directory
-        if i % 2 == 0:
-            output_path = output_path_samedir
-        else:
-            output_path = output_path_newdir
-        
-        # rename into the same directory or into the new directory
-        exitcode, out = testlib.run( RENAME_PATH, '-d2', '-f', '-c', os.path.join(config_dir, "syndicate.conf"), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, input_path, output_path, valgrind=True )
-        testlib.save_output( output_dir, "syndicate-rename-%s" % i, out )
+            # alternate between renaming into the same directory versus a new directory
+            if i % 2 == 0:
+                output_path = output_path_samedir
+            else:
+                output_path = output_path_newdir
+            
+            # rename into the same directory or into the new directory
+            exitcode, out = testlib.run( RENAME_PATH, '-d2', '-f', '-c', os.path.join(config_dir, "syndicate.conf"),
+                                        '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, input_path, output_path, valgrind=True )
 
-        if exitcode != 0:
-            stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
-            raise Exception("%s exited %s" % (RENAME_PATH, exitcode) )
+            testlib.save_output( output_dir, "syndicate-rename-%s-%s" % (i,j), out )
+
+            if exitcode != 0:
+                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+                raise Exception("%s exited %s" % (RENAME_PATH, exitcode) )
+
+        if j >= NUM_RENAMES - 1:
+            break
+
+        # rename back
+        for i in xrange(0, NUM_FILES):
+            input_path = output_paths[i]
+            output_path_samedir = output_paths[i] + "-renamed"
+            output_path_newdir = "/newdir/" + output_paths[i] + "-renamed"
+            output_path = None
+
+            # alternate between renaming into the same directory versus a new directory
+            if i % 2 == 0:
+                output_path = output_path_samedir
+            else:
+                output_path = output_path_newdir
+            
+            # rename into the same directory or into the new directory
+            exitcode, out = testlib.run( RENAME_PATH, '-d2', '-f', '-c', os.path.join(config_dir, "syndicate.conf"),
+                                        '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, output_path, input_path, valgrind=True )
+
+            testlib.save_output( output_dir, "syndicate-rename-%s-%s-renamed" % (i,j), out )
+
+            if exitcode != 0:
+                stop_and_save( output_dir, rg_proc, rg_out_path, "syndicate-rg")
+                raise Exception("%s exited %s" % (RENAME_PATH, exitcode) )
+
 
     for i in xrange(0, NUM_FILES):
         output_path_samedir = output_paths[i] + "-renamed"
