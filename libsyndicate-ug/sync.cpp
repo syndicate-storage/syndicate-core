@@ -347,7 +347,9 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
    off_t file_size = 0;
    struct timespec manifest_modtime;
    struct timespec old_manifest_modtime;
-   
+  
+   SG_debug("fsync %s\n", path);
+
    vctx = UG_vacuum_context_new();
    rctx = UG_replica_context_new();
 
