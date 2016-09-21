@@ -1922,7 +1922,7 @@ class MSEntry( storagetypes.Object ):
                 ent_fut = MSEntry.__read_msentry( volume_id, fid, volume.num_shards, use_memcache=False )
             else:
                 # get full dest
-                ent_fut = MSEntry.Read( volume_id, fid, volume_id=volume_id, num_shards=volume.num_shards, futs_only=True )
+                ent_fut = MSEntry.Read( volume, fid, volume_id=volume_id, num_shards=volume.num_shards, futs_only=True )
 
             futs.append( ent_fut )
          
