@@ -2108,8 +2108,8 @@ class MSEntry( storagetypes.Object ):
          MSEntry.make_key_name( volume_id, dest_parent_id ),
          MSEntry.make_key_name( volume_id, src_file_id ),
          MSEntry.make_key_name( volume_id, dest_file_id ),
-         MSEntryNameHolder.make_key_name( volume_id, src_file_id, overwritten_name ),
-         MSEntryNameHolder.make_key_name( volume_id, dest_file_id, new_name )
+         MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ),
+         MSEntryNameHolder.make_key_name( volume_id, dest_parent_id, new_name )
       ]
       
       storagetypes.memcache.delete_multi( cache_delete )
