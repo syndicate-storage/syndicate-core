@@ -1254,7 +1254,8 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
             }
          }
          else {
-            // invalid 
+            // invalid
+            SG_error("Not a manifest or a rename hint for '%s'\n", reqdat->fs_path); 
             SG_request_data_free( reqdat );
             return -EINVAL;
          }
@@ -1270,6 +1271,7 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
       
       // missing data, and not a reload request 
       SG_request_data_free( reqdat ); 
+      SG_error("%s", "Missing data and not a reload request\n");
       return -EINVAL;
    }
 
