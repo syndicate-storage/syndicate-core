@@ -347,8 +347,21 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
    off_t file_size = 0;
    struct timespec manifest_modtime;
    struct timespec old_manifest_modtime;
+   bool dirty = false;
   
    SG_debug("fsync %s\n", path);
+   
+   fskit_entry_wlock( fent );
+ 
+   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+   dirty = UG_inode_is_dirty( inode );
+
+   if( !dirty ) {
+      // not dirty
+      fskit_entry_unlock( fent ); 
+      SG_safe_delete( dirty_blocks );
+      return 0;
+   }
 
    vctx = UG_vacuum_context_new();
    rctx = UG_replica_context_new();
@@ -356,22 +369,20 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
    if( dirty_blocks == NULL || vctx == NULL || rctx == NULL ) {
      
       SG_error("%s", "BUG: OOM\n");
+      fskit_entry_unlock( fent );
       SG_safe_delete( dirty_blocks );
       SG_safe_free( vctx );
       SG_safe_free( rctx );
       return -ENOMEM;
    }
-   
-   fskit_entry_wlock( fent );
-   
-   inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
+  
    file_version = UG_inode_file_version( inode );
    file_size = fskit_entry_get_size( fent );
    manifest_modtime.tv_sec = SG_manifest_get_modtime_sec( UG_inode_manifest( inode ) );
    manifest_modtime.tv_nsec = SG_manifest_get_modtime_nsec( UG_inode_manifest( inode ) );
    old_manifest_modtime.tv_sec = SG_manifest_get_modtime_sec( UG_inode_replaced_blocks( inode ) ); 
    old_manifest_modtime.tv_nsec = SG_manifest_get_modtime_nsec( UG_inode_replaced_blocks( inode ) );
- 
+    
    // flush all dirty blocks
    rc = UG_sync_blocks_flush( gateway, path, inode );
    if( rc != 0 ) {
