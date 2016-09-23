@@ -2436,8 +2436,14 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    msent->set_capacity( 16 );
    msent->clear_ms_signature();
 
-   SG_debug("%s", "Verify:\n");
-   msent->PrintDebugString();
+   try {
+       string s = msent->DebugString();
+       SG_debug("Verify:\n%s\n", s.c_str());
+   }
+   catch( bad_alloc& ba ) {
+       SG_error("%s", "Out of memory\n");
+       abort();
+   }
 
    rc = md_verify< ms::ms_entry >( pubkey, msent );
 
@@ -2524,7 +2530,14 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
    }
 
    SG_debug("from %s:%d, sign:\n", file, lineno);
-   msent.PrintDebugString();
+   try {
+       string s = msent.DebugString();
+       SG_debug("from %s:%d, sign\n%s\n", file, lineno, s.c_str());
+   }
+   catch( bad_alloc& ba ) {
+       SG_error("%s", "Out of memory\n");
+       abort();
+   }
 
    rc = md_sign< ms::ms_entry >( privkey, &msent );
    if( rc != 0 ) {
