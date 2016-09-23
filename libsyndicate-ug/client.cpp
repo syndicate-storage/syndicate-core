@@ -245,9 +245,64 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 }
 
 
+// update, for when we're the coordinator of the file AND the file is locked
+// return 0 on success
+// return -ENOMEM on OOM
+// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
+// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
+// NOTE: inode->entry must be write-locked
+int UG_update_locked( struct UG_state* ug, struct UG_inode* inode, int64_t write_nonce ) {
+
+    int rc = 0;
+    struct SG_gateway* gateway = UG_state_gateway( ug );
+    struct fskit_core* fs = UG_state_fs( ug );
+    struct ms_client* ms = SG_gateway_ms( gateway );
+    struct md_entry inode_data;
+    struct md_entry inode_data_out;
+    unsigned char xattr_hash[ SHA256_DIGEST_LENGTH ];
+
+    memset( &inode_data, 0, sizeof(struct md_entry) );
+    memset( &inode_data_out, 0, sizeof(struct md_entry) );
+
+    // get inode info
+    rc = UG_inode_export( &inode_data, inode, 0 );
+    if( rc != 0 ) {
+
+        return rc;
+    }
+
+    rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
+    if( rc != 0 ) {
+
+        md_entry_free( &inode_data );
+        return rc;
+    }
+
+    // propagate new xattr hash
+    inode_data.xattr_hash = xattr_hash;
+    inode_data.write_nonce = write_nonce;
+
+    // put on the MS...
+    SG_debug("update '%" PRIX64 "'\n", inode_data.file_id );
+    rc = ms_client_update( ms, &inode_data_out, &inode_data );
+    inode_data.xattr_hash = NULL;       // NOTE: don't free this
+
+    if( rc != 0 ) {
+        SG_error("ms_client_update(%" PRIX64 ".%" PRId64 ") rc = %d\n", inode_data.file_id, inode_data.version, rc );
+    }
+
+    // keep coherent
+    UG_update_propagate_local( inode, &inode_data_out );
+    md_entry_free( &inode_data );
+    md_entry_free( &inode_data_out );
+
+    return rc;
+}
+
+
 // ask the MS to update inode metadata
 // NULL data will be ignored.
-// the associated inode must be unlocked or read-locked
+// the associated inode must be unlocked
 // return 0 on success 
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM

@@ -137,6 +137,7 @@ int UG_refresh( struct UG_state* state, char const* path );
 
 // low-level metadata API
 int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data );
+int UG_update_locked( struct UG_state* state, struct UG_inode* inode, int64_t write_nonce );
 
 // high-level file data API
 UG_handle_t* UG_create( struct UG_state* state, char const* path, mode_t mode, int* rc  );
