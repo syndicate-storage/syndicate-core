@@ -532,8 +532,10 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
 
-   // types don't match?
-   if( !UG_inode_export_match_type( inode, inode_data ) ) {
+   int64_t old_version = UG_inode_file_version( inode );
+
+   // types don't match, and version advanced?
+   if( !UG_inode_export_match_type( inode, inode_data ) && inode_data->version > old_version ) {
 
       SG_debug("%" PRIX64 ": old type = %d, new type = %d\n", inode_data->file_id, fskit_entry_get_type( UG_inode_fskit_entry( inode ) ), inode_data->type );
 
@@ -619,7 +621,7 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       }
    }
 
-   // file sizes don't match?
+   // file sizes don't match, and version advanced?
    if( fskit_entry_get_type( fent ) == FSKIT_ENTRY_TYPE_FILE && !UG_inode_export_match_size( inode, inode_data ) ) {
 
       // need to expand/truncate inode
@@ -628,9 +630,12 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
 
       SG_debug("%" PRIX64 ": old size = %jd, new size = %jd\n", inode_data->file_id, size, new_size );
 
-      if( size > new_size ) {
+      // only shrink if version changed
+      if( size > new_size && inode_data->version > old_version ) {
 
          // shrunk
+         SG_debug("%" PRIX64 ": shrinking to %jd\n", inode_data->file_id, new_size);
+
          uint64_t max_block_id = (new_size / block_size);
 
          for( SG_manifest_block_iterator itr = SG_manifest_block_iterator_begin( UG_inode_manifest( inode ) ); itr != SG_manifest_block_iterator_end( UG_inode_manifest( inode ) ); itr++ ) {
@@ -645,12 +650,17 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
 
          SG_manifest_truncate( UG_inode_manifest( inode ), max_block_id );
       }
+      else if( size <= new_size ) {
+
+         // grew 
+         SG_manifest_set_stale( UG_inode_manifest( inode ), true );
+      }
 
       SG_manifest_set_size( UG_inode_manifest( inode ), new_size );
    }
 
-   // names don't match?
-   if( UG_inode_export_match_name( inode, inode_data ) <= 0 ) {
+   // names don't match, and version advanced?
+   if( UG_inode_export_match_name( inode, inode_data ) <= 0 && inode_data->version > old_version ) {
 
       // inode got renamed
       SG_debug("%" PRIX64 ": old name = '%s', new name = '%s'; do rename\n", inode_data->file_id, UG_inode_name_ref( inode ), inode_data->name );
@@ -683,8 +693,8 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
       SG_manifest_set_stale( UG_inode_manifest( inode ), true );
    }
 
-   // change of coordinator?
-   if( UG_inode_coordinator_id( inode ) == SG_gateway_id( gateway ) && inode_data->coordinator != SG_gateway_id( gateway ) ) {
+   // change of coordinator, and version advanced?
+   if( UG_inode_coordinator_id( inode ) == SG_gateway_id( gateway ) && inode_data->coordinator != SG_gateway_id( gateway ) && inode_data->version > old_version ) {
 
       // uncache xattrs--we're not the authoritative source any longer
       SG_debug("%" PRIX64 ": old coordinator = %" PRIu64 ", new coordinator = %" PRIu64 "\n", inode_data->file_id, SG_gateway_id( gateway ), inode_data->coordinator );
@@ -1439,26 +1449,6 @@ static void UG_consistency_path_free_remote( void* cls ) {
 }
 
 
-// merge unchanged path data into a multi-result
-// always succeeds
-static void UG_consistency_path_merge_nochange( ms_path_t* path, struct ms_client_multi_result* result ) {
-
-    for( int i = 0; i < result->num_processed; i++ ) {
-
-        if( result->ents[i].error == MS_LISTING_NOCHANGE ) {
-
-            result->ents[i].file_id = path->at(i).file_id;
-            result->ents[i].version = path->at(i).version;
-            result->ents[i].write_nonce = path->at(i).write_nonce;
-            result->ents[i].parent_id = path->at(i).parent_id;
-            result->ents[i].num_children = path->at(i).num_children;
-            result->ents[i].generation = path->at(i).generation;
-            result->ents[i].capacity = path->at(i).capacity;
-        }
-    }
-}
-
-
 // reload a path of metadata
 // cached path entries will be revalidated--reloaded, or dropped if they are no longer present upstream
 // un-cached path entries will be downloaded and grafted into the fskit filesystem
@@ -1515,9 +1505,6 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
 
       not_found = true;
    }
-
-   // ensure that even for unchanged inodes, we have enough inode information to find and merge the fresh data into our cached tree.
-   // UG_consistency_path_merge_nochange( &path_local, &remote_inodes_stale );
 
    /////////////////////////////////////////////////////////////
 
@@ -1794,6 +1781,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
 
    fskit_entry_wlock( fent );
 
+   SG_debug("Reload: '%s' (%" PRIu64 ")\n", fs_path, entry.file_id );
    rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, fent_name, &entry );
 
    fskit_entry_unlock( fent );
