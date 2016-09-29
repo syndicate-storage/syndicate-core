@@ -1075,6 +1075,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    gateway->num_iowqs = max_num_iowqs;
    gateway->first_arg_optind = first_arg_optind;
    gateway->foreground = opts->foreground;
+   gateway->use_signal_handlers = true;
    
    if( gateway->http != NULL ) {
       
@@ -1370,6 +1371,12 @@ static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int re
 }
 
 
+// set whether or not we should use default signal handlers
+int SG_gateway_use_signal_handlers( struct SG_gateway* gateway, bool val ) {
+   gateway->use_signal_handlers = val;
+   return 0;
+}
+
 // main loop
 // periodically reload the volume and certificates
 // return 0 on success 
@@ -1380,20 +1387,26 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
    // we're running main for this gateway 
    g_main_gateway = gateway;
    
-   // set up signal handlers, so we can shut ourselves down 
-   struct sigaction sigact;
-   memset( &sigact, 0, sizeof(struct sigaction) );
-   
-   sigemptyset( &sigact.sa_mask );
-   sigact.sa_sigaction = SG_gateway_term;
-   
-   // use sa_sigaction, not sa_handler
-   sigact.sa_flags = SA_SIGINFO;
-   
-   // handle the usual terminal cases 
-   sigaction( SIGQUIT, &sigact, NULL );
-   sigaction( SIGTERM, &sigact, NULL );
-   sigaction( SIGINT, &sigact, NULL );
+   // set up signal handlers, so we can shut ourselves down
+   // (unless asked not to)
+   if( gateway->use_signal_handlers ) {
+
+      SG_debug("Installing signal handlers for %p\n", gateway);
+
+      struct sigaction sigact;
+      memset( &sigact, 0, sizeof(struct sigaction) );
+      
+      sigemptyset( &sigact.sa_mask );
+      sigact.sa_sigaction = SG_gateway_term;
+      
+      // use sa_sigaction, not sa_handler
+      sigact.sa_flags = SA_SIGINFO;
+      
+      // handle the usual terminal cases 
+      sigaction( SIGQUIT, &sigact, NULL );
+      sigaction( SIGTERM, &sigact, NULL );
+      sigaction( SIGINT, &sigact, NULL );
+   }
    
    SG_debug("%s", "Entering main loop\n");
    

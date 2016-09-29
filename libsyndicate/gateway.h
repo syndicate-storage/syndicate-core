@@ -106,6 +106,7 @@ struct SG_gateway {
    int num_iowqs;                       // number of I/O work queues
    
    volatile bool running;               // set to true once brought up
+   volatile bool use_signal_handlers;   // set to true to use signal handlers
    
    sem_t config_sem;                    // for starting volume/cert reloads
    sem_t config_finished_sem;           // for unblocking reload-waiters
@@ -199,6 +200,7 @@ int SG_gateway_signal_main( struct SG_gateway* gateway );
 int SG_gateway_shutdown( struct SG_gateway* gateway );
 int SG_gateway_start_reload( struct SG_gateway* gateway );
 int SG_gateway_wait_reload( struct SG_gateway* gateway, int* reload_rc );
+int SG_gateway_use_signal_handlers( struct SG_gateway* gateway, bool val );
 
 // programming a more specific gateway
 void SG_impl_setup( struct SG_gateway* gateway, int (*impl_setup)( struct SG_gateway*, void** ) );
