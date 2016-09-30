@@ -76,16 +76,17 @@ if [ -n "$(echo "$VOLUME_JSON" | grep "$RANDOM_VOLUME_NAME")" ]; then
    test_fail "Failed to actually delete volume"
 fi
 
-if [ "$(ls -l "$CONFIG_DIR/volumes/" | wc -l)" != "1" ]; then 
-   test_fail "volume config dir $CONFIG_DIR/volumes not empty"
+# we expect the $VOLUME_ID.bundle.version to still be around 
+if [ "$(ls -l "$CONFIG_DIR/volumes/" | wc -l)" != "2" ]; then 
+   test_fail "volume config dir $CONFIG_DIR/volumes has the wrong number of files"
 fi
 
 # should fail--need the key
 $SYNDICATE_TOOL -c "$CONFIG_PATH" delete_volume "$RANDOM_VOLUME_NAME"
 RC=$?
 
-if [ $RC -eq 0 ]; then 
-   test_fail "Delete should fail when we don't have the key"
+if [ $RC -ne 0 ]; then 
+   test_fail "Delete should succeed even when we don't have the key"
 fi
 
 # try again, with keys
