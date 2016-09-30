@@ -1710,6 +1710,12 @@ class Volume( StubObject ):
          extras = {
             "volume_name": lib.volume_name
          }
+
+         # it's okay if we don't have the cert, but we should try anyway 
+         existing_volume_cert = load_volume_cert( config, lib.volume_name )
+         if existing_volume_cert is not None:
+             extras['volume_id'] = existing_volume_cert.volume_id
+
          return args, kw, extras
 
 
@@ -1719,7 +1725,6 @@ class Volume( StubObject ):
          raise Exception("Missing volume name")
       
       volume_name = lib.volume_name
-      
       existing_volume_cert = load_volume_cert( config, volume_name )
       if existing_volume_cert is None:
           
@@ -1916,15 +1921,24 @@ class Volume( StubObject ):
             if not rc:
                raise Exception("Failed to store volume certificate for '%s'" % extras['volume_name'])
          
-         # delete public key?
+         # delete public key and associated versioning state?
          if method_name == "delete_volume":
             
             volume_name = extras.get("volume_name", None )
-            if volume_name == None:
-               log.error("Could not determine name of Volume.  You will need to manaully delete its public key from your Syndicate key directory.")
+            if volume_name is None:
+               log.error("Could not determine name of Volume.  You will need to manaully delete its public key from your Syndicate volume key directory.")
             
             else:
                remove_volume_cert( config, volume_name )
+
+            volume_id = extras.get("volume_id", None)
+            if volume_id is None:
+                log.error("Could not determine ID of Volume.  You will need to manually delete its cert bundle version state in your Syndicate volume key directory.")
+            else:
+                cert_dir = conf.object_file_path( config, "volume", "" )
+                bundle_path = os.path.join(cert_dir, "%s.bundle.version" % volume_id)
+                if os.path.exists(bundle_path):
+                    os.unlink(bundle_path)
               
          if extras.has_key('volume_cert'):
              volume_cert = extras['volume_cert']
@@ -1937,7 +1951,19 @@ class Volume( StubObject ):
                      log.warn("   " + "\n   ".join(sorted(failed)))
                      log.warn("If they are running, you can try reloading them manually with the `reload_gateway` directive.")
           
-            
+      else:
+          # error.  if we were creating, remove the volume cert bundle state
+          if method_name == "create_volume":
+              
+              volume_id = extras.get("volume_id", None)
+              if volume_id is None:
+                  log.error("Could not determine ID of Volume.  You will need to manually delete its cert bundle version state in your Syndicate volume key directory.")
+              else:
+                  cert_dir = conf.object_file_path( config, "volume", "" )
+                  bundle_path = os.path.join(cert_dir, "%s.bundle.version" % volume_id)
+                  if os.path.exists(bundle_path):
+                      os.unlink(bundle_path)
+
 
 class Gateway( StubObject ):
    
@@ -2637,6 +2663,7 @@ class Gateway( StubObject ):
                         log.warn( "Some gateways failed to reload.  Either they are not running, or we could not contact them:" )
                         log.warn( "   " + "\n   ".join(sorted(failed)) )
                         log.warn( "If they are running, you can reload them manually with the `reload_gateway` directive." )
+
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
