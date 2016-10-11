@@ -546,7 +546,6 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
       SG_safe_free( rctx );
       md_entry_free( &inode_data );
       
-      SG_error("ms_client_update('%s', size=%jd) rc = %d\n", fs_path, new_size, rc );
       return rc;
    }
    
@@ -576,18 +575,35 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
    inode_data.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
    inode_data.xattr_hash = xattr_hash;
    
+   SG_debug("'%s' (%" PRIX64 ") version %" PRId64 " --> %" PRId64 ", write_nonce %" PRId64 " --> %" PRId64 "\n", 
+            fs_path, inode_data.file_id, inode_data.version - 1, inode_data.version, inode_data.write_nonce - 1, inode_data.write_nonce);
+
    // update size and version remotely
    rc = ms_client_update( ms, &inode_data_out, &inode_data );
-   
+   if( rc != 0 ) {
+      SG_error("ms_client_update('%s', %jd) rc = %d\n", fs_path, new_size, rc );
+      
+      UG_vacuum_context_free( vctx );
+      UG_replica_context_free( rctx );
+      SG_safe_free( rctx );
+      md_entry_free( &inode_data );
+
+      return rc;
+   }
+
    inode_data.xattr_hash = NULL;
    md_entry_free( &inode_data );
 
    // TODO: give this back to the caller
+   // UG_inode_set_file_version( inode, inode_data_out.version );
+   UG_inode_set_write_nonce( inode, inode_data_out.write_nonce );
+   // UG_inode_set_size( inode, new_size );
+
    md_entry_free( &inode_data_out );
    
    // truncate locally, and apply MS-hosted changes
    UG_inode_preserve_old_manifest_modtime( inode ); 
-   UG_inode_truncate( gateway, inode, new_size, inode_data.version, inode_data.write_nonce, &new_manifest_modtime );
+   UG_inode_truncate( gateway, inode, new_size, inode_data_out.version, inode_data_out.write_nonce, &new_manifest_modtime );
    old_manifest_modtime = UG_inode_old_manifest_modtime( inode );
   
    UG_vacuum_context_set_manifest_modtime( vctx, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
