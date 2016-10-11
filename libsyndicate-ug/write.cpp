@@ -39,6 +39,7 @@ int UG_write_nonce_update( struct UG_inode* inode ) {
    int64_t write_nonce = UG_inode_write_nonce( inode );
    UG_inode_set_write_nonce( inode, write_nonce + 1 );
    
+   SG_debug("Set %" PRIX64 " write_nonce %" PRId64 " --> %" PRId64 "\n", UG_inode_file_id(inode), write_nonce-1, write_nonce );
    return 0;
 }
 
