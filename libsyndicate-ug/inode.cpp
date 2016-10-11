@@ -1560,6 +1560,7 @@ int UG_inode_truncate_find_removed( struct SG_gateway* gateway, struct UG_inode*
 // NOTE: if new_version is 0, the version will *not* be changed
 int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, int64_t new_version, int64_t write_nonce, struct timespec* new_manifest_timestamp ) {
 
+   int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
 
@@ -1599,17 +1600,20 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
    if( new_version != 0 ) {
 
       // next version
-      SG_manifest_set_file_version( UG_inode_manifest( inode ), new_version );
+      UG_inode_set_file_version( inode, new_version );
 
       // reversion only cached data
-      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
+      rc = md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
+      if( rc != 0 ) {
+         SG_error("md_cache_reversion_file(%" PRIX64 " %" PRId64 " --> %" PRId64 ") rc = %d\n", UG_inode_file_id(inode), old_version, new_version, rc );
+      }
    }
 
    // drop extra manifest blocks
    SG_manifest_truncate( UG_inode_manifest( inode ), (new_size / block_size) );
 
    // set new size and modtime
-   SG_manifest_set_size( UG_inode_manifest( inode ), new_size );
+   UG_inode_set_size( inode, new_size );
 
    if( new_manifest_timestamp != NULL ) {
        SG_manifest_set_modtime( UG_inode_manifest( inode ), new_manifest_timestamp->tv_sec, new_manifest_timestamp->tv_nsec );
