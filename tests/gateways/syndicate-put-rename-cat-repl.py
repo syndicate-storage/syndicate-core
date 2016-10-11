@@ -102,6 +102,7 @@ if __name__ == "__main__":
         else:
             output_path = output_path_newdir
 
+        # try going back and forth a few times
         repl_cmd += "rename %s %s\n" % (input_path, output_path)
        
     for i in xrange(0, NUM_FILES):
