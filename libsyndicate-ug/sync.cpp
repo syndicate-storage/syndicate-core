@@ -127,7 +127,7 @@ int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* in
          break;
       }
    }
-   
+
    return worst_rc;
 }
 
