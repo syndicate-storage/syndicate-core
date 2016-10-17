@@ -20,11 +20,14 @@
 #include "fs.h"
 #include "vacuumer.h"
 
-#define UG_DRIVER_NUM_ROLES  3
+#define UG_DRIVER_NUM_ROLES  5
+#define UG_DRIVER_NUM_INSTANCES 5
 char const* UG_DRIVER_ROLES[ UG_DRIVER_NUM_ROLES ] = {
    "cdn",
    "serialize",
-   "deserialize"
+   "deserialize",
+   "get_chunk",
+   "put_chunk"
 };
 
 // global UG state
@@ -415,7 +418,7 @@ struct UG_state* UG_init( int argc, char** argv, bool client ) {
    md_opts_default( overrides );
    md_opts_set_client( overrides, client );
    md_opts_set_gateway_type( overrides, SYNDICATE_UG );
-   md_opts_set_driver_config( overrides, UG_DEFAULT_DRIVER_EXEC_STR, UG_DRIVER_ROLES, UG_DRIVER_NUM_ROLES );
+   md_opts_set_driver_config( overrides, UG_DEFAULT_DRIVER_EXEC_STR, UG_DRIVER_ROLES, UG_DRIVER_NUM_INSTANCES, UG_DRIVER_NUM_ROLES );
    
    state = UG_init_ex( argc, argv, overrides, NULL );
 
