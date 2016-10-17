@@ -98,9 +98,10 @@ void md_opts_set_foreground( struct md_opts* opts, bool foreground ) {
 }
 
 // set driver options 
-void md_opts_set_driver_config( struct md_opts* opts, char const* driver_exec_str, char const** driver_roles, size_t num_driver_roles ) {
+void md_opts_set_driver_config( struct md_opts* opts, char const* driver_exec_str, char const** driver_roles, int num_instances, size_t num_driver_roles ) {
    opts->driver_exec_str = driver_exec_str;
    opts->driver_roles = driver_roles;
+   opts->num_instances = num_instances;
    opts->num_driver_roles = num_driver_roles;
 }
 
