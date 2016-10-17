@@ -664,6 +664,9 @@ int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_da
 int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_chunk* serialized_data ) {
 
    int rc = 0;
+   struct SG_IO_hints io_hints;
+   off_t old_chunk_size = 0;
+   struct SG_chunk* block_buf = NULL;
 
    // sanity check: must be in RAM 
    if( !UG_dirty_block_in_RAM( block ) ) {
@@ -673,8 +676,23 @@ int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data
 
    memset( serialized_data, 0, sizeof(struct SG_chunk) );
 
+   // it's possible that the block given actually has a different logical length 
+   // (i.e. the given block could be at the end of the file, and contain zero-padding).
+   SG_request_data_get_IO_hints( reqdat, &io_hints );
+   block_buf = UG_dirty_block_buf( block );
+
+   old_chunk_size = block_buf->len;
+   if( io_hints.block_size > 0 ) {
+       block_buf->len = io_hints.block_size;
+   }
+   
    // serialize the block
-   rc = SG_gateway_impl_serialize( gateway, reqdat, UG_dirty_block_buf( block ), serialized_data );
+   rc = SG_gateway_impl_serialize( gateway, reqdat, block_buf, serialized_data );
+   
+   // revert 
+   if( io_hints.block_size > 0 ) {
+      block_buf->len = old_chunk_size;
+   }
 
    if( rc != 0 && rc != -ENOSYS ) {
 
