@@ -704,7 +704,7 @@ static void SG_client_get_block_async_cleanup( void* cls ) {
 }
 
 
-// begin downloading a block
+// begin downloading a block via he given download loop.
 // NOTE: reqdat must be a block request
 // return 0 on success, and set up *dlctx to refer to the downloading context
 // return -ENOMEM if OOM
@@ -714,11 +714,8 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
 
    int rc = 0;
    char* block_url = NULL;
-
    struct ms_client* ms = SG_gateway_ms( gateway );
-
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
-
    struct SG_request_data* reqdat_dup = NULL;
 
    // sanity check
@@ -751,7 +748,7 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
       return rc;
    }
 
-   // GOGOO!
+   // GO GO GO!
    rc = SG_client_download_async_start( gateway, dlloop, dlctx, reqdat->block_id, block_url, block_size * SG_MAX_BLOCK_LEN_MULTIPLIER, reqdat_dup, SG_client_get_block_async_cleanup );
    if( rc != 0 ) {
 
@@ -1010,7 +1007,6 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
       if( rc != 0 ) {
          SG_error("SG_client_block_verify(%" PRIu64 ") rc = %d\n", block_id, rc );
          return rc;
-
       }
    }
    else {
@@ -1064,6 +1060,8 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
    char* block_buf = NULL;
    off_t block_len = 0;
    uint64_t block_data_offset = 0;
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   uint64_t blocksize = ms_client_get_volume_blocksize( ms );
 
    struct SG_request_data* reqdat = NULL;
    struct SG_chunk block_chunk;
