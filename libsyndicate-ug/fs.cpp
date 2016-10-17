@@ -28,6 +28,7 @@
 // only set fields in dest that can be filled in from src
 // return 0 on success
 // return -ENOMEM on OOM 
+// return -EINVAL on invalid inode type
 // NOTE: src must be read-locked
 static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_entry* src, uint64_t parent_id, struct SG_gateway* gateway ) {
    
@@ -123,6 +124,7 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
    struct fskit_entry* parent = fskit_route_metadata_get_parent( route_metadata );
    char* name = fskit_route_metadata_get_name( route_metadata );
+   uint64_t old_size = 0;
 
    if( caller_inode_data == NULL ) {
 
@@ -150,7 +152,15 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
       UG_inode_fskit_common_init( fent, caller_inode_data );
    }
 
+   old_size = inode_data_ptr->size;
+   if( inode_data_ptr->type == MD_ENTRY_DIR ) {
+      // directories are *always* 4096 bytes
+      inode_data_ptr->size = 4096;
+   }
+
    rc = UG_inode_publish( gateway, fent, inode_data_ptr, ret_inode_data );
+
+   inode_data_ptr->size = old_size;
 
    if( inode_data_ptr == &inode_data ) {
        md_entry_free( &inode_data );
@@ -594,10 +604,7 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
    inode_data.xattr_hash = NULL;
    md_entry_free( &inode_data );
 
-   // TODO: give this back to the caller
-   // UG_inode_set_file_version( inode, inode_data_out.version );
    UG_inode_set_write_nonce( inode, inode_data_out.write_nonce );
-   // UG_inode_set_size( inode, new_size );
 
    md_entry_free( &inode_data_out );
    
