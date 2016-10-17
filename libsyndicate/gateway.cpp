@@ -59,6 +59,12 @@ int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec
    return 0;
 }
 
+// set the block size
+int SG_IO_hints_set_block_size( struct SG_IO_hints* io_hints, int64_t block_size ) {
+   io_hints->block_size = block_size;
+   return 0;
+}
+
 // get a reference to the block vector
 // NOTE: caller must not modify
 uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* num_blocks ) {
@@ -641,17 +647,6 @@ static int SG_gateway_driver_init_internal( struct ms_client* ms, struct md_synd
 }
 
 
-// initialize a custom driver for the specific type of gateway
-// if this fails due to there being no driver for this gateway, a dummy driver will be used instead
-// return 0 on success, and set *_ret to a newly-allocated driver
-// return -ENOENT if there is no driver for this gateway
-// return -ENOMEM on OOM
-// return -errno on failure to initialize the driver
-int SG_gateway_driver_init( struct SG_gateway* gateway, struct SG_driver* driver ) {
-   return SG_gateway_driver_init_internal( SG_gateway_ms( gateway ), SG_gateway_conf( gateway ), driver, gateway->num_iowqs );
-}
-
-
 // get driver data for this gateway 
 // return 0 on success, and populate driver_data with the raw text of the given field
 // return -ENONET if the data requested is not available 
@@ -988,7 +983,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    // load driver 
    if( !opts->ignore_driver ) {
       
-      rc = SG_gateway_driver_init_internal( ms, conf, driver, 1 );
+      rc = SG_gateway_driver_init_internal( ms, conf, driver, opts->num_instances );
       if( rc != 0 && rc != -ENOENT ) {
          
          SG_error("SG_gateway_driver_init_internal rc = %d\n", rc );
@@ -1229,7 +1224,7 @@ int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc
    md_opts_set_client( &opts, md_opts_get_client( overrides ) );
    md_opts_set_gateway_type( &opts, md_opts_get_gateway_type( overrides ) );
    md_opts_set_ignore_driver( &opts, md_opts_get_ignore_driver( overrides ) );
-   md_opts_set_driver_config( &opts, overrides->driver_exec_str, overrides->driver_roles, overrides->num_driver_roles );
+   md_opts_set_driver_config( &opts, overrides->driver_exec_str, overrides->driver_roles, overrides->num_instances, overrides->num_driver_roles );
    
    // initialize the gateway 
    rc = SG_gateway_init_opts( gateway, &opts );

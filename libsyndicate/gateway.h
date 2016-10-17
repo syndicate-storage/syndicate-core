@@ -35,6 +35,7 @@ struct SG_IO_hints {
    uint64_t len;            // logical length of the read/write
    uint64_t* block_vec;     // which blocks are affected
    int num_blocks;
+   off_t block_size;        // if positive, this is the logical size of the block (i.e. useful for when the block is at the EOF and partially-filled)
 };
 
 // values for SG_IO_hints.io_type 
@@ -248,8 +249,9 @@ void SG_request_data_free( struct SG_request_data* reqdat );
 int SG_IO_hints_init( struct SG_IO_hints* io_hints, int io_type, uint64_t offset, uint64_t len );
 int SG_IO_hints_set_context( struct SG_IO_hints* io_hints, int context );
 int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec, int num_blocks );
-int SG_request_data_get_IO_hints( struct SG_request_data* gateway, struct SG_IO_hints* hints );
-int SG_request_data_set_IO_hints( struct SG_request_data* gateway, struct SG_IO_hints* hints );
+int SG_IO_hints_set_block_size( struct SG_IO_hints* io_hints, int64_t block_size );
+int SG_request_data_get_IO_hints( struct SG_request_data* reqdat, struct SG_IO_hints* hints );
+int SG_request_data_set_IO_hints( struct SG_request_data* reqdat, struct SG_IO_hints* hints );
 uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* len );
 
 // getters for gateway fields 
@@ -275,9 +277,6 @@ int SG_chunk_dup( struct SG_chunk* dest, struct SG_chunk* src );
 int SG_chunk_copy( struct SG_chunk* dest, struct SG_chunk* src );
 int SG_chunk_copy_or_dup( struct SG_chunk* dest, struct SG_chunk* src );
 void SG_chunk_free( struct SG_chunk* chunk );
-
-// driver methods 
-int SG_gateway_driver_init( struct SG_gateway* gateway, struct SG_driver* driver );
 
 // driver accessors
 int SG_gateway_driver_get_config_text( struct SG_gateway* gateway, struct SG_chunk* config_data );
