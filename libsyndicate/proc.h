@@ -77,6 +77,7 @@ int SG_proc_group_unlock( struct SG_proc_group* group );
 // process communication
 int SG_proc_read_int64( FILE* f, int64_t* result );
 int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk );
+int SG_proc_read_chunk_bound( FILE* f, struct SG_chunk* chunk, int64_t max_len );
 int SG_proc_write_int64( int fd, int64_t value );
 int SG_proc_write_chunk( int fd, struct SG_chunk* chunk );
 int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, SG_messages::DriverRequest* dreq );
