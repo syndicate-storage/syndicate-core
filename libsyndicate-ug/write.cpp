@@ -555,7 +555,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
    uint64_t size = fskit_entry_get_size( UG_inode_fskit_entry(inode) );
    struct SG_IO_hints io_hints;
    uint64_t last_block_id = (offset + len) / block_size;
-   bool last_block_fragment = ((offset + len) % block_size);
+   int64_t last_block_fragment = (MAX(UG_inode_size(inode), (offset + len)) % block_size);
 
    SG_debug("Merge %zu blocks to %" PRIX64 "\n", new_dirty_blocks->size(), UG_inode_file_id( inode ) );
 
@@ -634,6 +634,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
       io_hints.block_size = -1;
       if( block_id == last_block_id && last_block_fragment != 0 && offset + len > UG_inode_size( inode ) ) {
          // yup.  don't serialize the zero-padding at the end.
+         SG_debug("Last block %" PRIu64 " is really %" PRId64 " bytes\n", last_block_id, last_block_fragment);
          io_hints.block_size = last_block_fragment;
       }
       
@@ -736,9 +737,6 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 
    fskit_entry_unlock(fent);
   
-   // ID of the last block written 
-   uint64_t last_block_id = (offset + buf_len) / block_size;
-   
    // handle supports write?
    if( (fh->flags & (O_WRONLY | O_RDWR)) == 0 ) {
       return -EBADF;
