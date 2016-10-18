@@ -28,13 +28,21 @@
 // return 0 on success 
 // return -ENOMEM on OOM 
 // return -errno on failure to write to disk
+// inode->fent must be write-locked
 int UG_sync_blocks_flush_async( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
    
    int rc = 0;
    struct SG_IO_hints io_hints;
    uint64_t file_id = UG_inode_file_id( inode );
    int64_t file_version = UG_inode_file_version( inode );
+   uint64_t size = UG_inode_size( inode );
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   uint64_t block_size = ms_client_get_volume_blocksize( ms );
+
    UG_dirty_block_map_t* dirty_blocks = UG_inode_dirty_blocks( inode );
+
+   uint64_t last_block_id = size / block_size;
+   int64_t last_block_fragment = size % block_size;
 
    SG_IO_hints_init( &io_hints, SG_IO_SYNC, 0, 0 ); 
    
@@ -59,6 +67,15 @@ int UG_sync_blocks_flush_async( struct SG_gateway* gateway, char const* fs_path,
          // already flushed  
          SG_debug("Skip already-flushed block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "]\n", file_id, file_version, UG_dirty_block_id( &itr->second ), UG_dirty_block_version( &itr->second ) ); 
          continue;
+      }
+
+      io_hints.block_size = -1;
+
+      // is this the last block, and is it a fragment?
+      if( UG_dirty_block_id( &itr->second ) == last_block_id && last_block_fragment != 0 ) {
+         // yup 
+         SG_debug("Real block size of block %" PRIu64 " is %" PRId64 "\n", UG_dirty_block_id( &itr->second ), last_block_fragment );
+         io_hints.block_size = last_block_fragment;
       }
       
       // start flushing
@@ -136,6 +153,7 @@ int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* in
 // (this is the default behavior of flushing a dirty block)
 // return 0 on success
 // loop forever until successful; doing exponential back-off until something succeeds
+// inode->fent must be write-locked
 int UG_sync_blocks_flush( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
 
    int rc = 0;
