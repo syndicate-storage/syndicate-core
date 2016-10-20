@@ -126,6 +126,9 @@ static int UG_inode_init_common( struct UG_inode* inode, char const* name, int t
          return -ENOMEM;
       }
    }
+   else {
+      UG_inode_set_size( inode, 4096 );
+   }
 
    return 0;
 }
@@ -153,7 +156,12 @@ int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry*
       return rc;
    }
 
-   SG_manifest_set_size( &inode->manifest, fskit_entry_get_size( entry ) );
+   if( fskit_entry_get_type(entry) == FSKIT_ENTRY_TYPE_FILE ) {
+       SG_manifest_set_size( &inode->manifest, fskit_entry_get_size( entry ) );
+   }
+   else {
+       SG_manifest_set_size( &inode->manifest, 4096 );
+   }
 
    if( fskit_entry_get_type( entry ) == FSKIT_ENTRY_TYPE_FILE ) {
 
