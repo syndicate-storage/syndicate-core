@@ -1241,7 +1241,7 @@ static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char co
          break;
       }
 
-      SG_debug("Reload: '%s' (%" PRIu64 ")\n", cur_path, inode_datum->file_id );
+      SG_debug("Reload: '%s' (%" PRIu64 ", size=%" PRIu64 ")\n", cur_path, inode_datum->file_id, (uint64_t)fskit_entry_get_size(cur) );
       rc = UG_consistency_inode_reload( gateway, cur_path, parent, cur, cur_name, inode_datum );
       SG_safe_free( cur_name );
 
