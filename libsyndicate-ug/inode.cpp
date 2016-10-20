@@ -2020,7 +2020,11 @@ void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent )
 
 // NOTE: requires inode->entry to be write-locked
 void UG_inode_set_size( struct UG_inode* inode, uint64_t new_size ) {
-   fskit_entry_set_size( inode->entry, new_size );
+   // the entry can sometimes be NULL, such as when we're initializing the root inode 
+   if( inode->entry != NULL ) {
+       fskit_entry_set_size( inode->entry, new_size );
+   }
+
    SG_manifest_set_size( &inode->manifest, new_size );
 }
 
