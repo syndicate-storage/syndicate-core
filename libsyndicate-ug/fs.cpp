@@ -125,6 +125,7 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
    struct fskit_entry* parent = fskit_route_metadata_get_parent( route_metadata );
    char* name = fskit_route_metadata_get_name( route_metadata );
    uint64_t old_size = 0;
+   bool is_mkdir = false;
 
    if( caller_inode_data == NULL ) {
 
@@ -156,6 +157,7 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
    if( inode_data_ptr->type == MD_ENTRY_DIR ) {
       // directories are *always* 4096 bytes
       inode_data_ptr->size = 4096;
+      is_mkdir = true;
    }
 
    rc = UG_inode_publish( gateway, fent, inode_data_ptr, ret_inode_data );
@@ -168,6 +170,14 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
 
    if( rc != 0 ) {
       SG_error("UG_inode_publish rc = %d\n", rc );
+   }
+   else {
+      // if this is a directory, preserve the size
+      if( is_mkdir ) {
+          SG_debug("mkdir rc = %d\n", rc);
+          UG_inode_set_size( *ret_inode_data, 4096 );
+          fskit_entry_set_size( fent, 4096 );
+      }
    }
 
    return rc;
