@@ -224,7 +224,7 @@ def reload_volume( config, volume_name, gateway_names=None ):
 
     volume_id = object_stub.load_volume_id( config, volume_name )
     if volume_id is None:
-        raise MissingCertException("Cannot determine ID of volume '%s'" % config['volume_name'] )
+        raise MissingCertException("Cannot determine ID of volume '%s'" % volume_name )
 
     failed = []
     statuses = reloader.broadcast_reload( config, user_id, volume_id, gateway_names=gateway_names )
@@ -705,7 +705,6 @@ def main( argv ):
            print >> sys.stderr, 'Failed to reload certs'
            sys.exit(1)
 
-
    elif method_name == "reload_driver":
        if len(args) != 2:
            print >> sys.stderr, "Usage: %s reload_driver VOLUME_NAME GATEWAY_NAME" % sys.argv[0]
@@ -717,6 +716,39 @@ def main( argv ):
        except Exception, e:
            log.exception(e)
            print >> sys.stderr, "Failed to reload driver"
+           sys.exit(1)
+
+   elif method_name == "reload_volume_cert":
+       if len(args) != 1:
+           print >> sys.stderr, "Usage: %s reload_volume_cert VOLUME_NAME_OR_ID" % sys.argv[0]
+           sys.exit(1)
+        
+       volume_cert = None
+       try:
+           volume_cert = certs.get_volume_cert( CONFIG, args[0], check_cache=False, download=True )
+           assert volume_cert is not None, "Failed to get volume cert for %s" % args[0]
+           object_stub.store_volume_cert( CONFIG, volume_cert )
+           sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to get volume cert"
+           sys.exit(1)
+
+
+   elif method_name == "reload_user_cert":
+       if len(args) != 1:
+           print >> sys.stderr, "Usage: %s reload_user_cert USER_NAME_OR_ID" % sys.argv[0]
+           sys.exit(1)
+
+       user_cert = None
+       try:
+           user_cert = certs.get_user_cert( CONFIG, args[0], check_cache=False )
+           assert user_cert is not None, "Failed to get user cert for %s" % args[0]
+           object_stub.store_user_cert( CONFIG, user_cert )
+           sys.exit(0)
+       except Exception, e:
+           log.exception(e)
+           print >> sys.stderr, "Failed to get user cert"
            sys.exit(1)
 
    elif method_name == "export_volume":
@@ -859,7 +891,7 @@ def main( argv ):
    elif method_name == "reload_volume":
        # directly reload all volume writers/coordinators 
        if len(args) < 1:
-           print >> sys.stderr, "Usage: %s reload_volume [gateway_name gateway_name...]" % sys.argv[0]
+           print >> sys.stderr, "Usage: %s reload_volume VOLUME_NAME [gateway_name gateway_name...]" % sys.argv[0]
            sys.exit(1)
 
        gateway_names = None 
