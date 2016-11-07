@@ -20,11 +20,99 @@
 
 #include <endian.h>
 
+// borrowed from https://github.com/stevengj/nlopt/blob/master/util/qsort_r.c
+// the algorithms swap() and nlopt_qsort_r() are subject to the following copyright notice:
+
+/* copyright 2007-2014 MIT
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
+*/
+
+/* swap size bytes between a_ and b_ */
+static void swap(void *a_, void *b_, size_t size)
+{
+     if (a_ == b_) return;
+     {
+          size_t i, nlong = size / sizeof(long);
+          long *a = (long *) a_, *b = (long *) b_;
+          for (i = 0; i < nlong; ++i) {
+               long c = a[i];
+               a[i] = b[i];
+               b[i] = c;
+          }
+	  a_ = (void*) (a + nlong);
+	  b_ = (void*) (b + nlong);
+     }
+     {
+          size_t i;
+          char *a = (char *) a_, *b = (char *) b_;
+          size = size % sizeof(long);
+          for (i = 0; i < size; ++i) {
+               char c = a[i];
+               a[i] = b[i];
+               b[i] = c;
+          }
+     }
+}
+
+void nlopt_qsort_r(void *base_, size_t nmemb, size_t size, void *thunk,
+		   int (*compar)(void *, const void *, const void *))
+{
+     char *base = (char *) base_;
+     if (nmemb < 10) { /* use O(nmemb^2) algorithm for small enough nmemb */
+	  size_t i, j;
+	  for (i = 0; i+1 < nmemb; ++i)
+	       for (j = i+1; j < nmemb; ++j)
+		    if (compar(thunk, base+i*size, base+j*size) > 0)
+			 swap(base+i*size, base+j*size, size);
+     }
+     else {
+	  size_t i, pivot, npart;
+	  /* pick median of first/middle/last elements as pivot */
+	  {
+	       const char *a = base, *b = base + (nmemb/2)*size, 
+		    *c = base + (nmemb-1)*size;
+	       pivot = compar(thunk,a,b) < 0
+		    ? (compar(thunk,b,c) < 0 ? nmemb/2 :
+		       (compar(thunk,a,c) < 0 ? nmemb-1 : 0))
+		    : (compar(thunk,a,c) < 0 ? 0 :
+		       (compar(thunk,b,c) < 0 ? nmemb-1 : nmemb/2));
+	  }
+	  /* partition array */
+	  swap(base + pivot*size, base + (nmemb-1) * size, size);
+	  pivot = (nmemb - 1) * size;
+	  for (i = npart = 0; i < nmemb-1; ++i)
+	       if (compar(thunk, base+i*size, base+pivot) <= 0)
+		    swap(base+i*size, base+(npart++)*size, size);
+	  swap(base+npart*size, base+pivot, size);
+	  /* recursive sort of two partitions */
+	  nlopt_qsort_r(base, npart, size, thunk, compar);
+	  npart++; /* don't need to sort pivot */
+	  nlopt_qsort_r(base+npart*size, nmemb-npart, size, thunk, compar);
+     }
+}
+
 // sort comparator 
 // xattr_i1 and xattr_i2 are pointers to integers 
 // cls is the list of xattr names
 // the effect of this method is to order the integer array by xattr name.
-static int ms_client_xattr_compar( const void* xattr_i1, const void* xattr_i2, void* cls ) {
+static int ms_client_xattr_compar( void* cls, const void* xattr_i1, const void* xattr_i2 ) {
    
    char** xattr_names = (char**)cls;
    int* i1 = (int*)xattr_i1;
@@ -61,9 +149,9 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
    if( xattr_names != NULL && xattr_values != NULL && xattr_lengths != NULL ) {
        
        // count xattrs
-       for( i = 0; xattr_names[i] != NULL && xattr_values[i] != NULL; i++ );
+       for( num_xattrs = 0; xattr_names[num_xattrs] != NULL && xattr_values[num_xattrs] != NULL; num_xattrs++ );
         
-       if( xattr_names[i] != NULL || xattr_values[i] != NULL ) {
+       if( xattr_names[num_xattrs] != NULL || xattr_values[num_xattrs] != NULL ) {
            return -EINVAL;
        }
        
@@ -77,7 +165,7 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
        }
         
        // sort order on xattrs--xattr_names[order[i]] is the ith xattr
-       qsort_r( order, num_xattrs, sizeof(int), ms_client_xattr_compar, xattr_names );
+       nlopt_qsort_r( order, num_xattrs, sizeof(int), xattr_names, ms_client_xattr_compar );
    }
    
    // hash metadata
