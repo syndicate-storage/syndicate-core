@@ -67,7 +67,7 @@ BUILD_PYTHON_LIBEXEC := $(BUILD_LIBEXEC_DIR)
 CPPFLAGS := -std=c++11 -Wall -g -fPIC -fstack-protector -fstack-protector-all -pthread
 CPP      := c++ $(CPPFLAGS)
 INC      := -I. -I$(BUILD_INCLUDEDIR) -I$(ROOT_DIR)
-DEFS     := -D_THREAD_SAFE -D__STDC_FORMAT_MACROS -D_DISTRO_$(DISTRO) $(EXTRA_DEFS)
+DEFS     := -D_THREAD_SAFE -D__STDC_FORMAT_MACROS -D_DISTRO_$(DISTRO) -D_GNU_SOURCE $(EXTRA_DEFS)
 LIBINC   := -L. -L$(BUILD_LIBDIR)
 
 # build setup
