@@ -32,6 +32,7 @@ static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyval
 // stacktrace for uncaught C++ exceptions
 void md_uncaught_exception_handler(void) {
 
+   /*
    SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows\n");
 
    void *trace_elems[32];
@@ -53,7 +54,8 @@ void md_uncaught_exception_handler(void) {
    }
 
    SG_safe_free( stack_syms );
-
+   */
+   SG_error("%s", "UNCAUGHT EXCEPTION!");
    exit(1);
 }
 
