@@ -2515,7 +2515,7 @@ class Gateway( StubObject ):
 
          volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
          if volume_owner_cert is None:
-             raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.user_id)
+             raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
 
          # generate a certificate bundle.
          volume_cert_bundle_str = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, volume_id=volume_id, new_gateway_cert=gateway_cert )
