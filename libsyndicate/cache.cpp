@@ -155,7 +155,7 @@ struct md_cache_entry_key_comp {
 
 
 void* md_cache_main_loop( void* arg );
-void md_cache_aio_write_completion( sigval_t sigval );
+void md_cache_aio_write_completion( union sigval sigval );
 
 // lock primitives for the pending buffer
 int md_cache_pending_rlock( struct md_syndicate_cache* cache ) {
@@ -1377,7 +1377,7 @@ static int md_cache_aio_write( struct md_syndicate_cache* cache, struct md_cache
 // handle a completed write operation
 // put error codes into future->aio_rc and future->write_rc
 // always succeeds
-void md_cache_aio_write_completion( sigval_t sigval ) {
+void md_cache_aio_write_completion( union sigval sigval ) {
    
    struct md_syndicate_cache_aio_write_args* wargs = (struct md_syndicate_cache_aio_write_args*)sigval.sival_ptr;
    
