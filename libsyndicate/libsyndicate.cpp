@@ -2474,6 +2474,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    }
 
    // check owner
+   /*
    if( cert != NULL ) {
         if( msent->owner() != cert->user_id ) {
 
@@ -2490,6 +2491,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
            rc = -EPERM;
        }
    }
+   */
 
    // if directory, check the MS's signature over the MS-maintained fields
    if( rc == 0 && msent->type() == MD_ENTRY_DIR ) {
