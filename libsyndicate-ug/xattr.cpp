@@ -17,6 +17,7 @@
 #include "consistency.h"
 #include "core.h"
 #include "xattr.h"
+#include "client.h"
 
 
 typedef ssize_t (*UG_xattr_get_handler_t)( struct fskit_core*, struct fskit_entry*, char const*, char*, size_t );
@@ -402,11 +403,11 @@ static ssize_t UG_xattr_get_write_ttl( struct fskit_core* core, struct fskit_ent
    return len;
 }
 
-
 // set the read ttl
 // return 0 on success
 // return -EEXIST if the caller specified XATTR_CREATE--this attribute is built-in and always exists
 // return -EINVAL if we couldn't parse the buffer
+// return -EREMOTEIO on failure to propagate to the MS
 // NOTE: fent must be write-locked
 static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags ) {
 
@@ -416,9 +417,13 @@ static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* f
    }
 
    // parse this
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( core );
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct UG_inode* inode = NULL;
    char* tmp = NULL;
    int32_t read_ttl = (int32_t)strtoll( buf, &tmp, 10 );
+   int64_t write_nonce = 0;
+   int rc = 0;
 
    if( tmp == buf || *tmp != '\0' ) {
       // invalid
@@ -428,8 +433,16 @@ static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* f
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
 
    UG_inode_set_max_read_freshness( inode, read_ttl );
+   write_nonce = UG_inode_write_nonce( inode );
+   write_nonce += 1;
 
-   return 0;
+   rc = UG_update_locked( ug, inode, write_nonce ); 
+   if( rc != 0 ) {
+      SG_error("Failed to set write ttl for %" PRIX64 "\n", UG_inode_file_id( inode ) );
+      rc = -EREMOTEIO;
+   }
+
+   return rc;
 }
 
 
@@ -437,6 +450,7 @@ static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* f
 // return 0 on success
 // return -EEXIST if the caller specified XATTR_CREAT--this attribute is built-in and always exists
 // return -EINVAL if we couldn't parse the buffer
+// return -EREMOTEIO on failure to propagate to the MS
 // NOTE: fent must be write-locked
 static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags ) {
 
@@ -446,9 +460,13 @@ static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* 
    }
 
    // parse this
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( core );
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct UG_inode* inode = NULL;
    char* tmp = NULL;
+   int64_t write_nonce = 0;
    int32_t write_ttl = (int32_t)strtoll( buf, &tmp, 10 );
+   int rc = 0;
 
    if( tmp == buf || *tmp != '\0' ) {
 
@@ -457,10 +475,17 @@ static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* 
    }
 
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
-
    UG_inode_set_max_write_freshness( inode, write_ttl );
 
-   return 0;
+   write_nonce = UG_inode_write_nonce( inode );
+   write_nonce += 1;
+
+   rc = UG_update_locked( ug, inode, write_nonce ); 
+   if( rc != 0 ) {
+      SG_error("Failed to set write ttl for %" PRIX64 "\n", UG_inode_file_id( inode ));
+      rc = -EREMOTEIO;
+   }
+   return rc;
 }
 
 

@@ -67,8 +67,7 @@ if __name__ == "__main__":
     testlib.update_gateway( config_dir, RG_gateway_name, "port=31112", "driver=%s" % RG_DRIVER )
 
     rg_proc, rg_out_path = testlib.start_gateway( config_dir, RG_PATH, testconf.SYNDICATE_ADMIN, volume_name, RG_gateway_name )
-    time.sleep(1)
-    if rg_proc.poll() is not None:
+    if not testlib.gateway_ping( 31112, 15 ):
         raise Exception("%s exited %s" % (RG_PATH, rg_proc.poll()))
 
     # should cause the RG to get updated that there's a new gateway 
@@ -83,7 +82,7 @@ if __name__ == "__main__":
 
     random_part = hex(random.randint(0, 2**32-1))[2:]
     output_path = "/put-%s" % random_part
-    exitcode, out = testlib.run( PUT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
+    exitcode, out = testlib.run( PUT_PATH, '-d3', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name, local_path, output_path )
 
     testlib.save_output( output_dir, "syndicate-put", out )
 
@@ -117,7 +116,7 @@ if __name__ == "__main__":
         range_data = range_fd.read()
         range_fd.close()
 
-        exitcode, out = testlib.run( WRITE_PATH, '-d2', '-f', '-c', os.path.join(config_dir, "syndicate.conf"),
+        exitcode, out = testlib.run( WRITE_PATH, '-d3', '-f', '-c', os.path.join(config_dir, "syndicate.conf"),
                                     '-u', testconf.SYNDICATE_ADMIN, '-v', volume_name, '-g', gateway_name,
                                     output_path, range_file_path, start, valgrind=True )
 

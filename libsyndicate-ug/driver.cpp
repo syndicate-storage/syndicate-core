@@ -331,3 +331,135 @@ UG_driver_chunk_serialize_finish:
    return rc;
 }
 
+
+// begin a get_chunk request.
+// pass back the process handle
+// return 0 on success, and set *proc_h
+// return -EINVAL if there is not a `get_proc` driver implementation
+// return -EIO on driver error
+// return -EAGAIN if there are no free workers
+int UG_driver_get_chunk_begin( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* RG_url, struct SG_proc** proc_h ) {
+
+   int rc = 0;
+   struct UG_state* core = (struct UG_state*)SG_gateway_cls( gateway );
+   struct SG_proc_group* group = NULL;
+   struct SG_proc* proc = NULL;
+   struct SG_driver* driver = NULL;
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   struct SG_chunk url_chunk;
+   SG_messages::DriverRequest driver_req;
+
+   SG_chunk_init( &url_chunk, (char*)RG_url, strlen(RG_url) );
+   
+   UG_state_rlock( core );
+   
+   // find a worker 
+   driver = UG_state_driver( core );
+   group = SG_driver_get_proc_group( driver, "get_chunk" );
+
+   if( group != NULL && SG_proc_group_size( group ) > 0 ) {
+      
+      // get a free worker 
+      proc = SG_proc_group_acquire( group );
+      if( proc == NULL ) {
+         
+         // no free workers
+         SG_error("%s", "No free 'write' workers\n" );
+
+         rc = -EAGAIN;
+         goto UG_driver_get_chunk_begin_finish;
+      }
+
+      // feed in the metadata for this block
+      rc = SG_proc_request_init( ms, reqdat, &driver_req );
+      if( rc != 0 ) {
+
+         SG_error("SG_proc_request_init rc = %d\n", rc );
+         rc = -EIO;
+         goto UG_driver_get_chunk_begin_finish;
+      }
+
+      // RG_url
+      rc = SG_proc_write_chunk( SG_proc_stdin( proc ), &url_chunk );
+      if( rc != 0 ) {
+
+         SG_error("SG_proc_write_chunk rc = %d\n", rc );
+         rc = -EIO;
+         goto UG_driver_get_chunk_begin_finish;
+      }
+
+      // driver request
+      rc = SG_proc_write_request( SG_proc_stdin( proc ), &driver_req );
+      if( rc != 0 ) {
+
+         SG_error("SG_proc_write_request rc = %d\n", rc );
+         rc = -EIO;
+         goto UG_driver_get_chunk_begin_finish;
+      }
+
+      // success!
+      *proc_h = proc;
+   }
+   else {
+      
+      // no such group of workers 
+      SG_error("%s", "No 'get_chunk' workers\n");
+      rc = -EINVAL;
+   }
+
+UG_driver_get_chunk_begin_finish:
+
+   UG_state_unlock( core );
+   return rc;
+}
+
+
+// finish fetching a chunk from an RG
+// return 0 on success and populate *chunk
+// return -EIO on failure to communicate with the driver
+// return -ENOENT if the worker had a problem
+// return -ENOMEM on OOM
+int UG_driver_get_chunk_end( struct SG_gateway* gateway, struct SG_proc* proc_h, struct SG_chunk* chunk ) {
+
+   int rc = 0;
+   int64_t worker_rc = 0;
+
+   // get error code 
+   rc = SG_proc_read_int64( SG_proc_stdout_f( proc_h ), &worker_rc );
+   if( rc < 0 ) {
+      
+      SG_error("SG_proc_read_int64('ERROR') rc = %d\n", rc );
+      rc = -EIO;
+      
+      goto UG_driver_get_chunk_end_finish;
+   }
+   
+   // bail if the gateway worker had a problem
+   if( worker_rc < 0 ) {
+     
+      SG_error("Request to worker %d failed, rc = %d\n", SG_proc_pid( proc_h ), (int)worker_rc );
+
+      if( worker_rc == -ENOENT ) { 
+          rc = -ENOENT;
+      }
+      else {
+          rc = -EIO;
+      }
+
+      goto UG_driver_get_chunk_end_finish;
+   }
+   
+   // get the (deserialized) block 
+   rc = SG_proc_read_chunk_bound( SG_proc_stdout_f( proc_h ), chunk, chunk->len );
+   if( rc < 0 ) {
+      
+      SG_error("SG_proc_read_chunk(%d) rc = %d\n", fileno( SG_proc_stdout_f(proc_h) ), rc );
+      
+      // OOM, EOF, or driver crash (rc is -ENOMEM, -ENODATA, or -EIO, respectively)
+      goto UG_driver_get_chunk_end_finish;
+   }
+
+UG_driver_get_chunk_end_finish:
+   return rc;
+}
+

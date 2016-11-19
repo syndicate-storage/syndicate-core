@@ -91,11 +91,18 @@ TransactionFailedError = backend.TransactionFailedError
 
 
 def clock_gettime():
+   now = time.time()
+   now_sec = int(now)
+   now_nsec = int((now - now_sec) * 1e9)
+   return (now_sec, now_nsec)
+
+   '''
    now = datetime.datetime.utcnow()
    nowtt = now.timetuple()
    now_sec = int(time.mktime( nowtt ))
    now_nsec = int(now.microsecond * 1e3)
    return (now_sec, now_nsec)
+   '''
 
 
 def get_time():

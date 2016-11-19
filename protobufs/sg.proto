@@ -14,6 +14,7 @@
    limitations under the License.
 */
 
+syntax = "proto2";
 package SG_messages;
 
 import "ms.proto";
@@ -89,6 +90,7 @@ message Request {
       REMOVEXATTR = 8;          // remove an xattr 
       RELOAD = 9;               // reload cert bundle; new versions in volume_version and cert_version
       REFRESH = 10;             // request that the remote coordinator refresh its version of the file
+      RENAME_HINT = 11;         // a file that this gateway is interested in was renamed (but this gateway is not the coordinator)
    }
 
    required uint64 volume_version = 1;    // volume configuration version
@@ -105,7 +107,7 @@ message Request {
    required string fs_path = 8;
 
    repeated ManifestBlock blocks = 9;    // for WRITE, indicates new block versions and hashes; for PUTCHUNKS, indicates the accompanying chunk information
-   optional string new_fs_path = 10;     // for RENAME, indicates the new path 
+   optional string new_fs_path = 10;     // for RENAME an RENAME_HINT, indicates the new path 
    optional uint64 new_size = 11;        // for WRITE/TRUNCATE, indicates the new size
    optional int64 new_manifest_mtime_sec = 12;    // for WRITE, indicates the new manifest modification time (seconds)
    optional int32 new_manifest_mtime_nsec = 13;   // for WRITE, indicates the new manifest modification time (nanoseconds)
@@ -160,6 +162,7 @@ message DriverRequest {
    enum RequestType {
       BLOCK = 1;
       MANIFEST = 2;
+      RENAME_HINT = 3;
    }
 
    enum IOType {
@@ -191,5 +194,6 @@ message DriverRequest {
    optional Manifest manifest = 17;      // for whole-file operations
    optional uint64 block_size = 18;      // block size for this volume
    repeated uint64 block_vec = 19;       // vector of block IDs affected by the (logical) write (for RG)
+   optional string new_path = 20;        // for rename hints, this is the new path 
 }
 

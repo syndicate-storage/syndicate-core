@@ -46,7 +46,94 @@ MSENTRY_TYPE_FILE = ms_pb2.ms_entry.MS_ENTRY_TYPE_FILE
 MSENTRY_TYPE_DIR = ms_pb2.ms_entry.MS_ENTRY_TYPE_DIR
 MSENTRY_TYPE_NONE = ms_pb2.ms_entry.MS_ENTRY_TYPE_NONE
 
-MSEntryFutures = collections.namedtuple( 'MSEntryFutures', ['base_future', 'shard_futures', "num_children_future", 'num_shards'] )
+class MSEntryFutures(object):
+    """
+    Aggregate future object for the base and shard entries
+    that make up an inode.
+
+    Behaves like a GAE future.
+    """
+    def __init__(self, base_future=None, shard_futures=None, num_children_future=None, num_shards=None):
+        self.base_future = base_future
+        self.shard_futures = shard_futures
+        self.num_children_future = num_children_future
+        self.num_shards = num_shards
+
+        assert num_shards is not None
+
+    def all_futures(self): 
+        all_futures = [None] * (len(self.shard_futures) + 2)
+        for i in xrange(0, len(self.shard_futures)):
+            all_futures[i] = self.shard_futures[i]
+
+        all_futures[len(all_futures)-2] = self.base_future
+        all_futures[len(all_futures)-1] = self.num_children_future
+
+        return all_futures
+
+    def get_result(self):
+        self.wait()
+        ent = self.base_future.get_result()
+        num_children_counter = None
+          
+        if ent is not None:
+            shards = filter( lambda x: x is not None, [x.get_result() for x in self.shard_futures] )
+             
+            ent.populate_from_shards( shards )
+            ent.populate_shard( self.num_shards, **ent.to_dict() )
+             
+            if ent.ftype == MSENTRY_TYPE_DIR:
+                num_children_counter = self.num_children_future.get_result()
+                
+            if num_children_counter is None:
+                ent.num_children = 0
+                
+            else:
+                ent.num_children = num_children_counter
+          
+        return ent
+
+    def done(self):
+        all_futures = self.all_futures()
+        for f in all_futures:
+            if f is not None:
+                if not f.done():
+                    return False
+
+        return True
+
+    def wait(self):
+        all_futures = self.all_futures()
+        storagetypes.wait_futures( all_futures )
+        
+    
+    def check_success(self):
+        all_futures = self.all_futures()
+        for f in all_futures:
+            if f is not None:
+                if not f.check_success():
+                    return False
+
+        return True
+
+    def get_exception(self):
+        all_futures = self.all_futures()
+        for f in all_futures:
+            if f is not None:
+                if f.get_exception() is not None:
+                    return f.get_exception()
+
+        return None
+
+    def get_traceback(self):
+        all_futures = self.all_futures()
+        for f in all_futures:
+            if f is not None:
+                if f.get_traceback() is not None:
+                    return f.get_traceback()
+
+        return None
+
 
 def is_readable( user_id, volume_owner_id, ent_owner_id, ent_mode ):
    return ent_owner_id == user_id or volume_owner_id == user_id or (ent_mode & 0044) != 0
@@ -175,6 +262,9 @@ class MSEntryShard(storagetypes.Object):
              sz = shard
          
          sz = MSEntryShard.size_max( sz, shard )
+
+      if sz is None:
+         return None
 
       return sz.size
    
@@ -1024,9 +1114,6 @@ class MSEntry( storagetypes.Object ):
    @classmethod
    def preprocess_attrs( cls, ent_attrs ):
       # do some preprocessing on the ent attributes, autogenerating them if need be
-      # if ent_attrs['ftype'] == MSENTRY_TYPE_DIR:
-      #   ent_attrs['write_nonce'] = cls.make_dir_write_nonce()
-         
       ent_attrs['nonce_ts'] = cls.make_nonce_ts()
       
    
@@ -1225,7 +1312,6 @@ class MSEntry( storagetypes.Object ):
          return new_capacity 
       
       # update parent write nonce as well, so clients discover it (i.e. only write a new shard)
-      # cls.__write_msentry( whole_parent, num_shards, write_nonce=random.randint( -2**63, 2**63 - 1 )  )
       cls.__write_msentry( whole_parent, num_shards )
       
       return new_capacity
@@ -1315,11 +1401,11 @@ class MSEntry( storagetypes.Object ):
             return (-errno.EEXIST, None)
          else:
             child_fut = MSEntry.Read( volume, child_id, futs_only=True )
-            futs.append( MSEntry.FlattenFuture( child_fut ) )
+            futs.append( child_fut )
             
          if parent_ent is None:
             parent_fut = MSEntry.Read( volume, parent_id, futs_only=True )
-            futs.append( MSEntry.FlattenFuture( parent_fut ) )
+            futs.append( parent_fut )
             
          # do some preprocessing on the ent attributes...
          MSEntry.preprocess_attrs( ent_attrs )
@@ -1332,13 +1418,13 @@ class MSEntry( storagetypes.Object ):
          
          # get futures...
          if child_fut is not None:
-            child_ent = MSEntry.FromFuture( child_fut )
+            child_ent = child_fut.get_result()
             
             if child_ent is not None:
                return (-errno.EEXIST, None)
                
          if parent_ent is None:
-            parent_ent = MSEntry.FromFuture( parent_fut )
+            parent_ent = parent_fut.get_result()
          
          nameholder = nameholder_fut.get_result()
       
@@ -1385,7 +1471,6 @@ class MSEntry( storagetypes.Object ):
          child_ent = MSEntry( key=storagetypes.make_key( MSEntry, MSEntry.make_key_name( volume_id, child_id ) ) )
          child_ent.populate( volume.num_shards, **ent_attrs )
          
-         # parent_shard = MSEntry.update_shard( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
          parent_shard = MSEntry.update_shard( volume.num_shards, parent_ent )
          
          futs = storagetypes.put_multi_async( [child_ent, child_ent.write_shard, parent_shard] )
@@ -1765,8 +1850,15 @@ class MSEntry( storagetypes.Object ):
 
       dest will be put into the filesystem, and src will be deleted.
       The old dest will be returned, if overwritten.
+
+      dest_attrs contains all the attrs the resulting file will have
+
+      The behavior of the .name field here is novel.  src_attrs['name'] should
+      be the *new* name, whereas dest_attrs['name'] should be the *old* name.
+      This is because the signature over src_attrs has to cover the state of the
+      name as it will be, whereas we'll discard the state in dest_attrs.
       
-      Only src's coordinator can rename it.
+      Only src's coordinator can rename it.  It will lead to a reversioning
       """
       
       rc = MSEntry.check_mutate_attrs( src_attrs )
@@ -1779,13 +1871,13 @@ class MSEntry( storagetypes.Object ):
          logging.error("Invalid dest mutate attrs")
          return (rc, None)
       
-      src_name = src_attrs['name']
+      new_name = src_attrs['name']
       src_file_id = src_attrs['file_id']
-      src_parent_id = src_attrs['parent_id']
+      src_parent_id = dest_attrs['parent_id']   # swapped by the client (since src needs to have the right, new parent ID)
       
       dest_file_id = 0
-      dest_parent_id = dest_attrs['parent_id']
-      dest_name = dest_attrs['name']
+      dest_parent_id = src_attrs['parent_id']   # swapped by the client (since dest will be discarded anyway)
+      overwritten_name = dest_attrs['name']
 
       delete_dest = False
       
@@ -1797,19 +1889,19 @@ class MSEntry( storagetypes.Object ):
          logging.error("Cannot rename root")
          return (-errno.EINVAL, None)
       
-      if len(dest_name) == 0:
+      if len(new_name) == 0:
          # invalid name
-         logging.error("Missing dest_name")
+         logging.error("Missing new_name")
          return (-errno.EINVAL, None)
       
       volume_id = volume.volume_id
       futs = []
       ents = {}
       
-      # find dest 
-      dest_nameholder = MSEntryNameHolder.Read( volume.volume_id, dest_parent_id, dest_name )
-      if dest_nameholder is not None:
-          dest_file_id = dest_nameholder.file_id 
+      # find overwritten name holder
+      overwritten_nameholder = MSEntryNameHolder.Read( volume.volume_id, dest_parent_id, overwritten_name )
+      if overwritten_nameholder is not None:
+          dest_file_id = overwritten_nameholder.file_id 
           if dest_file_id == 0:
               # can't rename over root
               logging.error("Cannot rename over root")
@@ -1826,7 +1918,12 @@ class MSEntry( storagetypes.Object ):
          ent = storagetypes.memcache.get( cache_ent_key )
          
          if ent == None:
-            ent_fut = MSEntry.__read_msentry( volume_id, fid, volume.num_shards, use_memcache=False )
+            if fid != dest_file_id:
+                ent_fut = MSEntry.__read_msentry( volume_id, fid, volume.num_shards, use_memcache=False )
+            else:
+                # get full dest
+                ent_fut = MSEntry.Read( volume, fid, volume_id=volume_id, num_shards=volume.num_shards, futs_only=True )
+
             futs.append( ent_fut )
          
          else:
@@ -1853,6 +1950,7 @@ class MSEntry( storagetypes.Object ):
       # file rename request originated from src's coordinator
       if src.ftype == MSENTRY_TYPE_FILE and src.coordinator_id != gateway.g_id:
          # not the coordinator--refresh
+         logging.error("src is stale: coordinator %s != %s" % (src.coordinator_id != gateway.g_id))
          return (-errno.EAGAIN, None)
 
       # src and dest must match on most fields... 
@@ -1874,18 +1972,20 @@ class MSEntry( storagetypes.Object ):
           logging.error("Src/Dest mismatch: missing in src=%s, missing in dest=%s" % (",".join(missing_src), ",".join(missing_dest)))
           return (-errno.EINVAL, None)
 
-     
-      # must be fresh 
-      if src.version > src_attrs['version']:
-          # stale 
+      # must be fresh
+      if src.ftype == MSENTRY_TYPE_FILE and src_attrs['version'] <= src.version:
+          # stale
+          logging.error("src is stale: version %s <= %s" % (src.version, src_attrs['version']))
           return (-errno.EAGAIN, None )
 
-      if src.ftype == MSENTRY_TYPE_FILE and src.write_nonce > src_attrs['write_nonce']:
+      if src.ftype == MSENTRY_TYPE_FILE and src_attrs['write_nonce'] <= src.write_nonce:
           # stale 
+          logging.error("src is stale: write nonce %s > %s" % (src.write_nonce, src_attrs['write_nonce']))
           return (-errno.EAGAIN, None )
 
-      if src.ftype == MSENTRY_TYPE_DIR and src.xattr_nonce == src_attrs['xattr_nonce']:
+      if src.ftype == MSENTRY_TYPE_DIR and src.xattr_nonce == src_attrs['write_nonce']:
           # stale 
+          logging.error("src is stale: write nonce %s == %s" % (src.write_nonce, src_attrs['write_nonce']))
           return (-errno.EAGAIN, None )
 
       # does dest parent exist?
@@ -1902,7 +2002,7 @@ class MSEntry( storagetypes.Object ):
          return (-errno.EINVAL, None)
 
       # src parent vs src parent from db... 
-      if src_parent.file_id != src_parent_id:
+      if src_parent.file_id != src.parent_id:
          logging.error("Mismatch src parent ID")
          return (-errno.EINVAL, None)
 
@@ -1945,7 +2045,7 @@ class MSEntry( storagetypes.Object ):
       # if dest exists and is distinct from src, proceed to delete it.
       if dest is not None and dest.file_id != src.file_id:
          delete_dest = True
-         dest_delete_fut = MSEntry.__delete_begin_async( volume, dest )
+         dest_delete_fut = MSEntry.__delete_begin_async( volume, dest, check_vacuum=False )
       
       # while we're at it, make sure we're not moving src to a subdirectory of itself
       src_verify_absent = MSEntry.__rename_verify_no_loop_async( volume, src_file_id, dest_parent )
@@ -1965,37 +2065,39 @@ class MSEntry( storagetypes.Object ):
          dest_empty_rc = dest_delete_fut.get_result()
       
       if dest_empty_rc != 0:
-         # dest is not empty, but we were about to rename over it
-         if delete_dest:
-            MSEntry.__delete_undo( dest )
-           
-         logging.error("dest is not empty")
+         # dest is not empty or has unvacuumed data, but we were about to rename over it
+         logging.error("dest is not empty or has unvacuumed data")
          return (dest_empty_rc, None)
       
       if src_absent_rc != 0:
          # src is its own parent
-         if delete_dest:
-            MSEntry.__delete_undo( dest )
-         
          logging.error("src is its own parent")
          return (src_absent_rc, None)
       
-      # put a new nameholder for src
-      new_nameholder_fut = MSEntryNameHolder.create_async( volume_id, dest_parent_id, src_file_id, dest_name )
-      
-      if dest is not None:
+      rc = 0
+      if dest is not None and dest.file_id != src.file_id:
          dest_delete_fut = MSEntry.__delete_finish_async( volume, dest_parent, dest )
-      
+         rc = dest_delete_fut.get_result()
+         if rc != 0:
+             logging.error("Failed to finish deleting %s: %s" % (overwritten_name, rc))
+
+
+      # put a new nameholder for src
+      new_nameholder_fut = MSEntryNameHolder.create_async( volume_id, dest_parent_id, src_file_id, new_name )
+         
+      # preserve signature-checked src attrs
+      all_write_attrs = MSEntry.write_attrs[:] + ["name", "parent_id"]
+      for attrname in all_write_attrs:
+         dest_attrs[attrname] = src_attrs[attrname]
+
       src_write_fut = MSEntry.__write_msentry_async( src, volume.num_shards, write_base=True, **dest_attrs )
       
       futs = [src_write_fut, new_nameholder_fut]
       
-      if dest_delete_fut != None:
-         futs.append( dest_delete_fut )
-      
       # remove src's old nameholder
-      old_nameholder_key = storagetypes.make_key( MSEntryNameHolder, MSEntryNameHolder.make_key_name( volume_id, src_parent_id, src_name ) )
-      storagetypes.deferred.defer( MSEntry.delete_all, [old_nameholder_key] )
+      if overwritten_name != new_name or src_parent_id != dest_parent_id:
+          old_nameholder_key = storagetypes.make_key( MSEntryNameHolder, MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ) )
+          storagetypes.deferred.defer( MSEntry.delete_all, [old_nameholder_key] )
       
       # wait for the operation to complete
       storagetypes.wait_futures( futs )
@@ -2006,21 +2108,22 @@ class MSEntry( storagetypes.Object ):
          MSEntry.make_key_name( volume_id, dest_parent_id ),
          MSEntry.make_key_name( volume_id, src_file_id ),
          MSEntry.make_key_name( volume_id, dest_file_id ),
-         MSEntryNameHolder.make_key_name( volume_id, src_file_id, src_attrs['name'] ),
-         MSEntryNameHolder.make_key_name( volume_id, dest_file_id, dest_attrs['name'] )
+         MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ),
+         MSEntryNameHolder.make_key_name( volume_id, dest_parent_id, new_name )
       ]
       
       storagetypes.memcache.delete_multi( cache_delete )
      
-      return (0, dest)
+      return (rc, dest)
       
    
    @classmethod
    @storagetypes.concurrent
-   def __delete_begin_async( cls, volume, ent ):
+   def __delete_begin_async( cls, volume, ent, check_vacuum=True ):
       """
       Begin deleting an entry by marking it as deleted.
       Verify that it is empty if it is a directory.
+      If it's a file, verify that all blocks and manifests have been vacuumed
       """
       
       ent_cache_key_name = MSEntry.make_key_name( ent.volume_id, ent.file_id )
@@ -2054,7 +2157,7 @@ class MSEntry( storagetypes.Object ):
          
                
       # otherwise, ent is a file.  Make sure there are no outstanding writes that need to be vacuumed 
-      else:
+      elif check_vacuum:
          
          # log check---there must be no outstanding writes 
          vacuum_log_head_list = yield MSEntryVacuumLog.Peek( ent.volume_id, ent.file_id, async=True )
@@ -2067,7 +2170,8 @@ class MSEntry( storagetypes.Object ):
             # uncache 
             storagetypes.memcache.delete( ent_cache_key_name )
             
-            # not permitted 
+            # not permitted
+            logging.error("Unvacuumed data for /%s/%s" % (ent.volume_id, ent.file_id))
             storagetypes.concurrent_return( -errno.EAGAIN )
       
       # safe to delete
@@ -2119,7 +2223,6 @@ class MSEntry( storagetypes.Object ):
       ent_idx = yield MSEntryIndex.ReadIndex( volume_id, ent.file_id, async=True )
       
       # update parent status and free the dead child's dir index
-      # yield MSEntry.update_shard_async( volume.num_shards, parent_ent, write_nonce=random.randint(-2**63, 2**63-1) )
       yield MSEntry.update_shard_async( volume.num_shards, parent_ent )
       
       ent_key = storagetypes.make_key( MSEntry, MSEntry.make_key_name( volume_id, ent.file_id ) )
@@ -2154,9 +2257,10 @@ class MSEntry( storagetypes.Object ):
       yield ent.put_async()
       storagetypes.concurrent_return( 0 )
 
+
    @classmethod
    def __delete_undo( cls, ent ):
-      delete_undo_fut = MSEntry.__delete_undo( ent )
+      delete_undo_fut = MSEntry.__delete_undo_async( ent )
       delete_undo_fut.get_result()
       return 0
 
@@ -2536,7 +2640,7 @@ class MSEntry( storagetypes.Object ):
 
       # get the values
       storagetypes.wait_futures( all_futs )
-      ent = MSEntry.FromFuture( ent_fut )
+      ent = ent_fut.get_result()
 
       # cache result
       storagetypes.memcache.set( ent_cache_key_name, ent )
@@ -2562,57 +2666,3 @@ class MSEntry( storagetypes.Object ):
       return child
       
 
-   @classmethod
-   def FlattenFuture( cls, ent_fut ):
-      
-      all_futures = [None] * (len(ent_fut.shard_futures) + 2)
-      for i in xrange(0, len(ent_fut.shard_futures)):
-         all_futures[i] = ent_fut.shard_futures[i]
-      
-      all_futures[len(all_futures)-2] = ent_fut.base_future
-      all_futures[len(all_futures)-1] = ent_fut.num_children_future
-      
-      return all_futures
-   
-   @classmethod
-   def FromFuture( cls, ent_fut ):
-      ent = ent_fut.base_future.get_result()
-      
-      if ent is not None:
-         shards = filter( lambda x: x is not None, [x.get_result() for x in ent_fut.shard_futures] )
-         
-         ent.populate_from_shards( shards )
-         ent.populate_shard( ent_fut.num_shards, **ent.to_dict() )
-         
-         if ent.ftype == MSENTRY_TYPE_DIR:
-            num_children_counter = ent_fut.num_children_future.get_result()
-            
-            if num_children_counter is None:
-               ent.num_children = 0
-            
-            else:
-               ent.num_children = num_children_counter
-            
-         # logging.info("FromFuture: %s\nshards = %s" % (ent.to_dict(), shards))
-      
-      return ent
-
-   @classmethod
-   def WaitFutures( cls, futures ):
-      # futures is a list of MSEntryFutures namedtuple, from Read()
-      
-      all_futures = []
-      for fut in futures:
-         all_futures += cls.FlattenFuture( fut )
-         
-      storagetypes.wait_futures( all_futures )
-
-      ret = []
-      
-      for fut in futures:
-         ent = cls.FromFuture( fut )
-         ret.append( ent )
-
-      return ret
-   
-   

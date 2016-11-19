@@ -67,8 +67,8 @@ extern int _SG_ERROR_MESSAGES;
 
 #define SG_MAX_VERBOSITY 2
 
-#define SG_debug( format, ... ) do { if( _SG_DEBUG_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); printf( SG_WHERESTR "DEBUG: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
-#define SG_info( format, ... ) do { if( _SG_INFO_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); printf( SG_WHERESTR "INFO: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stdout); } } while(0)
+#define SG_debug( format, ... ) do { if( _SG_DEBUG_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf( stderr, SG_WHERESTR "DEBUG: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stderr); } } while(0)
+#define SG_info( format, ... ) do { if( _SG_INFO_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf( stderr, SG_WHERESTR "INFO: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__ ); fflush(stderr); } } while(0)
 #define SG_warn( format, ... ) do { if( _SG_WARN_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf(stderr, SG_WHERESTR "WARN: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
 #define SG_error( format, ... ) do { if( _SG_ERROR_MESSAGES ) { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts); fprintf(stderr, SG_WHERESTR "ERROR: " format, (long)_ts.tv_sec, (long)_ts.tv_nsec, SG_WHEREARG, __VA_ARGS__); fflush(stderr); } } while(0)
 

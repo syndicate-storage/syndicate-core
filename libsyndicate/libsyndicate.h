@@ -54,7 +54,7 @@
 #include <inttypes.h>
 #include <sys/resource.h>
 #include <stdexcept>
-#include <execinfo.h>
+// #include <execinfo.h>
 #include <wordexp.h>
 
 using namespace std;

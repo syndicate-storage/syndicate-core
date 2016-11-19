@@ -238,15 +238,17 @@ def request_to_storage_path( request ):
    or manifest timestamp (depending on what kind of 
    request this is).
 
+   If this request is a rename hint, then no path will be returned.
+
    Return the string on success
    """
 
-   prefix = "%s/%s/%X/%s" % (request.user_id, request.volume_id, request.file_id, request.path)
+   prefix = "%s/%s/%X" % (request.user_id, request.volume_id, request.file_id)
 
    if request.request_type == DriverRequest.BLOCK:
        prefix = os.path.join( prefix, "%s/%s" % (request.block_id, request.block_version) )
 
-   elif request.request_type == DriverRequest.MANIFEST:
+   elif request.request_type in [DriverRequest.MANIFEST, DriverRequest.RENAME_HINT]:
        prefix = os.path.join( prefix, "manifest/%s.%s" % (request.manifest_mtime_sec, request.manifest_mtime_nsec))
 
    else:
@@ -316,6 +318,35 @@ def request_path( request ):
     Get the path of the request
     """
     return str(request.path)
+
+
+def request_new_path( request ):
+    """
+    Get the new_path of the request, if it's a rename hint
+    """
+    if request.new_path is None:
+        return None 
+
+    return str(request.new_path)
+
+
+def request_type( request ):
+    """
+    Get the type of request.
+    Return as a string.
+    """
+    if request.request_type == DriverRequest.MANIFEST:
+        return "manifest"
+
+    elif request.request_type == DriverRequest.BLOCK:
+        return "block"
+
+    elif request.request_type == DriverRequest.RENAME_HINT:
+        return "rename_hint"
+
+    else:
+        print >> sys.stderr, "Invalid driver request type '%s'" % request.request_type
+        do_driver_shutdown()
 
 
 def path_join( a, *b ):

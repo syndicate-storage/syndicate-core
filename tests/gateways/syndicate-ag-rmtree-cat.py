@@ -67,9 +67,9 @@ if __name__ == "__main__":
     AG_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "AG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
     testlib.update_gateway( config_dir, AG_gateway_name, "port=31112", "driver=%s" % AG_DRIVER )
     ag_proc, ag_out_path = testlib.start_gateway( config_dir, AG_PATH, testconf.SYNDICATE_ADMIN, volume_name, AG_gateway_name, valgrind=True )
-    time.sleep(20)
+    time.sleep(30)
 
-    if ag_proc.poll() is not None:
+    if not testlib.gateway_ping( 31112, 15 ):
         ag_exitcode, ag_out = testlib.stop_gateway( ag_proc, ag_out_path )
         testlib.save_output(output_dir, "syndicate-ag", ag_out)
         raise Exception("%s exited %s" % (AG_PATH, ag_proc.poll()))

@@ -28,6 +28,7 @@
 // only set fields in dest that can be filled in from src
 // return 0 on success
 // return -ENOMEM on OOM 
+// return -EINVAL on invalid inode type
 // NOTE: src must be read-locked
 static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_entry* src, uint64_t parent_id, struct SG_gateway* gateway ) {
    
@@ -123,6 +124,8 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
    struct fskit_entry* parent = fskit_route_metadata_get_parent( route_metadata );
    char* name = fskit_route_metadata_get_name( route_metadata );
+   uint64_t old_size = 0;
+   bool is_mkdir = false;
 
    if( caller_inode_data == NULL ) {
 
@@ -150,7 +153,16 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
       UG_inode_fskit_common_init( fent, caller_inode_data );
    }
 
+   old_size = inode_data_ptr->size;
+   if( inode_data_ptr->type == MD_ENTRY_DIR ) {
+      // directories are *always* 4096 bytes
+      inode_data_ptr->size = 4096;
+      is_mkdir = true;
+   }
+
    rc = UG_inode_publish( gateway, fent, inode_data_ptr, ret_inode_data );
+
+   inode_data_ptr->size = old_size;
 
    if( inode_data_ptr == &inode_data ) {
        md_entry_free( &inode_data );
@@ -158,6 +170,14 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
 
    if( rc != 0 ) {
       SG_error("UG_inode_publish rc = %d\n", rc );
+   }
+   else {
+      // if this is a directory, preserve the size
+      if( is_mkdir ) {
+          SG_debug("mkdir rc = %d\n", rc);
+          UG_inode_set_size( *ret_inode_data, 4096 );
+          fskit_entry_set_size( fent, 4096 );
+      }
    }
 
    return rc;
@@ -546,7 +566,6 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
       SG_safe_free( rctx );
       md_entry_free( &inode_data );
       
-      SG_error("ms_client_update('%s', size=%jd) rc = %d\n", fs_path, new_size, rc );
       return rc;
    }
    
@@ -576,18 +595,32 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
    inode_data.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
    inode_data.xattr_hash = xattr_hash;
    
+   SG_debug("'%s' (%" PRIX64 ") version %" PRId64 " --> %" PRId64 ", write_nonce %" PRId64 " --> %" PRId64 "\n", 
+            fs_path, inode_data.file_id, inode_data.version - 1, inode_data.version, inode_data.write_nonce - 1, inode_data.write_nonce);
+
    // update size and version remotely
    rc = ms_client_update( ms, &inode_data_out, &inode_data );
-   
+   if( rc != 0 ) {
+      SG_error("ms_client_update('%s', %jd) rc = %d\n", fs_path, new_size, rc );
+      
+      UG_vacuum_context_free( vctx );
+      UG_replica_context_free( rctx );
+      SG_safe_free( rctx );
+      md_entry_free( &inode_data );
+
+      return rc;
+   }
+
    inode_data.xattr_hash = NULL;
    md_entry_free( &inode_data );
 
-   // TODO: give this back to the caller
+   UG_inode_set_write_nonce( inode, inode_data_out.write_nonce );
+
    md_entry_free( &inode_data_out );
    
    // truncate locally, and apply MS-hosted changes
    UG_inode_preserve_old_manifest_modtime( inode ); 
-   UG_inode_truncate( gateway, inode, new_size, inode_data.version, inode_data.write_nonce, &new_manifest_modtime );
+   UG_inode_truncate( gateway, inode, new_size, inode_data_out.version, inode_data_out.write_nonce, &new_manifest_modtime );
    old_manifest_modtime = UG_inode_old_manifest_modtime( inode );
   
    UG_vacuum_context_set_manifest_modtime( vctx, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
@@ -730,7 +763,7 @@ static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* rout
 // return -EREMOTEIO on remote error (e.g. on the MS or RGs)
 // return -errno on network error 
 // NOTE: inode->entry must be write-locked
-static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
+static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, bool renamed, struct UG_inode* inode ) {
    
    int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -738,7 +771,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    
    struct md_entry inode_data;
-   struct SG_request_data reqdat;       // for the driver
    
    struct UG_vacuum_context* vctx = NULL;
    bool vacuum_again = true;
@@ -746,6 +778,11 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
    if( UG_inode_deleting( inode ) ) {
       
       return -ENOENT;
+   }
+
+   if( renamed ) {
+      // nothing to do 
+      return 0;
    }
    
    // deny subsequent I/O operations 
@@ -770,7 +807,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
             rc = -ENOMEM;
             
             md_entry_free( &inode_data );
-            SG_request_data_free( &reqdat );
             UG_inode_set_deleting( inode, false );
             
             return rc;
@@ -782,7 +818,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
             SG_error("UG_vacuum_context_init('%s') rc = %d\n", fs_path, rc );
             
             md_entry_free( &inode_data );
-            SG_request_data_free( &reqdat );
             SG_safe_free( vctx );
             UG_inode_set_deleting( inode, false );
             return rc;
@@ -818,7 +853,6 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
    
    if( rc != 0 ) {
       
-      SG_request_data_free( &reqdat );
       UG_inode_set_deleting( inode, false );
       SG_error("ms_client_delete('%s') rc = %d\n", fs_path, rc );
       return rc;
@@ -841,7 +875,7 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
 // return -EAGAIN if we timed out 
 // return -EREMOTEIO on network error
 // return non-zero error code from the remote unlink if it failed remotely
-static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
+static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path, bool renamed, struct UG_inode* inode ) {
    
    int rc = 0;
    struct md_syndicate_cache* cache = SG_gateway_cache( gateway );
@@ -852,6 +886,11 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
    
    int64_t manifest_mtime_sec = 0;
    int32_t manifest_mtime_nsec = 0;
+
+   if( renamed ) {
+      // nothing to do 
+      return 0;
+   }
    
    SG_manifest_get_modtime( UG_inode_manifest( inode ), &manifest_mtime_sec, &manifest_mtime_nsec );
    
@@ -924,12 +963,13 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
    struct UG_inode* inode = (struct UG_inode*)inode_cls;
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
    char* path = fskit_route_metadata_get_path( route_metadata );
+   bool renamed = fskit_route_metadata_renamed( route_metadata ); 
    
    fskit_entry_rlock( fent );
    
    int type = fskit_entry_get_type( fent );
    uint64_t file_id = fskit_entry_get_file_id( fent );
-   
+
    fskit_entry_unlock( fent );
 
    SG_debug("Detach/destroy %" PRIX64 "\n", file_id );
@@ -938,8 +978,8 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
        
         // route request to coordinator
         UG_try_or_coordinate( gateway, path, UG_inode_coordinator_id( inode ),
-                              UG_fs_detach_local( gateway, fskit_route_metadata_get_path( route_metadata ), inode ),
-                              UG_fs_detach_remote( gateway, fskit_route_metadata_get_path( route_metadata ), inode ), &rc );
+                              UG_fs_detach_local( gateway, fskit_route_metadata_get_path( route_metadata ), renamed, inode ),
+                              UG_fs_detach_remote( gateway, fskit_route_metadata_get_path( route_metadata ), renamed, inode ), &rc );
         
         if( rc != 0 ) {
             
@@ -949,7 +989,7 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
    else {
        
        // send directly to the MS 
-       rc = UG_fs_detach_local( gateway, fskit_route_metadata_get_path( route_metadata ), inode );
+       rc = UG_fs_detach_local( gateway, fskit_route_metadata_get_path( route_metadata ), renamed, inode );
        if( rc != 0 ) {
             
             SG_error("UG_fs_detach_local('%s') rc = %d\n", fskit_route_metadata_get_path( route_metadata ), rc );
@@ -996,6 +1036,112 @@ static int UG_fs_destroy( struct fskit_core* fs, struct fskit_route_metadata* ro
 }
 
 
+// get the xattr hashes and inode metadata for the old and new inodes on rename
+// return 0 on success
+// reutrn -ENOMEM on OOM
+static int UG_fs_rename_inode_export( struct fskit_core* fs,
+                                      char const* old_path, struct fskit_entry* old_parent, struct UG_inode* old_inode, struct md_entry* old_fent_metadata,
+                                      char const* new_path, struct fskit_entry* new_parent, struct UG_inode* new_inode, struct md_entry* new_fent_metadata ) {
+
+   int rc = 0;
+   struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
+   uint64_t old_parent_id = fskit_entry_get_file_id( old_parent );
+   uint64_t new_parent_id = fskit_entry_get_file_id( new_parent );
+   
+   unsigned char* old_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
+   unsigned char* new_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
+    
+   if( old_xattr_hash == NULL || new_xattr_hash == NULL ) {
+      SG_safe_free( new_xattr_hash );
+      SG_safe_free( old_xattr_hash );
+      return -ENOMEM;
+   }
+   
+   rc = UG_inode_export( old_fent_metadata, old_inode, old_parent_id );
+   if( rc != 0 ) {
+      
+      SG_safe_free( new_xattr_hash );
+      SG_safe_free( old_xattr_hash );
+
+      SG_error("UG_inode_export(%s) rc = %d\n", old_path, rc );
+      return rc;
+   }
+
+   // set new name in old inode data 
+   SG_safe_free( old_fent_metadata->name );
+   old_fent_metadata->name = md_basename( new_path, NULL );
+   if( old_fent_metadata->name == NULL ) {
+
+      md_entry_free( old_fent_metadata );
+      SG_safe_free( old_xattr_hash );
+      SG_safe_free( new_xattr_hash );
+      return -ENOMEM;
+   }
+
+   rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), old_inode, old_xattr_hash );
+   if( rc != 0 ) {
+      
+      SG_safe_free( new_xattr_hash );
+      SG_safe_free( old_xattr_hash );
+      md_entry_free( old_fent_metadata );
+      
+      SG_error("UG_inode_export_xattr_hash(%s) rc = %d\n", old_path, rc );
+      return rc;
+   }
+   
+   memcpy( new_xattr_hash, old_xattr_hash, SHA256_DIGEST_LENGTH );
+
+   if( new_inode != NULL ) {
+      
+      rc = UG_inode_export( new_fent_metadata, new_inode, new_parent_id );
+      if( rc != 0 ) {
+         
+         md_entry_free( old_fent_metadata );
+         SG_safe_free( old_xattr_hash );
+         SG_safe_free( new_xattr_hash );
+         SG_error("UG_inode_export(%s) rc = %d\n", new_path, rc );
+         return rc;
+      }
+   }
+   else {
+      
+      // will rename into a new path entirely  
+      rc = md_entry_dup2( old_fent_metadata, new_fent_metadata );
+      if( rc != 0 ) {
+         
+         md_entry_free( old_fent_metadata );
+         SG_safe_free( old_xattr_hash );
+         SG_safe_free( new_xattr_hash );
+         SG_error("md_entry_dup2 rc = %d\n", rc );
+         return rc;
+      }
+     
+      // switch parent 
+      new_fent_metadata->parent_id = new_parent_id;
+   }
+   
+   old_fent_metadata->xattr_hash = old_xattr_hash;
+   new_fent_metadata->xattr_hash = new_xattr_hash;
+
+   // dest carries *old* name, but src carries the *new* name
+   SG_safe_free( new_fent_metadata->name );
+   new_fent_metadata->name = md_basename( old_path, NULL );
+   if( new_fent_metadata->name == NULL ) {
+      
+      md_entry_free( old_fent_metadata );
+      md_entry_free( new_fent_metadata );
+      SG_safe_free( old_xattr_hash );
+      SG_safe_free( new_xattr_hash );
+      return -ENOMEM;
+   }
+
+   // preserve a few key details
+   new_fent_metadata->manifest_mtime_sec = old_fent_metadata->manifest_mtime_sec;
+   new_fent_metadata->manifest_mtime_nsec = old_fent_metadata->manifest_mtime_nsec;
+   new_fent_metadata->xattr_nonce = old_fent_metadata->xattr_nonce;
+   return 0;
+}
+
 // ask the MS to rename an inode for us.
 // old_parent and new_parent must be at least read-locked
 // we must be the coordinator of old_inode
@@ -1008,136 +1154,232 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    int rc = 0;
    
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
-   
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
+   struct UG_replica_context* rctx = NULL;
+   struct UG_vacuum_context* vctx_old = NULL;
+   struct UG_vacuum_context* vctx_new = NULL;
+   struct UG_vacuumer* vacuumer = UG_state_vacuumer( ug );
+
    struct md_entry old_fent_metadata;
    struct md_entry new_fent_metadata;
-   
-   uint64_t old_parent_id = fskit_entry_get_file_id( old_parent );
-   uint64_t new_parent_id = fskit_entry_get_file_id( new_parent );
-   
-   unsigned char* old_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
-   unsigned char* new_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
-   
-   struct md_entry old_dest_out;
-   memset( &old_dest_out, 0, sizeof(struct md_entry) );
-   
-   struct ms_client* ms = SG_gateway_ms( gateway );
-   
-   if( old_xattr_hash == NULL ) {
-      
-      SG_safe_free( new_xattr_hash );
-      return -ENOMEM;
-   }
 
-   if( new_xattr_hash == NULL ) {
+   struct SG_manifest new_manifest;
+   struct timespec old_manifest_modtime;
+   struct timespec new_manifest_modtime;
 
-      SG_safe_free( old_xattr_hash );
-      return -ENOMEM;
-   }
-   
-   rc = UG_inode_export( &old_fent_metadata, old_inode, old_parent_id );
+   memset( &old_fent_metadata, 0, sizeof(struct md_entry) );
+   memset( &new_fent_metadata, 0, sizeof(struct md_entry) );
+   memset( &new_manifest, 0, sizeof(struct SG_manifest) );
+   memset( &old_manifest_modtime, 0, sizeof(struct timespec) );
+   memset( &new_manifest_modtime, 0, sizeof(struct timespec) );
+
+   // gather inode data 
+   rc = UG_fs_rename_inode_export( fs, old_path, old_parent, old_inode, &old_fent_metadata, new_path, new_parent, new_inode, &new_fent_metadata );
    if( rc != 0 ) {
-      
-      SG_safe_free( old_xattr_hash );
-      SG_safe_free( new_xattr_hash );
-
-      SG_error("UG_inode_export(%s) rc = %d\n", old_path, rc );
+      // OOM 
       return rc;
    }
-   
-   rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), old_inode, old_xattr_hash );
+
+   // make a new manifest for the old inode 
+   rc = SG_manifest_dup( &new_manifest, UG_inode_manifest( old_inode ) );
    if( rc != 0 ) {
       
-      SG_safe_free( old_xattr_hash );
-      SG_safe_free( new_xattr_hash );
+      // OOM
       md_entry_free( &old_fent_metadata );
-      
-      SG_error("UG_inode_export_xattr_hash(%s) rc = %d\n", old_path, rc );
+      md_entry_free( &new_fent_metadata );
       return rc;
    }
-   
-   if( new_inode != NULL ) {
-      
-      rc = UG_inode_export( &new_fent_metadata, new_inode, new_parent_id );
-      if( rc != 0 ) {
-         
-         md_entry_free( &old_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         SG_error("UG_inode_export(%s) rc = %d\n", new_path, rc );
-         return rc;
-      }
 
-      rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), new_inode, new_xattr_hash );
-      if( rc != 0 ) {
-
-         md_entry_free( &old_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         SG_error("UG_inode_export(%s) rc = %d\n", new_path, rc );
-         return rc;
-      }
-   }
-   else {
-      
-      // will rename into a new path entirely  
-      rc = md_entry_dup2( &old_fent_metadata, &new_fent_metadata );
-      if( rc != 0 ) {
-         
-         md_entry_free( &old_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         SG_error("md_entry_dup2 rc = %d\n", rc );
-         return rc;
-      }
+   // prepare the vacuum requests
+   vctx_old = UG_vacuum_context_new();
+   vctx_new = UG_vacuum_context_new();
+   if( vctx_old == NULL || vctx_new == NULL ) {
      
-      // switch name
-      SG_safe_free( new_fent_metadata.name );
-      new_fent_metadata.name = md_basename( new_path, NULL );
-      if( new_fent_metadata.name == NULL ) {
-         
+     // OOM 
+     SG_safe_free( vctx_old );
+     SG_safe_free( vctx_new );
+     md_entry_free( &old_fent_metadata );
+     md_entry_free( &new_fent_metadata );
+     SG_manifest_free( &new_manifest );
+     return -ENOMEM;
+   }
+
+   // will vacuum the old inode, removing its old manifest
+   rc = UG_vacuum_context_init( vctx_old, ug, old_path, old_inode, NULL );
+   if( rc != 0 ) {
+      
+      // OOM 
+      md_entry_free( &old_fent_metadata );
+      md_entry_free( &new_fent_metadata );
+      SG_manifest_free( &new_manifest );
+      SG_safe_free( vctx_old );
+      SG_safe_free( vctx_new );
+      return rc;
+   }
+  
+   // will vacuum the new inode (if it exists), removing its old blocks and manifests
+   if( new_inode != NULL ) { 
+      rc = UG_vacuum_context_init( vctx_new, ug, new_path, new_inode, NULL );
+      if( rc != 0 ) {
+
+         // OOM 
          md_entry_free( &old_fent_metadata );
          md_entry_free( &new_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
+         SG_manifest_free( &new_manifest );
+         UG_vacuum_context_free( vctx_old );
+         SG_safe_free( vctx_old );
+         SG_safe_free( vctx_new );
          return -ENOMEM;
       }
+   }
 
-      // switch parent 
-      new_fent_metadata.parent_id = new_parent_id;
-
-      // generate xattr hash 
-      rc = ms_client_xattr_hash( new_xattr_hash, ms_client_get_volume_id( ms ), new_fent_metadata.file_id, new_fent_metadata.xattr_nonce, NULL, NULL, NULL );
-      if( rc != 0 ) {
-         
-         SG_error("ms_client_xattr_hash(%s) rc = %d\n", new_path, rc );
-         md_entry_free( &old_fent_metadata );
-         md_entry_free( &new_fent_metadata );
-         SG_safe_free( old_xattr_hash );
-         SG_safe_free( new_xattr_hash );
-         return -EPERM;
+   // prepare the replication request for the new manifest
+   rctx = UG_replica_context_new();
+   if( rctx == NULL ) {
+      
+      // OOM 
+      md_entry_free( &old_fent_metadata );
+      md_entry_free( &new_fent_metadata );
+      SG_manifest_free( &new_manifest );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      if( new_inode != NULL ) {
+          UG_vacuum_context_free( vctx_new );
       }
+      SG_safe_free( vctx_new );
+      return -ENOMEM;
+   }
+
+   // advance manifest timestamp, nonce, version
+   new_fent_metadata.version = old_fent_metadata.version + 1;
+
+   clock_gettime( CLOCK_REALTIME, &new_manifest_modtime );
+   SG_manifest_set_modtime( &new_manifest, new_manifest_modtime.tv_sec, new_manifest_modtime.tv_nsec );
+   SG_manifest_set_file_version( &new_manifest, old_fent_metadata.version + 1 );
+
+   new_fent_metadata.manifest_mtime_sec = new_manifest_modtime.tv_sec;
+   new_fent_metadata.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
+   new_fent_metadata.version = old_fent_metadata.version + 1;
+
+   // (this will become the new entry's manifest modtime)
+   old_fent_metadata.manifest_mtime_sec = new_manifest_modtime.tv_sec;
+   old_fent_metadata.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
+
+   SG_debug("Duplicated manifest '%s': %zu blocks, ts=%ld.%ld (version %" PRId64 ")\n",
+         old_path, SG_manifest_get_block_count( &new_manifest ), new_manifest_modtime.tv_sec, new_manifest_modtime.tv_nsec, SG_manifest_get_file_version(&new_manifest) );
+
+   // has to be the later version to prove that we have the latest
+   old_fent_metadata.version += 1;
+
+   // make the request to rename this inode
+   rc = UG_replica_context_init_rename_hint( rctx, ug, old_path, new_path, old_inode, &new_manifest );
+   if( rc != 0 ) {
+      
+      // OOM 
+      md_entry_free( &old_fent_metadata );
+      md_entry_free( &new_fent_metadata );
+      SG_manifest_free( &new_manifest );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+
+      if( new_inode != NULL ) {
+          UG_vacuum_context_free( vctx_new );
+      }
+
+      SG_safe_free( vctx_new );
+      SG_safe_free( rctx );
+      return rc;
    }
    
-   old_fent_metadata.xattr_hash = old_xattr_hash;
-   new_fent_metadata.xattr_hash = new_xattr_hash;
-  
+   SG_manifest_free( &new_manifest );
+   
+   // replicate rename hint (with manifest) to all RGs, but don't tell the MS.  We'll do that ourselves
+   UG_replica_context_hint( rctx, UG_REPLICA_HINT_NO_MS_UPDATE );
+
+   rc = UG_replicate( gateway, rctx );
+   
+   if( rc != 0 ) {
+      
+      // replication error...
+      SG_error("UG_replicate('%s') rc = %d\n", new_path, rc );
+      
+      md_entry_free( &old_fent_metadata );
+      md_entry_free( &new_fent_metadata );
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+      if( new_inode != NULL ) {
+          UG_vacuum_context_free( vctx_new );
+      }
+      SG_safe_free( vctx_new );
+      UG_replica_context_free( rctx );
+      SG_safe_free( rctx );
+      
+      return rc;
+   }
+
    // do the rename on the MS
-   rc = ms_client_rename( ms, &old_dest_out, &old_fent_metadata, &new_fent_metadata );
+   rc = ms_client_rename( ms, &old_fent_metadata, &new_fent_metadata );
    
    md_entry_free( &old_fent_metadata );
    md_entry_free( &new_fent_metadata );
+   UG_replica_context_free( rctx );
+   SG_safe_free( rctx );
    
    if( rc != 0 ) {
       
-      // failed to rename
+      // failed to rename on the MS
       SG_error("ms_client_rename( '%s', '%s' ) rc = %d\n", old_path, new_path, rc );
+   
+      UG_vacuum_context_free( vctx_old );
+      SG_safe_free( vctx_old );
+
+      if( new_inode != NULL ) {
+          UG_vacuum_context_free( vctx_new );
+      }
+      SG_safe_free( vctx_new );
       return rc;
    }
-   
-   // TODO do something with old dest out?
-   md_entry_free( &old_dest_out );
-   
+  
+   // remove the old manifest
+   old_manifest_modtime = UG_inode_old_manifest_modtime( old_inode );
+   UG_vacuum_context_set_manifest_modtime( vctx_old, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
+
+   // garbate-collect 
+   SG_debug("Vacuum '%s'\n", old_path);
+   while( 1 ) {
+      
+      rc = UG_vacuum_run( vacuumer, vctx_old );
+      if( rc != 0 ) {
+         
+         SG_error("UG_vacuum_run('%s') rc = %d, retrying...\n", old_path, rc );
+         continue;
+      }
+      
+      break;
+   }
+    
+   // vacuum the new inode (if it exists)
+   if( new_inode != NULL ) {
+      SG_debug("Vacuum '%s'\n", new_path);
+      while( 1 ) {
+         
+         rc = UG_vacuum_run( vacuumer, vctx_new );
+         if( rc != 0 ) {
+            
+            SG_error("UG_vacuum_run('%s') rc = %d, retrying...\n", new_path, rc );
+            continue;
+         }
+         
+         break;
+      }
+      UG_vacuum_context_free( vctx_new );
+   }
+
+   SG_safe_free( vctx_new );
+
+   UG_vacuum_context_free( vctx_old );
+   SG_safe_free( vctx_old );
    return rc;
 }
 
@@ -1222,7 +1464,8 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
 // In the UG, this simply tells the MS to rename the entry if we're the coordinator, or tell the coordinator to do so if we're not.
 // return 0 on success
 // return -ENOMEM on OOM 
-// return -errno if we had a network error 
+// return -errno if we had a network error
+// fent and dest will both be write-locked
 static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* new_path, struct fskit_entry* dest ) {
    
    int rc = 0;

@@ -32,6 +32,7 @@ static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyval
 // stacktrace for uncaught C++ exceptions
 void md_uncaught_exception_handler(void) {
 
+   /*
    SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows\n");
 
    void *trace_elems[32];
@@ -53,7 +54,8 @@ void md_uncaught_exception_handler(void) {
    }
 
    SG_safe_free( stack_syms );
-
+   */
+   SG_error("%s", "UNCAUGHT EXCEPTION!");
    exit(1);
 }
 
@@ -525,6 +527,13 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
    rc = md_conf_add_envar( c, envar_ipc_root );
    if( rc != 0 ) {
       return rc;
+   }
+
+   if( md_get_debug_level() > 0 ) {
+      rc = md_conf_add_envar( c, "SYNDICATE_DEBUG=1" );
+      if( rc != 0 ) {
+         return rc;
+      }
    }
 
    // success!
@@ -2429,8 +2438,14 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    msent->set_capacity( 16 );
    msent->clear_ms_signature();
 
-   SG_debug("%s", "Verify:\n");
-   msent->PrintDebugString();
+   try {
+       string s = msent->DebugString();
+       SG_debug("Verify:\n%s\n", s.c_str());
+   }
+   catch( bad_alloc& ba ) {
+       SG_error("%s", "Out of memory\n");
+       abort();
+   }
 
    rc = md_verify< ms::ms_entry >( pubkey, msent );
 
@@ -2459,6 +2474,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    }
 
    // check owner
+   /*
    if( cert != NULL ) {
         if( msent->owner() != cert->user_id ) {
 
@@ -2475,6 +2491,7 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
            rc = -EPERM;
        }
    }
+   */
 
    // if directory, check the MS's signature over the MS-maintained fields
    if( rc == 0 && msent->type() == MD_ENTRY_DIR ) {
@@ -2517,7 +2534,14 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
    }
 
    SG_debug("from %s:%d, sign:\n", file, lineno);
-   msent.PrintDebugString();
+   try {
+       string s = msent.DebugString();
+       SG_debug("from %s:%d, sign\n%s\n", file, lineno, s.c_str());
+   }
+   catch( bad_alloc& ba ) {
+       SG_error("%s", "Out of memory\n");
+       abort();
+   }
 
    rc = md_sign< ms::ms_entry >( privkey, &msent );
    if( rc != 0 ) {

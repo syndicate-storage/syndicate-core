@@ -45,6 +45,7 @@ struct md_opts {
 
    char const* driver_exec_str;
    char const** driver_roles;
+   int num_instances;
    size_t num_driver_roles;
 };
 

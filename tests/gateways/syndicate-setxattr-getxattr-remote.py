@@ -83,8 +83,7 @@ if __name__ == "__main__":
 
     # start up xattr coordinator,
     coord_proc, coord_out_path = testlib.start_gateway( config_dir, COORD_PATH, testconf.SYNDICATE_ADMIN, volume_name, gateway_name, path, valgrind=True )
-    time.sleep(1)
-    if coord_proc.poll() is not None:
+    if not testlib.gateway_ping( 31111, 15 ):
         raise Exception("%s exited %s" % (COORD_PATH, coord_proc.poll()))
 
     # get 1 xattr, from the client

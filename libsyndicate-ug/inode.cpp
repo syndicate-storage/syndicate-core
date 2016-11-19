@@ -126,6 +126,9 @@ static int UG_inode_init_common( struct UG_inode* inode, char const* name, int t
          return -ENOMEM;
       }
    }
+   else {
+      UG_inode_set_size( inode, 4096 );
+   }
 
    return 0;
 }
@@ -153,7 +156,12 @@ int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry*
       return rc;
    }
 
-   SG_manifest_set_size( &inode->manifest, fskit_entry_get_size( entry ) );
+   if( fskit_entry_get_type(entry) == FSKIT_ENTRY_TYPE_FILE ) {
+       SG_manifest_set_size( &inode->manifest, fskit_entry_get_size( entry ) );
+   }
+   else {
+       SG_manifest_set_size( &inode->manifest, 4096 );
+   }
 
    if( fskit_entry_get_type( entry ) == FSKIT_ENTRY_TYPE_FILE ) {
 
@@ -818,7 +826,6 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
    if( UG_inode_export_match_name( dest, src ) <= 0 ) {
 
       SG_error("%" PRIX64 ": src->name == '%s', dest->name == '%s'\n", src->file_id, src->name, dest->name );
-
       return -EINVAL;
    }
 
@@ -1202,9 +1209,20 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
       }
       else {
 
+         //////////////////////////////////////////
+         char debug_buf[52];
+         memset( debug_buf, 0, 52 );
+         for( unsigned int i = 0; i < (50 / 3) && i < UG_dirty_block_buf(dirty_block)->len; i++ ) {
+            char nbuf[5];
+            memset(nbuf, 0, 5);
+            snprintf(nbuf, 4, " %02X", *(UG_dirty_block_buf(dirty_block)->data + i));
+            strcat(debug_buf, nbuf);
+         }
+         //////////////////////////////////////////
+
          // evict old dirty block
-         SG_debug("Replace dirty block %" PRIu64 ".%" PRId64 " with %" PRIu64 ".%" PRId64 "\n",
-               UG_dirty_block_id( old_dirty_block ), UG_dirty_block_version( old_dirty_block ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+         SG_debug("Replace dirty block %" PRIu64 ".%" PRId64 " with %" PRIu64 ".%" PRId64 " (%s)\n",
+               UG_dirty_block_id( old_dirty_block ), UG_dirty_block_version( old_dirty_block ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), debug_buf);
 
          UG_dirty_block_evict_and_free( cache, inode, old_dirty_block );
          UG_inode_dirty_blocks(inode)->erase( old_dirty_block_itr );
@@ -1223,8 +1241,19 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
    // not present.  put in place.
    try {
 
-      SG_debug("Insert dirty block %" PRIu64 ".%" PRId64 "\n",
-            UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ));
+      //////////////////////////////////////////
+      char debug_buf[52];
+      memset( debug_buf, 0, 52 );
+      for( unsigned int i = 0; i < (50 / 3) && i < UG_dirty_block_buf(dirty_block)->len; i++ ) {
+         char nbuf[5];
+         memset(nbuf, 0, 5);
+         snprintf(nbuf, 4, " %02X", *(UG_dirty_block_buf(dirty_block)->data + i));
+         strcat(debug_buf, nbuf);
+      }
+      //////////////////////////////////////////
+
+      SG_debug("Insert dirty block %" PRIu64 ".%" PRId64 " (%s)\n",
+            UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), debug_buf);
 
       (*UG_inode_dirty_blocks( inode ))[ UG_dirty_block_id( dirty_block ) ] = *dirty_block;
    }
@@ -1539,6 +1568,7 @@ int UG_inode_truncate_find_removed( struct SG_gateway* gateway, struct UG_inode*
 // NOTE: if new_version is 0, the version will *not* be changed
 int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, int64_t new_version, int64_t write_nonce, struct timespec* new_manifest_timestamp ) {
 
+   int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
 
@@ -1578,17 +1608,20 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
    if( new_version != 0 ) {
 
       // next version
-      SG_manifest_set_file_version( UG_inode_manifest( inode ), new_version );
+      UG_inode_set_file_version( inode, new_version );
 
       // reversion only cached data
-      md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
+      rc = md_cache_reversion_file( cache, UG_inode_file_id( inode ), old_version, new_version, 0 );
+      if( rc != 0 ) {
+         SG_error("md_cache_reversion_file(%" PRIX64 " %" PRId64 " --> %" PRId64 ") rc = %d\n", UG_inode_file_id(inode), old_version, new_version, rc );
+      }
    }
 
    // drop extra manifest blocks
    SG_manifest_truncate( UG_inode_manifest( inode ), (new_size / block_size) );
 
    // set new size and modtime
-   SG_manifest_set_size( UG_inode_manifest( inode ), new_size );
+   UG_inode_set_size( inode, new_size );
 
    if( new_manifest_timestamp != NULL ) {
        SG_manifest_set_modtime( UG_inode_manifest( inode ), new_manifest_timestamp->tv_sec, new_manifest_timestamp->tv_nsec );
@@ -1719,6 +1752,10 @@ uint64_t UG_inode_coordinator_id( struct UG_inode* inode ) {
 
 char* UG_inode_name( struct UG_inode* inode ) {
    return SG_strdup_or_null( inode->name );
+}
+
+char* UG_inode_name_ref( struct UG_inode* inode ) {
+   return inode->name;
 }
 
 uint64_t UG_inode_file_id( struct UG_inode* inode ) {
@@ -1855,6 +1892,19 @@ bool UG_inode_is_dirty( struct UG_inode* inode ) {
 }
 
 // setters
+int UG_inode_set_name( struct UG_inode* inode, char const* name ) {
+   if( inode->name != NULL ) {
+      char* name_dup = SG_strdup_or_null( name );
+      if( name_dup == NULL ) {
+         return -ENOMEM;
+      }
+
+      SG_safe_free( inode->name );
+      inode->name = name_dup;
+   }
+   return 0;
+}
+
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
    SG_manifest_set_file_version( &inode->manifest, version );
 }
@@ -1970,7 +2020,11 @@ void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent )
 
 // NOTE: requires inode->entry to be write-locked
 void UG_inode_set_size( struct UG_inode* inode, uint64_t new_size ) {
-   fskit_entry_set_size( inode->entry, new_size );
+   // the entry can sometimes be NULL, such as when we're initializing the root inode 
+   if( inode->entry != NULL ) {
+       fskit_entry_set_size( inode->entry, new_size );
+   }
+
    SG_manifest_set_size( &inode->manifest, new_size );
 }
 

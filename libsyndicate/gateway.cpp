@@ -59,6 +59,12 @@ int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec
    return 0;
 }
 
+// set the block size
+int SG_IO_hints_set_block_size( struct SG_IO_hints* io_hints, int64_t block_size ) {
+   io_hints->block_size = block_size;
+   return 0;
+}
+
 // get a reference to the block vector
 // NOTE: caller must not modify
 uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* num_blocks ) {
@@ -483,15 +489,23 @@ int SG_request_data_dup( struct SG_request_data* dest, struct SG_request_data* s
    SG_request_data_init( dest );
    
    char* fs_path = SG_strdup_or_null( src->fs_path );
-   if( fs_path == NULL ) {
+   if( fs_path == NULL && src->fs_path != NULL ) {
       
       return -ENOMEM;
    }
    
+   char* new_path = SG_strdup_or_null( src->new_path );
+   if( new_path == NULL && src->new_path != NULL ) {
+
+      SG_safe_free( fs_path );
+      return -ENOMEM;
+   }
+
    memcpy( dest, src, sizeof(struct SG_request_data) );
    
    // deep copy
    dest->fs_path = fs_path;
+   dest->new_path = new_path;
    return 0;
 }
 
@@ -504,13 +518,22 @@ bool SG_request_is_block( struct SG_request_data* reqdat ) {
    return (reqdat->block_id != SG_INVALID_BLOCK_ID);
 }
 
-// is this a request for a manifest?
+// is this a request for a manifest?  can also mean a request for a RENAME_HINT
 // return true if so 
 // return false if not 
 bool SG_request_is_manifest( struct SG_request_data* reqdat ) {
    
    return (reqdat->block_id == SG_INVALID_BLOCK_ID && !reqdat->getxattr && !reqdat->listxattr &&
           !reqdat->removexattr && !reqdat->setxattr);
+}
+
+
+// is this a request for a rename hint?
+// return true if so
+// return false if not 
+bool SG_request_is_rename_hint( struct SG_request_data* reqdat ) {
+
+   return SG_request_is_manifest( reqdat ) && reqdat->new_path != NULL;
 }
 
 
@@ -535,6 +558,9 @@ bool SG_request_is_listxattr( struct SG_request_data* reqdat ) {
 void SG_request_data_free( struct SG_request_data* reqdat ) {
    if( reqdat->fs_path != NULL ) {
       SG_safe_free( reqdat->fs_path );
+   }
+   if( reqdat->new_path != NULL ) {
+      SG_safe_free( reqdat->new_path );
    }
    if( reqdat->xattr_name != NULL ) {
       SG_safe_free( reqdat->xattr_name );
@@ -618,17 +644,6 @@ static int SG_gateway_driver_init_internal( struct ms_client* ms, struct md_synd
    SG_safe_free( driver_text );
    
    return rc;
-}
-
-
-// initialize a custom driver for the specific type of gateway
-// if this fails due to there being no driver for this gateway, a dummy driver will be used instead
-// return 0 on success, and set *_ret to a newly-allocated driver
-// return -ENOENT if there is no driver for this gateway
-// return -ENOMEM on OOM
-// return -errno on failure to initialize the driver
-int SG_gateway_driver_init( struct SG_gateway* gateway, struct SG_driver* driver ) {
-   return SG_gateway_driver_init_internal( SG_gateway_ms( gateway ), SG_gateway_conf( gateway ), driver, gateway->num_iowqs );
 }
 
 
@@ -968,7 +983,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    // load driver 
    if( !opts->ignore_driver ) {
       
-      rc = SG_gateway_driver_init_internal( ms, conf, driver, 1 );
+      rc = SG_gateway_driver_init_internal( ms, conf, driver, opts->num_instances );
       if( rc != 0 && rc != -ENOENT ) {
          
          SG_error("SG_gateway_driver_init_internal rc = %d\n", rc );
@@ -1055,6 +1070,7 @@ int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    gateway->num_iowqs = max_num_iowqs;
    gateway->first_arg_optind = first_arg_optind;
    gateway->foreground = opts->foreground;
+   gateway->use_signal_handlers = true;
    
    if( gateway->http != NULL ) {
       
@@ -1208,7 +1224,7 @@ int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc
    md_opts_set_client( &opts, md_opts_get_client( overrides ) );
    md_opts_set_gateway_type( &opts, md_opts_get_gateway_type( overrides ) );
    md_opts_set_ignore_driver( &opts, md_opts_get_ignore_driver( overrides ) );
-   md_opts_set_driver_config( &opts, overrides->driver_exec_str, overrides->driver_roles, overrides->num_driver_roles );
+   md_opts_set_driver_config( &opts, overrides->driver_exec_str, overrides->driver_roles, overrides->num_instances, overrides->num_driver_roles );
    
    // initialize the gateway 
    rc = SG_gateway_init_opts( gateway, &opts );
@@ -1234,7 +1250,8 @@ void SG_gateway_set_cls( struct SG_gateway* gateway, void* cls ) {
 // signal the main loop to exit 
 // always succeeds
 int SG_gateway_signal_main( struct SG_gateway* gateway ) {
-   
+ 
+   SG_debug("%s", "signaled\n");  
    gateway->running = false;
    sem_post( &gateway->config_sem );
    
@@ -1333,18 +1350,27 @@ static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int re
    gateway->num_config_reload_waiters = 0;
 
    mboxes = gateway->config_reload_mboxes;
-   gateway->config_reload_mboxes = 0;
+   gateway->config_reload_mboxes = NULL;
 
    pthread_mutex_unlock( &gateway->num_config_reload_waiters_lock );
 
    for( uint64_t i = 0; i < num_waiters; i++ ) {
       *(mboxes[i]) = reload_rc;
+   }
+
+   for( uint64_t i = 0; i < num_waiters; i++ ) {
       sem_post( &gateway->config_finished_sem );
    }
 
    SG_safe_free( mboxes );
 }
 
+
+// set whether or not we should use default signal handlers
+int SG_gateway_use_signal_handlers( struct SG_gateway* gateway, bool val ) {
+   gateway->use_signal_handlers = val;
+   return 0;
+}
 
 // main loop
 // periodically reload the volume and certificates
@@ -1356,20 +1382,26 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
    // we're running main for this gateway 
    g_main_gateway = gateway;
    
-   // set up signal handlers, so we can shut ourselves down 
-   struct sigaction sigact;
-   memset( &sigact, 0, sizeof(struct sigaction) );
-   
-   sigemptyset( &sigact.sa_mask );
-   sigact.sa_sigaction = SG_gateway_term;
-   
-   // use sa_sigaction, not sa_handler
-   sigact.sa_flags = SA_SIGINFO;
-   
-   // handle the usual terminal cases 
-   sigaction( SIGQUIT, &sigact, NULL );
-   sigaction( SIGTERM, &sigact, NULL );
-   sigaction( SIGINT, &sigact, NULL );
+   // set up signal handlers, so we can shut ourselves down
+   // (unless asked not to)
+   if( gateway->use_signal_handlers ) {
+
+      SG_debug("Installing signal handlers for %p\n", gateway);
+
+      struct sigaction sigact;
+      memset( &sigact, 0, sizeof(struct sigaction) );
+      
+      sigemptyset( &sigact.sa_mask );
+      sigact.sa_sigaction = SG_gateway_term;
+      
+      // use sa_sigaction, not sa_handler
+      sigact.sa_flags = SA_SIGINFO;
+      
+      // handle the usual terminal cases 
+      sigaction( SIGQUIT, &sigact, NULL );
+      sigaction( SIGTERM, &sigact, NULL );
+      sigaction( SIGINT, &sigact, NULL );
+   }
    
    SG_debug("%s", "Entering main loop\n");
    
@@ -1448,6 +1480,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       
       // signaled to die?
       if( !gateway->running ) {
+         SG_debug("%s", "Gateway died, exiting...\n");
          break;
       }
 
@@ -1480,7 +1513,8 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
          rc = -ENOMEM;
          break;
       }
-      
+     
+      SG_debug("%s", "Reloading certificates\n");
       rc = md_certs_reload( conf, &syndicate_pubkey, &user_cert, &volume_owner_cert, volume_cert, gateway_certs );
       if( rc != 0 ) {
          
@@ -1598,7 +1632,7 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
       SG_gateway_wakeup_config_waiters( gateway, 0 );
    }
 
-   SG_debug("%s", "Leaving main loop\n");
+   SG_debug("Leaving main loop, rc = %d\n", rc);
    
    return rc;
 }
@@ -1673,8 +1707,13 @@ void SG_impl_truncate( struct SG_gateway* gateway, int (*impl_truncate)( struct 
 }
 
 // set the gateway implementation rename routine 
-void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, char const*, void* ) ) {
+void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
    gateway->impl_rename = impl_rename;
+}
+
+// set the gateway implementation rename routine 
+void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
+   gateway->impl_rename_hint = impl_rename_hint;
 }
 
 // set the gateway implementation detach routine 
@@ -2250,18 +2289,46 @@ int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data
 // return 0 on success 
 // return -ENOSYS if not defined 
 // return non-zero on implementation error 
-int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* new_path ) {
+int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
    
    int rc = 0;
    
    if( gateway->impl_rename != NULL ) {
       
       reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
-      rc = (*gateway->impl_rename)( gateway, reqdat, new_path, gateway->cls );
+      rc = (*gateway->impl_rename)( gateway, reqdat, serialized_manifest, new_path, gateway->cls );
       
       if( rc != 0 ) {
          
          SG_error("gateway->impl_rename( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
+      }
+      
+      return rc;
+   }
+   else {
+      
+      return -ENOSYS;
+   }
+}
+
+
+// hint that a file was renamed
+// the implementation does not need to take any action, unlike rename
+// return 0 on success 
+// return -ENOSYS if not defined 
+// return non-zero on implementation error 
+int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
+   
+   int rc = 0;
+   
+   if( gateway->impl_rename_hint != NULL ) {
+      
+      reqdat->io_thread_id = SG_gateway_io_thread_id( gateway );
+      rc = (*gateway->impl_rename_hint)( gateway, reqdat, serialized_manifest, new_path, gateway->cls );
+      
+      if( rc != 0 ) {
+         
+         SG_error("gateway->impl_rename_hint( %" PRIX64 ".%" PRId64 " (%s), %s ) rc = %d\n", reqdat->file_id, reqdat->file_version, reqdat->fs_path, new_path, rc );
       }
       
       return rc;

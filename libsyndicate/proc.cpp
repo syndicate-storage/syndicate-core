@@ -127,15 +127,12 @@ void SG_proc_free( struct SG_proc* proc ) {
 
 
 // get the PID of a process 
-pid_t SG_proc_pid( struct SG_proc* p ) {
-   
+pid_t SG_proc_pid( struct SG_proc* p ) { 
    return p->pid;
 }
 
-
 // get the exec argument of the process 
 char const* SG_proc_exec_arg( struct SG_proc* p ) {
-   
    return p->exec_arg;
 }
 
@@ -147,6 +144,11 @@ int SG_proc_stdin( struct SG_proc* p ) {
 // get a filestream wrapper of a process's stdout
 FILE* SG_proc_stdout_f( struct SG_proc* p ) {
    return p->fout;
+}
+
+// get the underlying file descriptor for stdout 
+int SG_proc_stdout( struct SG_proc* p ) {
+   return fileno(p->fout);
 }
 
 // allocate space for a process group 
@@ -935,10 +937,10 @@ int SG_proc_read_int64( FILE* f, int64_t* result ) {
 // and this method will error if it receives too much data.
 // return 0 on success, and set up the given SG_chunk (storing the length to chunk->len)
 // return -ENOMEM on OOM 
-// return -ERANGE if the chunk is allocated but there is insufficient space
+// return -ERANGE if the chunk is allocated but there is insufficient space, or if bound > 0 and the chunk is too big
 // return -ENODATA on EOF
 // return -EIO if the output is unparsable
-int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk ) {
+int SG_proc_read_chunk_bound( FILE* f, struct SG_chunk* chunk, int64_t bound ) {
    
    int rc = 0;
    int trailer = 0;
@@ -954,6 +956,12 @@ int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk ) {
       
       SG_error("SG_proc_read_int64('SIZE') rc = %d\n", rc );
       return rc;
+   }
+
+   if( bound > 0 && size >= bound ) {
+
+      SG_error("Chunk is too big (%" PRId64 " >= %" PRId64 ")\n", size, bound );
+      return -ERANGE;
    }
 
    SG_debug("Read chunk of %" PRId64 " bytes\n", size );
@@ -1047,6 +1055,9 @@ int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk ) {
    return rc;
 }
 
+int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk ) {
+   return SG_proc_read_chunk_bound( f, chunk, -1 );
+}
 
 // writes a signed 64-bit integer to a file descriptor, appended by a newline 
 // masks EINTR 
@@ -1133,7 +1144,13 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
       dreq->set_path( string(reqdat->fs_path) );
       dreq->set_block_size( block_size );
       
-      if( SG_request_is_manifest( reqdat ) ) {
+      if( SG_request_is_rename_hint( reqdat ) ) {
+          dreq->set_new_path( string(reqdat->new_path) );
+          dreq->set_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+          dreq->set_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+          dreq->set_request_type( SG_messages::DriverRequest::RENAME_HINT );
+      }
+      else if( SG_request_is_manifest( reqdat ) ) {
           dreq->set_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
           dreq->set_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
           dreq->set_request_type( SG_messages::DriverRequest::MANIFEST );
@@ -1817,7 +1834,14 @@ int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const en
    if( cmd_path == NULL ) {
       return -EINVAL;
    }
-   
+  
+   SG_debug("Subprocess(%s) ", cmd_path);
+   for( int i = 0; argv[i] != NULL; i++ ) {
+       fprintf(stderr, "%s ", argv[i]);
+   }
+   fprintf(stderr, "\n");
+   fflush(stderr);
+
    // open the pipes
    rc = pipe( outpipe );
    if( rc != 0 ) {

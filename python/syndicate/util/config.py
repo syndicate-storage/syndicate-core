@@ -27,9 +27,42 @@ import argparse
 import logging
 import paths
 
-logging.basicConfig( format='[%(levelname)s] [%(module)s:%(lineno)d] %(message)s' )
+DEBUG = False
+if os.environ.get("SYNDICATE_DEBUG", None) is not None:
+    DEBUG=True
 
-log = logging.getLogger()
+def get_logger(name=None, debug=True):
+    """
+    Get a logger
+    """
+
+    level = logging.CRITICAL
+    if debug:
+        logging.disable(logging.NOTSET)
+        level = logging.DEBUG
+
+    if name is None:
+        name = "<unknown>"
+        level = logging.CRITICAL
+
+    log = logging.getLogger(name=name)
+    log.setLevel( level )
+    console = logging.StreamHandler()
+    console.setLevel( level )
+    log_format = ('[%(asctime)s] [%(levelname)s] [%(module)s:%(lineno)d] (' + str(os.getpid()) + ') %(message)s' if debug else '%(message)s')
+    formatter = logging.Formatter( log_format )
+    console.setFormatter(formatter)
+    log.propagate = False
+
+    if len(log.handlers) > 0:
+        for i in xrange(0, len(log.handlers)):
+            log.handlers.pop(0)
+    
+    log.addHandler(console)
+    return log
+
+
+log = get_logger("syndicate.util.config", debug=DEBUG)
 
 CONFIG_DIR = "~/.syndicate"
 CONFIG_FILENAME = "~/.syndicate/syndicate.conf"
@@ -75,7 +108,7 @@ CONFIG_SYNDICATE_KEYS = [
 CONFIG_DEFAULTS = {
    "MS_url": "http://127.0.0.1:8080",
    'trust_public_key': False,
-   'debug': False,
+   'debug': DEBUG,
    'helpers': {
        'fetch_user_cert': paths.fetch_user_cert,
        'fetch_gateway_cert': paths.fetch_gateway_cert,
@@ -183,6 +216,28 @@ def load_config( config_path, config_str, opts, config_header, config_options ):
    ret['config_dir'] = conf_dir
    ret['config_path'] = config_path
    return ret
+
+
+def write_config_section( config_path, section_name, section_values ):
+   """ 
+   Append to a config file the given section and name/value pairs
+   """
+   config = ConfigParser.SafeConfigParser()
+   config.read(config_path)
+
+   if config.has_section(section_name):
+       config.remove_section(section_name)
+
+   config.add_section(section_name)
+   for k, v in section_values.items():
+       config.set(section_name, k, "%s" % v)
+
+   with open(config_path, "w") as f:
+       config.write(f)
+       f.flush()
+       os.fsync(f.fileno())
+
+   return True
 
 
 def build_parser( progname, description, config_options ):
@@ -430,7 +485,7 @@ def get_config_from_argv( argv ):
     Return None on error.
     """
 
-    global CONFIG_OPTIONS, HELPER_OPTIONS, CONFIG_DESCRIPTION
+    global CONFIG_OPTIONS, HELPER_OPTIONS, CONFIG_DESCRIPTION, log
 
     import syndicate.util.storage as storage
     import syndicate.util.client as client
@@ -438,6 +493,7 @@ def get_config_from_argv( argv ):
     parser = build_parser( argv[0], CONFIG_DESCRIPTION, CONFIG_OPTIONS )
     opts, _ = parser.parse_known_args( argv[1:] )
     if opts.debug:
+        log = get_logger("syndicate.util.config", debug=True)
         log.setLevel(logging.DEBUG)
    
     # load everything into a dictionary and return it

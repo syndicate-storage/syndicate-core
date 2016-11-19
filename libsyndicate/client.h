@@ -64,6 +64,7 @@ int SG_client_deserialize_signed_block( struct SG_gateway* gateway, struct SG_re
 int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Request* request, char const* fs_path, struct SG_client_WRITE_data* write_data );
 int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, off_t new_size );
 int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* new_path );
+int SG_client_request_RENAME_HINT_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* manifest_info, char const* new_path );
 int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id );
 int SG_client_request_REFRESH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id );
 int SG_client_request_PUTCHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t chunk_info_len );

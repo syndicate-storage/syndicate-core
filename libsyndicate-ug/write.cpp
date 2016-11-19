@@ -39,6 +39,7 @@ int UG_write_nonce_update( struct UG_inode* inode ) {
    int64_t write_nonce = UG_inode_write_nonce( inode );
    UG_inode_set_write_nonce( inode, write_nonce + 1 );
    
+   SG_debug("Set %" PRIX64 " write_nonce %" PRId64 " --> %" PRId64 "\n", UG_inode_file_id(inode), write_nonce-1, write_nonce );
    return 0;
 }
 
@@ -553,6 +554,8 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
    int64_t file_version = UG_inode_file_version( inode );
    uint64_t size = fskit_entry_get_size( UG_inode_fskit_entry(inode) );
    struct SG_IO_hints io_hints;
+   uint64_t last_block_id = (offset + len) / block_size;
+   int64_t last_block_fragment = (MAX(UG_inode_size(inode), (offset + len)) % block_size);
 
    SG_debug("Merge %zu blocks to %" PRIX64 "\n", new_dirty_blocks->size(), UG_inode_file_id( inode ) );
 
@@ -625,6 +628,15 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
             return rc;
          }
       }
+
+      // is this block over the end of the file, and does it
+      // straddle a block bounary?
+      io_hints.block_size = -1;
+      if( block_id == last_block_id && last_block_fragment != 0 && offset + len > UG_inode_size( inode ) ) {
+         // yup.  don't serialize the zero-padding at the end.
+         SG_debug("Last block %" PRIu64 " is really %" PRId64 " bytes\n", last_block_id, last_block_fragment);
+         io_hints.block_size = last_block_fragment;
+      }
       
       // serialize and send to disk
       // NOTE: this will update the block's hash 
@@ -647,10 +659,10 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
       struct UG_dirty_block* block = &itr->second;
 
       // finish flushing (NOTE: regenerates block hash)
-      rc = UG_dirty_block_flush_finish( block );
+      rc = UG_dirty_block_flush_finish_keepbuf( block );
       if( rc != 0 ) {
          
-         SG_error("UG_dirty_block_flush_finish( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
+         SG_error("UG_dirty_block_flush_finish_keepbuf( %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] ) rc = %d\n", 
                   UG_inode_file_id( inode ), UG_inode_file_version( inode ), UG_dirty_block_id( block ), UG_dirty_block_version( block ), rc );
         
          return rc; 
@@ -725,9 +737,6 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 
    fskit_entry_unlock(fent);
   
-   // ID of the last block written 
-   uint64_t last_block_id = (offset + buf_len) / block_size;
-   
    // handle supports write?
    if( (fh->flags & (O_WRONLY | O_RDWR)) == 0 ) {
       return -EBADF;
@@ -836,52 +845,14 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
       UG_dirty_block_set_dirty( &itr->second, true );
       UG_dirty_block_set_logical_write( &itr->second, offset, buf_len );
+
+      if( UG_dirty_block_buf( &itr->second )->len == 0 ) {
+         SG_error("FATAL: block %p has zero length\n", UG_dirty_block_buf( &itr->second )->data);
+         exit(1);
+      }
    }
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
-
-   // don't flush the last block; keep it in RAM, so a subsequent write does not need to fetch it from disk.
-   // Instead, just add it to the inode's set of dirty blocks.
-   // Do not commit it, but be sure that it is unshared.
-   UG_dirty_block_map_t::iterator itr = write_blocks.find( last_block_id );
-   if( !(fh->flags & O_SYNC) && itr != write_blocks.end() && UG_dirty_block_in_RAM( &itr->second ) ) {
-      
-      struct UG_dirty_block* last_dirty_block = &itr->second;
-    
-      char data[21];
-      memset( data, 0, 21 );
-      memcpy( data, UG_dirty_block_buf( last_dirty_block )->data, 20 );
-
-      SG_debug("Last dirty block: %" PRIX64 "[%" PRIu64 ".%" PRId64 "] (%p, %zu): '%s...'\n",
-             UG_inode_file_id( inode ), UG_dirty_block_id( last_dirty_block ), UG_dirty_block_version( last_dirty_block ),
-             UG_dirty_block_buf( last_dirty_block )->data, UG_dirty_block_buf( last_dirty_block )->len, data );
-
-      // make sure it's unshared 
-      if( !UG_dirty_block_unshared( last_dirty_block ) ) {
-         rc = UG_dirty_block_buf_unshare( last_dirty_block );
-         if( rc != 0 ) {
-            // OOM; abort
-            fskit_entry_unlock( fent );
-            UG_dirty_block_map_free( &write_blocks );
-            return rc;
-         }
-      }
-
-      // put into dirty blocks
-      rc = UG_inode_dirty_block_put( gateway, inode, last_dirty_block, true );
-      if( rc != 0 ) {
-
-        SG_error("UG_inode_dirty_block_put( %" PRIX64 "[%" PRIu64 ".%" PRId64 "] rc = %d\n",
-               UG_inode_file_id( inode ), UG_dirty_block_id( last_dirty_block ), UG_dirty_block_version( last_dirty_block ), rc );
-
-        fskit_entry_unlock( fent );
-        UG_dirty_block_map_free( &write_blocks );
-        return -EIO;
-      }
-
-      // owned by inode, so remove
-      write_blocks.erase( itr );
-   }
 
    // flush the rest of the written blocks, and synchronize them with the manifest.
    // back up the old dirty block and old replicated block data, so we can evict and vacuum them (respectively)

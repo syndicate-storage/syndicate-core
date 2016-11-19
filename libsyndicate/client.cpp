@@ -704,7 +704,7 @@ static void SG_client_get_block_async_cleanup( void* cls ) {
 }
 
 
-// begin downloading a block
+// begin downloading a block via he given download loop.
 // NOTE: reqdat must be a block request
 // return 0 on success, and set up *dlctx to refer to the downloading context
 // return -ENOMEM if OOM
@@ -714,11 +714,8 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
 
    int rc = 0;
    char* block_url = NULL;
-
    struct ms_client* ms = SG_gateway_ms( gateway );
-
    uint64_t block_size = ms_client_get_volume_blocksize( ms );
-
    struct SG_request_data* reqdat_dup = NULL;
 
    // sanity check
@@ -751,7 +748,7 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
       return rc;
    }
 
-   // GOGOO!
+   // GO GO GO!
    rc = SG_client_download_async_start( gateway, dlloop, dlctx, reqdat->block_id, block_url, block_size * SG_MAX_BLOCK_LEN_MULTIPLIER, reqdat_dup, SG_client_get_block_async_cleanup );
    if( rc != 0 ) {
 
@@ -1010,7 +1007,6 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
       if( rc != 0 ) {
          SG_error("SG_client_block_verify(%" PRIu64 ") rc = %d\n", block_id, rc );
          return rc;
-
       }
    }
    else {
@@ -1064,6 +1060,8 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
    char* block_buf = NULL;
    off_t block_len = 0;
    uint64_t block_data_offset = 0;
+   struct ms_client* ms = SG_gateway_ms( gateway );
+   uint64_t blocksize = ms_client_get_volume_blocksize( ms );
 
    struct SG_request_data* reqdat = NULL;
    struct SG_chunk block_chunk;
@@ -1934,6 +1932,66 @@ int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Req
    }
    catch( bad_alloc& ba ) {
       return -ENOMEM;
+   }
+
+   rc = md_sign< SG_messages::Request >( gateway_pkey, request );
+   if( rc != 0 ) {
+
+      SG_error("md_sign rc = %d\n", rc );
+      return rc;
+   }
+
+   return rc;
+}
+
+
+// make a signed RENAME_HINT request, from an initialized reqdat.
+// the reqdat must be for a manifest
+// return 0 on success
+// return -EINVAL if teh reqdat is not for a manifest
+// return -ENOMEM on OOM
+int SG_client_request_RENAME_HINT_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* manifest_info, char const* new_path ) {
+
+   int rc = 0;
+
+   EVP_PKEY* gateway_pkey = SG_gateway_private_key( gateway );
+
+   if( !SG_request_is_manifest( reqdat ) ) {
+      return -EINVAL;
+   }
+
+   // basics
+   rc = SG_client_request_setup( gateway, request, reqdat );
+   if( rc != 0 ) {
+
+      return rc;
+   }
+
+   request->set_request_type( SG_messages::Request::RENAME_HINT );
+   request->set_new_manifest_mtime_sec( reqdat->manifest_timestamp.tv_sec );
+   request->set_new_manifest_mtime_nsec( reqdat->manifest_timestamp.tv_nsec );
+   request->set_coordinator_id( coordinator_id );
+
+   try {
+      request->set_new_fs_path( string(new_path) );
+   }
+   catch( bad_alloc& ba ) {
+      return -ENOMEM;
+   }
+
+   // include manifest 
+   SG_messages::ManifestBlock* mblock = NULL;
+
+   try {
+      mblock = request->add_blocks();
+   }
+   catch( bad_alloc& ba ) {
+      return -ENOMEM;
+   }
+
+   rc = SG_manifest_block_serialize_to_protobuf_ex( manifest_info, mblock, true );
+   if( rc != 0 ) {
+      return rc;
    }
 
    rc = md_sign< SG_messages::Request >( gateway_pkey, request );

@@ -71,7 +71,7 @@ struct ms_client_multi_result {
 typedef list<struct ms_client_request*> ms_client_request_list;
  
 // does an operation return an entry from the MS?
-#define MS_CLIENT_OP_RETURNS_ENTRY( op ) ((op) == ms::ms_request::CREATE || (op) == ms::ms_request::UPDATE || (op) == ms::ms_request::CHCOORD || (op) == ms::ms_request::RENAME)
+#define MS_CLIENT_OP_RETURNS_ENTRY( op ) ((op) == ms::ms_request::CREATE || (op) == ms::ms_request::UPDATE || (op) == ms::ms_request::CHCOORD)
 
 extern "C" {
    
@@ -82,7 +82,7 @@ int ms_client_mkdir( struct ms_client* client, struct md_entry* ent_out, struct 
 int ms_client_delete( struct ms_client* client, struct md_entry* ent );
 int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent );
 int ms_client_coordinate( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent, unsigned char* xattr_hash );
-int ms_client_rename( struct ms_client* client, struct md_entry* ent_out, struct md_entry* src, struct md_entry* dest );
+int ms_client_rename( struct ms_client* client, struct md_entry* src, struct md_entry* dest );
 
 // generate requests to be run
 void ms_client_create_initial_fields( struct md_entry* ent );

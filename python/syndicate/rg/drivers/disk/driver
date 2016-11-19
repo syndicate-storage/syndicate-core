@@ -112,3 +112,10 @@ def delete_chunk( chunk_request, config, secrets ):
       return -errno.EIO
    
    return 0
+
+
+def rename_file( chunk_request, old_path, new_path, config, secrets ):
+   
+   gateway.log_debug("Rename hint: '%s' --> '%s'" % (gateway.request_path(chunk_request), gateway.request_new_path(chunk_request)) )
+   return 0
+

@@ -40,6 +40,9 @@ extern "C" {
 struct UG_replica_context* UG_replica_context_new();
 
 int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug, char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks );
+int UG_replica_context_init_rename_hint( struct UG_replica_context* rctx, struct UG_state* ug, char const* old_path, char const* new_path,
+                                         struct UG_inode* inode, struct SG_manifest* manifest );
+
 int UG_replica_context_free( struct UG_replica_context* rctx );
 
 // send a manifest and a of dirty blocks to a given gateway

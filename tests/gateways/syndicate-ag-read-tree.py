@@ -72,8 +72,8 @@ if __name__ == "__main__":
     testlib.update_gateway( config_dir, AG_gateway_name, "port=31112", "driver=%s" % AG_DRIVER )
 
     ag_proc, ag_out_path = testlib.start_gateway( config_dir, AG_PATH, testconf.SYNDICATE_ADMIN, volume_name, AG_gateway_name, valgrind=True )
-    time.sleep(15)
-    if ag_proc.poll() is not None:
+    time.sleep(30)
+    if not testlib.gateway_ping( 31112, 15 ):
         raise Exception("%s exited %s" % (AG_PATH, ag_proc.poll()))
 
     # should cause the AG to get updated that there's a new gateway 

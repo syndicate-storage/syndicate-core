@@ -25,13 +25,48 @@ import signal
 import shutil
 import atexit
 import json
+import logging
+import time
+import requests
 
 import testconf
 import syndicate.util.config as conf
 import syndicate.util.provisioning as provisioning
 import syndicate.util.client as rpcclient
 
-log = conf.log
+debug = True
+
+def get_logger(name=None, debug=True):
+    """
+    Get a logger
+    """
+
+    level = logging.CRITICAL
+    if debug:
+        logging.disable(logging.NOTSET)
+        level = logging.DEBUG
+
+    if name is None:
+        name = "<unknown>"
+        level = logging.CRITICAL
+
+    log = logging.getLogger(name=name)
+    log.setLevel( level )
+    console = logging.StreamHandler()
+    console.setLevel( level )
+    log_format = ('[%(asctime)s] [%(levelname)s] [%(module)s:%(lineno)d] (' + str(os.getpid()) + ') %(message)s' if debug else '%(message)s')
+    formatter = logging.Formatter( log_format )
+    console.setFormatter(formatter)
+    log.propagate = False
+
+    if len(log.handlers) > 0:
+        for i in xrange(0, len(log.handlers)):
+            log.handlers.pop(0)
+    
+    log.addHandler(console)
+    return log
+
+log = get_logger("syndicate-testlib")
 running_gateways = []
 
 def atexit_gateway_shutdown():
@@ -55,7 +90,7 @@ def atexit_gateway_shutdown():
 def start( path, *args, **kw ):
     """
     Start a program
-    Pass `stdin=...` to feed a string as stdin
+    Pass `stdin=True` to enable stdin
     Pass `valgrind=True` to run in valgrind.
     Return subprocess on success
     Return None on error
@@ -68,33 +103,62 @@ def start( path, *args, **kw ):
     stdin_fd = None
     stdout_fd = subprocess.PIPE
     stdin = None
-    if kw.has_key('stdin'):
+    stdout_path = "(fd)"
+    env = {'SYNDICATE_DEBUG': '1'}
+
+    if kw.has_key('stdin') and kw['stdin']:
         stdin_fd = subprocess.PIPE
-        stdin = kw['stdin']
 
     if kw.has_key('stdout_fd'):
         stdout_fd = kw['stdout_fd']
- 
+        stdout_path = "(fd %s)" % stdout_fd
+
+    if kw.has_key('stdout_path'):
+        stdout_path = kw['stdout_path']
+
+    if kw.has_key('env'):
+        env = kw['env']
+
     valgrind = False
     if 'valgrind' in kw.keys() and kw['valgrind']:
         args = ['--leak-check=full', path] + list(args)
         path = '/usr/bin/valgrind'
 
-    print "$ %s" % (" ".join( [path] + [str(a) for a in args] )) 
-    prog = subprocess.Popen( [path] + [str(a) for a in args], shell=False, stdin=stdin_fd, stdout=stdout_fd, stderr=subprocess.STDOUT )
+    print "$ %s > %s" % (" ".join( [path] + [str(a) for a in args] ), stdout_path) 
+    prog = subprocess.Popen( [path] + [str(a) for a in args], shell=False, stdin=stdin_fd, stdout=stdout_fd, stderr=subprocess.STDOUT, env=env )
+    if prog is None:
+        raise Exception("Failed to start '%s'" % path)
+
     return prog
 
 
-def finish( prog, stdin=None ):
+def finish( prog, out_path=None, stdin=None, valgrind=False ):
     """
     Finish up a program:
     * give it stdin
     * wait for stdout, stderr
 
-    Return exitcode on success
+    if out_path is not None, then return (output, prog return code)
+    if valgrind is True, also check for valgrind errors.
+
+    Otherwise, return exitcode on success
     """
     prog.communicate( input=stdin )
     prog.wait()
+
+    output = None
+    if out_path is not None:
+
+        with open(out_path, "r") as f:
+            output = f.read()
+
+        if valgrind:
+            rc = valgrind_check_output( output )
+            if not rc:
+                return (output, "valgrind error")
+
+        return output, prog.returncode
+
     return prog.returncode
 
 
@@ -108,8 +172,13 @@ def run( path, *args, **kw ):
    
     out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
     out_fd = os.fdopen(out_fdes, "w")
+    env = {'SYNDICATE_DEBUG': '1'}
 
-    prog = start( path, *args, stdout_fd=out_fd, **kw )
+    if kw.has_key('env'):
+        env = kw['env']
+        del kw['env']
+
+    prog = start( path, *args, stdout_fd=out_fd, stdout_path=out_path, env=env, **kw )
     if prog is None:
         return (None, None)
  
@@ -134,6 +203,27 @@ def run( path, *args, **kw ):
             return ("valgrind error", output)
 
     return exitcode, output
+
+
+def gateway_ping( portnum, attempts ):
+    """
+    Keep trying to ping a gateway until it comes online.
+    Try at most $attempts times, waiting 1 second in between.
+    """
+    status_code = "UNKNOWN"
+    for i in xrange(0, attempts):
+
+        try:
+            req = requests.get("http://localhost:%s/PING" % portnum)
+            status_code = req.status_code
+            assert status_code == 200
+            return True
+
+        except:
+            print "# Ping http://localhost:%s/PING failed (status %s)" % (portnum, status_code)
+            time.sleep(1.0)
+
+    return False
 
 
 def valgrind_check_output( out ):
@@ -164,7 +254,7 @@ def valgrind_check_output( out ):
 
     return True
 
-   
+
 def test_setup( ms_url=testconf.SYNDICATE_MS, admin_email=testconf.SYNDICATE_ADMIN, admin_pkey_path=testconf.SYNDICATE_PRIVKEY_PATH, suffix="" ):
     """
     Set up a test config directory.
@@ -173,7 +263,7 @@ def test_setup( ms_url=testconf.SYNDICATE_MS, admin_email=testconf.SYNDICATE_ADM
     tmpdir = tempfile.mkdtemp( prefix="syndicate-test-", dir="/tmp" ) + suffix
     test_output_dir = os.path.join( tmpdir, "test_output" )
 
-    exitcode, out = run( testconf.SYNDICATE_TOOL, "--trust_public_key", "-c", os.path.join(tmpdir, 'syndicate.conf'), '--debug', 'setup', admin_email, admin_pkey_path, ms_url )
+    exitcode, out = run( testconf.SYNDICATE_TOOL, '-d', "--trust_public_key", "-c", os.path.join(tmpdir, 'syndicate.conf'), '--debug', 'setup', admin_email, admin_pkey_path, ms_url )
     if exitcode != 0:
         print >> sys.stderr, out
         raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
@@ -203,6 +293,7 @@ def add_test_volume( config_dir, email=testconf.SYNDICATE_ADMIN, blocksize=4096,
     """
     random_name = prefix + hex(random.randint(0,2**32))[2:] 
     exitcode, out = run( testconf.SYNDICATE_TOOL,
+                         '-d',
                          '-c', os.path.join(config_dir, 'syndicate.conf'),
                          'create_volume',
                          'name=%s' % random_name,
@@ -226,7 +317,7 @@ def read_volume( config_dir, volume_name ):
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_volume',
-                        volume_name)
+                        volume_name, env={})
 
     if exitcode != 0:
         print >> sys.stderr, out
@@ -249,6 +340,7 @@ def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, 
     """
     random_name = "%s%s-%s" % (prefix, gwtype, hex(random.randint(0, 2**32))[2:])
     exitcode, out = run(testconf.SYNDICATE_TOOL,
+                        '-d',
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'create_gateway',
                         'email=%s' % email,
@@ -263,6 +355,7 @@ def add_test_gateway( config_dir, volume_name, gwtype, caps="ALL", driver=None, 
         raise Exception("%s exited %s" % (testconf.SYNDICATE_TOOL, exitcode))
 
     exitcode, out = run(testconf.SYNDICATE_TOOL,
+                        '-d',
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'update_gateway',
                         random_name,
@@ -303,7 +396,7 @@ def read_gateway( config_dir, gateway_name ):
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_gateway',
-                        gateway_name)
+                        gateway_name, env={})
 
     if exitcode != 0:
         print >> sys.stderr, out
@@ -351,12 +444,12 @@ def start_gateway( config_dir, gateway_path, email, volume_name, gateway_name, *
 
     prog = start( gateway_path,
                   '-c', os.path.join(config_dir, 'syndicate.conf'),
-                  '-d2',
+                  '-d3',
                   '-f',
                   '-u', email,
                   '-v', volume_name,
                   '-g', gateway_name,
-                  *extra_args, stdout_fd=out_fd, **kw )
+                  *extra_args, stdout_fd=out_fd, stdout_path=out_path, **kw )
 
     running_gateways.append( prog )
     return prog, out_path
@@ -375,18 +468,58 @@ def start_automount_server( config_dir, amd_server_path, email, port, *extra_arg
     else:
         pkey_path, pkey_fd = tempfile.mkstemp(prefix='syndicate-pkey-')
         os.close(pkey_fd)
-        os.system("openssl genrsa 4096 > \"%s\"" % pkey_path)
+        os.system("openssl genrsa 4096 > \"%s\" 2>/dev/null" % pkey_path)
 
     prog = start( amd_server_path,
-                  '-f',
                   '-c', os.path.join(config_dir, 'syndicate.conf'),
                   '-d',
                   '-p', port,
                   '-k', pkey_path,
-                  *extra_args, stdout_fd=out_fd, **kw )
+                  *extra_args, stdout_fd=out_fd, stdout_path=out_path, **kw )
 
+    running_gateways.append( prog )
     return prog, out_path
-    
+
+
+def get_amd_logpath( config_dir ):
+    return os.path.join(config_dir, 'amd_logs')
+
+
+def start_automount_client( config_dir, amd_client_path, amd_server_port, amd_client_port, instance_id, *extra_args, **kw ):
+    """
+    Star the automount client
+    Return a subprocess and a stdout path
+    """
+    out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
+    out_fd = os.fdopen(out_fdes, "w")
+
+    if 'private_key' in kw.keys():
+        pkey_path = kw['private_key']
+    else:
+        pkey_path, pkey_fd = tempfile.mkstemp(prefix='syndicate-pkey-')
+        os.close(pkey_fd)
+        os.system("openssl genrsa 4096 > \"%s\" 2>/dev/null" % pkey_path)
+
+    if 'mounts' in kw.keys():
+        mount_path = kw['mounts']
+    else:
+        mount_path = os.path.join(config_dir, 'mounts')
+        if not os.path.exists( mount_path ):
+            os.makedirs(mount_path)
+
+    prog = start( amd_client_path,
+                  '-c', os.path.join(config_dir, 'syndicate.conf'),
+                  '-d',
+                  '-s', 'localhost:%s' % amd_server_port,
+                  '-p', str(amd_client_port),
+                  '-M', mount_path,
+                  '-l', get_amd_logpath(config_dir),
+                  stdout_path=out_path )
+
+    running_gateways.append( prog )
+    return prog, out_path
+
+
 
 def stop_gateway( proc, stdout_path, valgrind=False ):
     """
@@ -436,6 +569,14 @@ def stop_automount_server( proc, stdout_path ):
         out = f.read()
 
     return (exitcode, out)
+
+
+def stop_automount_client( proc, stdout_path ):
+    """
+    Stop an automount client
+    Return (exitcode, stdout)
+    """
+    return stop_automount_server( proc, stdout_path )
 
 
 def cache_dir( config_dir, volume_id, gateway_id ):
@@ -511,7 +652,14 @@ def make_random_file( size, dir="/tmp" ):
     fd, path = tempfile.mkstemp( dir=dir )
     ffd = os.fdopen(fd, "w")
 
-    pattern = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    multipler = size / 10000
+    if multipler == 0:
+        multipler = 1
+
+    if multipler > 100000:
+        multipler = 100000
+
+    pattern = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" * multipler)
     random.shuffle(pattern)
     suffix = pattern[0:size%len(pattern)]
     l = 0

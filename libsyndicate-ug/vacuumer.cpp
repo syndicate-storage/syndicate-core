@@ -198,9 +198,11 @@ int UG_vacuum_context_restore( struct UG_vacuum_context* vctx, struct UG_inode* 
    
    int rc = 0;
    
-   // put back replaced blocks 
-   rc = SG_manifest_patch_nocopy( UG_inode_replaced_blocks( inode ), vctx->old_blocks, false );
-   SG_manifest_clear_nofree( vctx->old_blocks );
+   // put back replaced blocks
+   if( vctx->old_blocks != NULL ) { 
+       rc = SG_manifest_patch_nocopy( UG_inode_replaced_blocks( inode ), vctx->old_blocks, false );
+       SG_manifest_clear_nofree( vctx->old_blocks );
+   }
    
    if( rc != 0 ) {
       SG_error("SG_manifest_patch_nocopy rc = %d\n", rc );
@@ -356,7 +358,8 @@ static int UG_vacuumer_peek_vacuum_log( struct UG_vacuumer* vacuumer, struct UG_
 
 
 // get the old manifest block versions and hashes at a particular time, given the timestamp and a list of requests in *block_requests (which only has block IDs and block versions filled in)
-// return 0 on success, and populate *block_requests with versioning and (if present) hash data (*block_requests should already have been initialized and populated with block IDs).
+// return 0 on success, and populate *block_requests with versioning and (if present) hash data (*block_requests should already have been initialized and populated with block IDs)
+// return -ENOENT if we couldn't load the manifest
 // return -ENODATA if we're missing some manifest data
 // return -errno on failure
 static int UG_vacuumer_get_block_data( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, struct SG_manifest* block_requests ) {
@@ -395,6 +398,12 @@ static int UG_vacuumer_get_block_data( struct UG_vacuumer* vacuumer, struct UG_v
       
       SG_manifest_free( old_manifest );
       SG_safe_free( old_manifest );
+
+      if( rc == -ENODATA ) {
+         // not present
+         rc = -ENOENT;
+      }
+
       return rc;
    }
 
@@ -636,7 +645,12 @@ int UG_vacuum_run( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx 
           // get old block data at this timestamp
           rc = UG_vacuumer_get_block_data( vacuumer, vctx, old_write_delta );
           if( rc != 0 ) {
-         
+        
+             // done?
+             if( rc == -ENOENT ) {
+                return 0;
+             }
+
              SG_error("UG_vacuumer_get_block_data( %" PRIX64 ".%" PRId64 "/manifest.%ld.%d ) rc = %d\n",
                       vctx->inode_data.file_id, vctx->inode_data.version, (long)vctx->manifest_modtime_sec, (int)vctx->manifest_modtime_nsec, rc );
          

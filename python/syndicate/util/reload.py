@@ -404,8 +404,8 @@ def broadcast_reload( config, user_id, volume_id, cert_bundle_version=None, volu
         raise Exception("BUG: failed to generate config-reload request")
 
     def req_exception(request, exception):
-        log.debug("Caught exception on broadcast to '%s'" % request.url)
-        log.debug( traceback.format_exception(type(exception), exception, None) )
+        log.info("Caught exception on broadcast to '%s'" % request.url)
+        log.info( traceback.format_exception(type(exception), exception, None) )
         gateway_name = gateway_url_names[request.url]
         gateway_status[gateway_name] = False
 
