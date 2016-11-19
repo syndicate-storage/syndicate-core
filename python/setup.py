@@ -126,8 +126,8 @@ setup(name='syndicate',
                   'syndicate.ag.drivers.disk': make_driver_paths( 'syndicate/ag/drivers/disk' ),
                   'syndicate.ag.drivers.fs': make_driver_paths( 'syndicate/ag/drivers/fs' ),
                   'syndicate.rg.drivers.disk': make_driver_paths( 'syndicate/rg/drivers/disk' ),
-                  'syndicate.rg.drivers.s3': make_driver_paths( 'syndicate/rg/drivers/s3' )
-                  'syndicate.rg.drivers.fs': make_driver_paths( 'syndicate/rg/drivers/fs' )
+                  'syndicate.rg.drivers.s3': make_driver_paths( 'syndicate/rg/drivers/s3' ),
+                  'syndicate.rg.drivers.fs': make_driver_paths( 'syndicate/rg/drivers/fs' ),
       },
       cmdclass = {"build_ext": build_ext},
       )

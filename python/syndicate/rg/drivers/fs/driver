@@ -39,10 +39,14 @@ fs = None
 block_replication = True
 lock = None
 
+MANIFEST_DIR = "/.manifest/"
+
 def _initFS( driver_config, driver_secrets, role ):
     global fs
     global storage_dir
     global block_replication
+
+    gateway.log_debug( "_initFS" )
 
     if fs:
         return True
@@ -95,6 +99,9 @@ def _initFS( driver_config, driver_secrets, role ):
 
 def _shutdownFS():
     global fs
+
+    gateway.log_debug( "_shutdownFS" )
+
     if fs:
         try:
             fs.close()
@@ -106,6 +113,8 @@ def driver_init( driver_config, driver_secrets ):
     """
     Do the one-time driver setup.
     """
+
+    gateway.log_debug( "driver_init" )
 
     global fs
     global storage_dir
@@ -135,6 +144,8 @@ def driver_shutdown():
     Do the one-time driver shutdown
     """
 
+    gateway.log_debug( "driver_shutdown" )
+
     _shutdownFS()
 
 
@@ -150,6 +161,8 @@ def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
     global fs
     global block_replication
 
+    gateway.log_debug( "read_chunk - %d" % chunk_request.request_type )
+
     try:
         if block_replication:
             file_path = gateway.request_to_storage_path( chunk_request )
@@ -161,11 +174,13 @@ def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
 
             # read
             buf = fs.read( file_path, 0,  chunk_request.block_size )
+            outfile.write( buf )
         else:
-            path = gateway.request_path( chunk_request )
-            file_path = gateway.path_join( "/", path )
-
+            # file_replication
             if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+
                 # use replication module to access a file containing the block
                 replica = replication.replica( fs, file_path, chunk_request.block_size )
                 replica.makeConsistent()
@@ -173,8 +188,13 @@ def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
                 if not buf:
                     gateway.log_error("WARN: block %d of '%s' does not exist" % ( chunk_request.block_id, file_path ) )
                     return -errno.ENOENT
+                outfile.write( buf )
+                if len(buf) < chunk_request.block_size:
+                    # zero-padding
+                    outfile.write( bytearray(chunk_request.block_size - len(buf)) )
             elif chunk_request.request_type == DriverRequest.MANIFEST:
-                file_path = file_path + (".manifest.%s.%s" % (chunk_request.manifest_mtime_sec, chunk_request.manifest_mtime_nsec))
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
 
                 if not fs.exists( file_path ):
                     gateway.log_error( "WARN: '%s' does not exist" % file_path )
@@ -182,8 +202,7 @@ def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
 
                 # read
                 buf = fs.read( file_path, 0,  chunk_request.block_size )
-
-        outfile.write( buf )
+                outfile.write( buf )
     except Exception:
         gateway.log_error( traceback.format_exc() )
         return -errno.EIO
@@ -193,6 +212,8 @@ def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
 def write_chunk( chunk_request, chunk_buf, driver_config, driver_secrets ):
     global fs
     global block_replication
+
+    gateway.log_debug( "write_chunk - %d" % chunk_request.request_type )
 
     byte_offset = gateway.request_byte_offset( chunk_request )
     byte_len = gateway.request_byte_len( chunk_request )
@@ -224,19 +245,24 @@ def write_chunk( chunk_request, chunk_buf, driver_config, driver_secrets ):
             # write
             fs.write( file_path, 0, chunk_buf )
         else:
-            path = gateway.request_path( chunk_request )
-            file_path = gateway.path_join( "/", path )
-            parent_path = os.path.dirname( file_path )
-            if not fs.exists( parent_path ):
-                fs.make_dirs( parent_path )
-
             if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+                parent_path = os.path.dirname( file_path )
+                if not fs.exists( parent_path ):
+                    fs.make_dirs( parent_path )
+
                 # use replication module to access a file containing the block
                 replica = replication.replica( fs, file_path, chunk_request.block_size )
                 replica.makeConsistent()
                 replica.replicateBlock( chunk_request.block_id, chunk_buf[:actual_block_size], chunk_request.block_version )
-            elif chunk_request.request_type == DriverRequest.MANIFEST:
-                file_path = file_path + (".manifest.%s.%s" % (chunk_request.manifest_mtime_sec, chunk_request.manifest_mtime_nsec))
+            elif ((chunk_request.request_type == DriverRequest.MANIFEST) or
+                 (chunk_request.request_type == DriverRequest.RENAME_HINT)):
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
+                parent_path = os.path.dirname( file_path )
+                if not fs.exists( parent_path ):
+                    fs.make_dirs( parent_path )
 
                 if fs.exists( file_path ):
                     fs.unlink( file_path )
@@ -253,6 +279,8 @@ def delete_chunk( chunk_request, driver_config, driver_secrets ):
     global fs
     global block_replication
 
+    gateway.log_debug( "delete_chunk - %d" % chunk_request.request_type )
+
     try:
         if block_replication:
             file_path = gateway.request_to_storage_path( chunk_request )
@@ -261,18 +289,50 @@ def delete_chunk( chunk_request, driver_config, driver_secrets ):
             if fs.exists( file_path ):
                 fs.unlink( file_path )
         else:
-            path = gateway.request_path( chunk_request )
-            file_path = gateway.path_join( "/", path )
             if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+
                 # use replication module to access a file containing the block
                 replica = replication.replica( fs, file_path, chunk_request.block_size )
                 replica.makeConsistent()
                 replica.deleteBlock( chunk_request.block_id, chunk_request.block_version )
-            elif chunk_request.request_type == DriverRequest.MANIFEST:
-                file_path = file_path + (".manifest.%s.%s" % (chunk_request.manifest_mtime_sec, chunk_request.manifest_mtime_nsec))
+            elif ((chunk_request.request_type == DriverRequest.MANIFEST) or
+                 (chunk_request.request_type == DriverRequest.RENAME_HINT)):
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
 
                 if fs.exists( file_path ):
                     fs.unlink( file_path )
+
+    except Exception:
+        gateway.log_error( traceback.format_exc() )
+        return -errno.EIO
+    return 0
+
+
+def rename_file( chunk_request, old_path, new_path, driver_config, driver_secrets ):
+    global fs
+    global block_replication
+
+    gateway.log_debug( "rename_file - %d" % chunk_request.request_type )
+
+    from_path = gateway.request_path( chunk_request )
+    to_path = gateway.request_new_path( chunk_request )
+
+    gateway.log_debug( "rename hint: '%s' --> '%s'" % (from_path, to_path) )
+    try:
+        if block_replication:
+            # don't need to handle
+            pass
+        else:
+            if chunk_request.request_type == DriverRequest.RENAME_HINT:
+                from_file_path = gateway.path_join( "/", from_path )
+                to_file_path = gateway.path_join( "/", to_path )
+
+                # use replication module to rename replica
+                replica = replication.replica( fs, from_file_path, chunk_request.block_size )
+                replica.rename( to_file_path )
 
     except Exception:
         gateway.log_error( traceback.format_exc() )

@@ -53,6 +53,8 @@ def _initFS( driver_config, driver_secrets, role ):
     global storage_dir
     global sync_fully
 
+    gateway.log_debug( "_initFS" )
+
     if fs:
         return True
 
@@ -110,6 +112,9 @@ def _initFS( driver_config, driver_secrets, role ):
 
 def _shutdownFS():
     global fs
+
+    gateway.log_debug( "_shutdownFS" )
+
     if fs:
         try:
             fs.close()
@@ -120,6 +125,8 @@ def _shutdownFS():
 
 def datasets_update_cb( updated_entries, added_entries, removed_entries ):
     global command_queue
+
+    gateway.log_debug( "datasets_update_cb" )
 
     for u in updated_entries:
         if u.stat and not u.stat.directory:
@@ -155,6 +162,8 @@ def _resync( path ):
     global fs
     global sync_fully
 
+    gateway.log_debug( "_resync" )
+
     stack = [path]
     while len( stack ) > 0:
         last_dir = stack.pop( 0 )
@@ -182,6 +191,8 @@ def driver_init( driver_config, driver_secrets ):
 
     global fs
     global storage_dir
+
+    gateway.log_debug( "driver_init" )
 
     # detect a role
     rolestr = sys.argv[1]
@@ -217,6 +228,9 @@ def driver_shutdown():
     """
     Do the one-time driver shutdown
     """
+
+    gateway.log_debug( "driver_shutdown" )
+
     _shutdownFS()
 
 
@@ -231,6 +245,8 @@ def next_dataset( driver_config, driver_secrets ):
     """
 
     global command_queue
+
+    gateway.log_debug( "next_dataset" )
 
     # find the next command
     while True:
@@ -270,6 +286,8 @@ def refresh( request, driver_config, driver_secrets ):
 
     global fs
     global command_queue
+
+    gateway.log_debug( "refresh" )
 
     path = gateway.request_path( request )
     file_path = gateway.path_join( "/", path )
@@ -321,6 +339,8 @@ def read( request, chunk_fd, driver_config, driver_secrets ):
     """
 
     global fs
+
+    gateway.log_debug( "read" )
 
     path = gateway.request_path( request )
     file_path = gateway.path_join( "/", path )
