@@ -38,6 +38,7 @@ import client
 import config as conf
 import syndicate.protobufs.ms_pb2 as ms_pb2
 import syndicate.protobufs.sg_pb2 as sg_pb2
+import syndicate.ms.msconfig as msconfig
 
 log = conf.get_logger("syndicate-certs")
 
@@ -848,7 +849,7 @@ def get_all_user_certs( config, user_ids ):
     return [ cached_users[user_id] for user_id in cached_users.keys() ]
 
 
-def verify_all_gateway_certs( gateway_certs, user_certs ):
+def verify_all_gateway_certs( gateway_certs, user_certs, volume_owner_cert ):
     """
     Given a list of all gateway certs and user certs,
     verify that each user signed their respetive
@@ -859,11 +860,16 @@ def verify_all_gateway_certs( gateway_certs, user_certs ):
         user_dict[ user_cert.user_id ] = user_cert
 
     for gateway_cert in gateway_certs:
-        user_cert = user_dict.get( gateway_cert.owner_id, None )
-        assert user_cert is not None, "Gateway '%s' has no owner" % (gateway_cert.name)
+        # non-anonymous?
+        if gateway_cert.owner_id != msconfig.USER_ID_ANON:
+            user_cert = user_dict.get( gateway_cert.owner_id, None )
+            assert user_cert is not None, "Gateway '%s' has no owner" % (gateway_cert.name)
+
+        else:
+            user_cert = volume_owner_cert
 
         rc = verify_user_signature( user_cert, gateway_cert )
-        assert rc, "Gateway '%s' not signed by '%s'" % (gateway_cert.name, user_cert.email)
+        assert rc, "Gateway '%s' (%s) not signed by '%s'" % (gateway_cert.name, gateway_cert.owner_id, user_cert.email)
 
     return True
 
@@ -892,7 +898,7 @@ def user_is_anonymous( user_name_or_id ):
         pass
 
     if type(user_name_or_id) in [str, unicode]:
-        if user_name_or_id.lower() == "anonymous":
+        if user_name_or_id.lower() == "nobody":
             return True
         else:
             return False
@@ -1036,10 +1042,10 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     gateway_certs = get_all_gateway_certs( config, cert_bundle, exclude=[volume_cert.volume_id, gateway_cert.gateway_id] )
 
     # get and verify the user certs for each gateway
-    user_certs = get_all_user_certs( config, list( set( [cert.owner_id for cert in gateway_certs] ) ) )
+    user_certs = get_all_user_certs( config, list( set( filter(lambda owner_id: owner_id != msconfig.USER_ID_ANON, [cert.owner_id for cert in gateway_certs]) ) ) )
 
     # verify that each user signed their gateway 
-    rc = verify_all_gateway_certs( gateway_certs, user_certs )
+    rc = verify_all_gateway_certs( gateway_certs, user_certs, volume_owner_cert )
     assert rc, "Failed to verify that users own their gateways"
 
     # clear the cache 
