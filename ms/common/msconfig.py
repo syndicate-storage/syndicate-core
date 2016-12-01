@@ -105,7 +105,8 @@ GATEWAY_CAP_READ_METADATA = ms_pb2.ms_gateway_cert.CAP_READ_METADATA
 GATEWAY_CAP_WRITE_METADATA = ms_pb2.ms_gateway_cert.CAP_WRITE_METADATA
 GATEWAY_CAP_COORDINATE = ms_pb2.ms_gateway_cert.CAP_COORDINATE
 
-GATEWAY_ID_ANON = 0xFFFFFFFFFFFFFFFF    # taken from libsyndicate.h
+GATEWAY_ID_ANON = 0x7FFFFFFFFFFFFFFF    # taken from libsyndicate.h
+USER_ID_ANON = 0x7FFFFFFFFFFFFFFF       # taken from libsyndicate.h
 
 # JSON
 JSON_AUTH_COOKIE_NAME = "SynAuth"
