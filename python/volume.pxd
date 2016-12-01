@@ -105,7 +105,7 @@ cdef extern from "libsyndicate-ug/core.h":
    cdef struct UG_state:
       pass
 
-   UG_state* UG_init( int argc, char** argv, bool client )
+   UG_state* UG_init( int argc, char** argv )
    int UG_main( UG_state* state )
    int UG_start( UG_state* state )
    int UG_shutdown( UG_state* state )

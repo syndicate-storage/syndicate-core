@@ -105,7 +105,7 @@ cdef class Volume:
       self.state_inst = NULL
 
    # ------------------------------------------
-   def __init__( self, args, is_client ):
+   def __init__( self, args ):
 
       '''
          Initialize UG, starting it in its own thread
@@ -115,7 +115,7 @@ cdef class Volume:
       if argv == NULL:
          raise MemoryError()
       
-      self.state_inst = UG_init( len(args), argv, is_client )
+      self.state_inst = UG_init( len(args), argv )
 
       if self.state_inst == NULL:      
          raise VolumeException("Failed to initialize UG")
