@@ -404,10 +404,9 @@ int UG_state_unlock( struct UG_state* state ) {
 
 
 // easy way to set up the UG 
-// "client" means "anonymous read-only"
 // return a UG on success
 // return NULL on error
-struct UG_state* UG_init( int argc, char** argv, bool client ) {
+struct UG_state* UG_init( int argc, char** argv ) {
    
    struct UG_state* state = NULL;
    struct md_opts* overrides = md_opts_new( 1 );
@@ -416,7 +415,6 @@ struct UG_state* UG_init( int argc, char** argv, bool client ) {
    }
 
    md_opts_default( overrides );
-   md_opts_set_client( overrides, client );
    md_opts_set_gateway_type( overrides, SYNDICATE_UG );
    md_opts_set_driver_config( overrides, UG_DEFAULT_DRIVER_EXEC_STR, UG_DRIVER_ROLES, UG_DRIVER_NUM_INSTANCES, UG_DRIVER_NUM_ROLES );
    
