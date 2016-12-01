@@ -1114,7 +1114,7 @@ class StubObject( object ):
       Store it as the 'email' key.
       """
    
-      if not email_regex.match(email):
+      if not email_regex.match(email) and email != 'NOBODY':
          raise Exception("Not an email address: '%s'" % email)
       else:
          if lib is not None:
@@ -2312,6 +2312,11 @@ class Gateway( StubObject ):
 
       owner_id = None 
       gateway_id = None
+      anonymous = False
+      volume_owner_id = None
+
+      volume_cert = None
+      volume_owner_cert = None
      
       # sanity check 
       missing = []
@@ -2341,11 +2346,14 @@ class Gateway( StubObject ):
       if owner_username is None:
          if existing_gateway_cert is not None:
             owner_id = existing_gateway_cert.owner_id 
-            
-            # find the associated username, so we can get the public key
-            owner_username = load_user_email( config, owner_id )
-            if owner_username is None:
-                raise MissingCertException("Missing cert information on user %s" % owner_id)
+            if owner_id == msconfig.GATEWAY_ID_ANON:
+                owner_username = 'NOBODY'
+
+            else:
+                # find the associated username, so we can get the public key
+                owner_username = load_user_email( config, owner_id )
+                if owner_username is None:
+                    raise MissingCertException("Missing cert information on user %s" % owner_id)
 
          else:
              raise MissingCertException("Missing cert information on user %s" % owner_id)
@@ -2430,19 +2438,45 @@ class Gateway( StubObject ):
             caps = cur_caps
          else:
             caps = 0
-      
+     
+      # anonymous?
+      if owner_username == 'NOBODY':
+          anonymous = True
+          caps &= (msconfig.GATEWAY_CAP_READ_DATA | msconfig.GATEWAY_CAP_READ_METADATA)
+
       # load user ID
       if owner_id is None:
          owner_id = load_user_id( config, owner_username )
          if owner_id is None:
-            raise Exception("Unable to determine user ID of '%s'" % owner_username)
+            # could be anonymous 
+            if anonymous:
+                owner_id = msconfig.USER_ID_ANON
+
+            else:
+                raise Exception("Unable to determine user ID of '%s'" % owner_username)
       
       # load user private key, so we can sign the cert and make a new volume cert bundle
-      user_privkey = storagelib.load_private_key( config, "user", owner_username )
+      if not anonymous:
+          user_privkey = storagelib.load_private_key( config, "user", owner_username )
+          if user_privkey is None:
+              raise Exception("No private key found for user '%s'" % owner_username)
       
-      if user_privkey is None:
-         raise Exception("No private key found for user '%s'" % owner_username)
-      
+      else: 
+         # only volume owner can do this
+         # load volume owner 
+         volume_cert = load_volume_cert( config, volume_name_or_id )
+         if volume_cert is None:
+             raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
+
+         volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
+         if volume_owner_cert is None:
+             raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
+
+         # the user to sign the gateway cert is going to be the volume owner 
+         user_privkey = storagelib.load_private_key( config, "user", volume_owner_cert.email )
+         if user_privkey is None:
+             raise Exception("No private key found for user %s; requierd for anonymous gateways" % volume_owner_cert.email)
+
       now_sec, _ = clock_gettime()
 
       # load cert expires (1 year default expiry)
@@ -2484,17 +2518,17 @@ class Gateway( StubObject ):
       gateway_cert.volume_id = volume_id
       gateway_cert.driver_hash = driver_hash 
       gateway_cert.signature = ""
-      
-      # sign with user's private key 
+       
+      # sign with user's private key if not anonymous (or volume owner key if anonymous) 
       gateway_cert_str = gateway_cert.SerializeToString()
       sig = crypto.sign_data( user_privkey, gateway_cert_str )
       
       gateway_cert.signature = base64.b64encode( sig )
       gateway_cert_str = gateway_cert.SerializeToString()
-      
+
       volume_cert_bundle_str = None 
       need_volume_cert_bundle = False
-     
+
       if method_name in ["update_gateway"]:
           assert existing_gateway_cert is not None, "Updating a gateway requires its existing certificate"
 
@@ -2515,13 +2549,15 @@ class Gateway( StubObject ):
       if need_volume_cert_bundle:
         
          # load volume owner 
-         volume_cert = load_volume_cert( config, volume_name_or_id )
          if volume_cert is None:
-             raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
+             volume_cert = load_volume_cert( config, volume_name_or_id )
+             if volume_cert is None:
+                 raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
 
-         volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
          if volume_owner_cert is None:
-             raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
+             volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
+             if volume_owner_cert is None:
+                 raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
 
          # generate a certificate bundle.
          volume_cert_bundle_str = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, volume_id=volume_id, new_gateway_cert=gateway_cert )
@@ -2535,7 +2571,6 @@ class Gateway( StubObject ):
          volume_cert_versions = get_volume_cert_bundle_version_vector( volume_cert_bundle )
          volume_cert_versions_txt = json.dumps( volume_cert_versions )
          store_object_file( config, "volume", str(volume_id) + ".bundle.version", volume_cert_versions_txt )
-
 
       # generate the actual keyword arguments for the API call
       args = []
@@ -2552,6 +2587,11 @@ class Gateway( StubObject ):
       # if we're updating/deleting, we expect an ID
       if method_name in ['update_gateway', 'delete_gateway']:
          args = [gateway_id]
+
+      if volume_cert is not None:
+         volume_owner_id = volume_cert.owner_id
+      elif volume_owner_cert is not None:
+         volume_owner_id = volume_owner_cert.owner_id
       
       # pass this along to our result post-processor
       extras['gateway_cert'] = gateway_cert 
@@ -2561,7 +2601,8 @@ class Gateway( StubObject ):
       extras['name'] = gateway_name 
       extras['gateway_private_key'] = private_key
       extras['changed_caps'] = need_volume_cert_bundle
-      extras['need_volume_reload'] = need_volume_cert_bundle
+      extras['need_volume_reload'] = need_volume_cert_bundle or anonymous
+      extras['volume_owner_id'] = volume_owner_id
       
       return args, kw, extras
       
@@ -2634,6 +2675,7 @@ class Gateway( StubObject ):
                 volume_id = None
                 gateway_id = None
                 gateway_name = None
+                volume_owner_id = None
 
                 if gateway_cert is not None:
                     owner_id = gateway_cert.owner_id
@@ -2651,17 +2693,22 @@ class Gateway( StubObject ):
                     volume_id = extras['volume_id']
                     gateway_name = extras['name']
 
+                reload_owner_id = owner_id
+                if reload_owner_id == msconfig.USER_ID_ANON:
+                    reload_owner_id = extras.get('volume_owner_id')
+                    assert reload_owner_id is not None
+
                 if method_name == 'update_gateway' and not extras['need_volume_reload']:
 
                     # just updating the gateway
                     log.info( "Reloading gateway '%s'" % gateway_name )
-                    gateway_status = reloader.send_reload( config, owner_id, volume_id, gateway_id )
+                    gateway_status = reloader.send_reload( config, reload_owner_id, volume_id, gateway_id )
                     if gateway_status != 0:
                         log.warn( "Failed to reload gateway '%s'" % gateway_name )
                         log.warn( "If this gateway is running, you can try reloading it manually with the 'reload_gateway' command" )
 
                 else:
-                    failed = do_volume_reload( config, owner_id, volume_id )
+                    failed = do_volume_reload( config, reload_owner_id, volume_id )
                     if gateway_name in failed:
                         failed.remove( gateway_name )
 
