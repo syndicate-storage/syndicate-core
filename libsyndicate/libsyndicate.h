@@ -208,9 +208,11 @@ struct md_syndicate_conf {
    bool is_client;                                    // if true for a UG, always fetch data from RGs
 };
 
-#define SG_USER_ANON               (uint64_t)0xFFFFFFFFFFFFFFFFLL
-#define SG_GATEWAY_ANON            (uint64_t)0xFFFFFFFFFFFFFFFFLL
-#define SG_GATEWAY_TOOL            (uint64_t)0xFFFFFFFFFFFFFFFELL       // gateway id used by messages from the administrative tool
+// #define SG_USER_ANON               (uint64_t)0xFFFFFFFFFFFFFFFFLL
+#define SG_USER_ANON               (uint64_t)0x7FFFFFFFFFFFFFFLL
+#define SG_GATEWAY_ANON            (uint64_t)0x7FFFFFFFFFFFFFFLL
+#define SG_GATEWAY_TOOL            (uint64_t)0x7FFFFFFFFFFFFFELL       // gateway id used by messages from the administrative tool
+#define SG_GATEWAY_ANONYMOUS_USER  "NOBODY"
 
 // config elements
 #define SG_CONFIG_VOLUMES_PATH            "volumes"

@@ -31,30 +31,6 @@ static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyval
 
 // stacktrace for uncaught C++ exceptions
 void md_uncaught_exception_handler(void) {
-
-   /*
-   SG_error("%s", "UNCAUGHT EXCEPTION!  Stack trace follows\n");
-
-   void *trace_elems[32];
-   size_t p = 0;
-   int trace_elem_count(backtrace( trace_elems, 32 ));
-
-   char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
-
-   for( int i = 0 ; i < trace_elem_count ; i++ ) {
-
-       // use addr2line to convert addresses to line numbers.
-       // find address.
-       p = 0;
-       while( stack_syms[i][p] != '(' && stack_syms[i][p] != ' ' && stack_syms[i][p] != '\0' ) {
-          p++;
-       }
-
-       SG_error("        %s\n", stack_syms[i] );
-   }
-
-   SG_safe_free( stack_syms );
-   */
    SG_error("%s", "UNCAUGHT EXCEPTION!");
    exit(1);
 }
@@ -321,15 +297,26 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
       return -EPERM;
    }
 
-   // load our user cert
-   rc = md_user_cert_load( conf->certs_path, conf->ms_username, user_cert );
-   if( rc != 0 ) {
-      SG_error("md_user_cert_load('%s', '%s') rc = %d\n", conf->certs_path, conf->ms_username, rc );
-      return -EPERM;
+   // load our user cert, if we're not anonymous 
+   if( !conf->is_client ) { 
+       rc = md_user_cert_load( conf->certs_path, conf->ms_username, user_cert );
+       if( rc != 0 ) {
+          SG_error("md_user_cert_load('%s', '%s') rc = %d\n", conf->certs_path, conf->ms_username, rc );
+          return -EPERM;
+       }
+   }
+   else {
+      user_cert->set_user_id(SG_USER_ANON);
    }
 
    // propagate config info
-   conf->owner = gateway_cert.owner_id();
+   if( conf->is_client ) {
+      conf->owner = SG_USER_ANON;
+   }
+   else {
+       conf->owner = gateway_cert.owner_id();
+   }
+
    conf->volume = volume_cert->volume_id();
    conf->gateway = gateway_cert.gateway_id();
    conf->gateway_type = gateway_cert.gateway_type();
