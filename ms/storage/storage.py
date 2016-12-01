@@ -719,7 +719,7 @@ def validate_gateway_cert( gateway_cert, signing_user_id ):
    user, volume = _read_user_and_volume( gateway_cert.owner_id, gateway_cert.volume_id )
    signing_user = None
    
-   if user is None:
+   if user is None and gateway_cert.owner_id != USER_ID_ANON:
       raise Exception("No such user '%s'" % gateway_cert.owner_id)
    
    if (volume is None or volume.deleted):
@@ -736,6 +736,15 @@ def validate_gateway_cert( gateway_cert, signing_user_id ):
 
        pubkey = signing_user.public_key
        signer_email = signing_user.email
+
+   elif gateway_cert.owner_id == USER_ID_ANON:
+       signing_user = SyndicateUser.Read( volume.owner_id )
+       if signing_user is None:
+           raise Exception("No such signing user '%s'" % volume.owner_id)
+
+       pubkey = signing_user.public_key
+       signer_email = signing_user.email
+       user = signing_user 
 
    else:
        pubkey = user.public_key
@@ -809,6 +818,7 @@ def create_gateway( **kw ):
    try:
       user, volume = validate_gateway_cert( gateway_cert, None )
    except Exception, e:
+      log.exception(e)
       log.error("Failed to find either the user or volume")
       raise e
   
@@ -932,14 +942,20 @@ def update_gateway( g_name_or_id, **kw ):
    caller_user = _check_authenticated( kw )
    
    # validate the gateway cert
-   user, volume = validate_gateway_cert( gateway_cert, gateway_cert.owner_id ) 
+   signing_user_id = gateway_cert.owner_id
+   if signing_user_id == USER_ID_ANON:
+       # verify with volume owner 
+       signing_user_id = None
+
+   user, volume = validate_gateway_cert( gateway_cert, signing_user_id ) 
    gateway = read_gateway( g_name_or_id )
    if gateway is None:
        raise Exception("No such gateway '%s'" % g_name_or_id)
 
-   # user must own this gateway 
-   if gateway.owner_id != user.owner_id:
-       raise Exception("User '%s' does not own gateway '%s'" % (user.email, gateway.name))
+   # user must own this gateway, or gateway must be anonymous and the user must be the volume owner, or the caller user must be admin
+   if (gateway.owner_id != USER_ID_ANON and gateway.owner_id != user.owner_id) or (gateway.owner_id == USER_ID_ANON and user.owner_id != volume.owner_id) or (not caller_user.is_admin):
+       owning_user_id = user.owner_id if gateway.owner_id != USER_ID_ANON else volume.owner_id
+       raise Exception("User '%s' does not own gateway '%s' (%s)" % (owning_user_id, gateway.name, gateway.owner_id))
 
    # caller user must be the volume owner, the admin, or the gateway owner
    if not caller_user.is_admin and caller_user.owner_id != volume.owner_id and caller_user.owner_id != gateway.owner_id:
