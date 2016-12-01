@@ -348,6 +348,14 @@ int md_opts_parse_impl( struct md_opts* opts, int argc, char** argv, int* out_op
                break;
             }
             
+            if( strcmp(opts->username, SG_GATEWAY_ANONYMOUS_USER) == 0 ) {
+               SG_debug("Anonymous user '%s'\n", opts->username);
+               opts->client = true;
+            }
+            else {
+               SG_debug("Username: '%s'\n", opts->username);
+            }
+
             break;
          }
          case 'm': {
@@ -458,7 +466,8 @@ void md_common_usage() {
    fprintf(stderr, "\
 Syndicate required arguments:\n\
    -u, --username USERNAME\n\
-            Syndicate account username\n\
+            Syndicate account username.\n\
+            Pass '%s' for anonymous access.\n\
    -v, --volume VOLUME_NAME\n\
             Name of the Volume you are going to access\n\
    -g, --gateway GATEWAY_NAME\n\
@@ -481,6 +490,6 @@ Syndicate optional arguments:\n\
             Pass 1 for info messages.\n\
             Pass 2 for info and debugging messages.\n\
             Pass 3 for info, debugging, and locking messages.\n\
-\n", SG_DEFAULT_CONFIG_PATH );
+\n", SG_GATEWAY_ANONYMOUS_USER, SG_DEFAULT_CONFIG_PATH );
 }
 
