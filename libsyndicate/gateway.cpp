@@ -1221,7 +1221,6 @@ int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc
       return rc;
    }
    
-   md_opts_set_client( &opts, md_opts_get_client( overrides ) );
    md_opts_set_gateway_type( &opts, md_opts_get_gateway_type( overrides ) );
    md_opts_set_ignore_driver( &opts, md_opts_get_ignore_driver( overrides ) );
    md_opts_set_driver_config( &opts, overrides->driver_exec_str, overrides->driver_roles, overrides->num_instances, overrides->num_driver_roles );
