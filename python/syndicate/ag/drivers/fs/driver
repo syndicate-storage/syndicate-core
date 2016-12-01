@@ -17,122 +17,172 @@
 """
 
 """
-Filesystem driver.
+Filesystem AG driver.
 Serves files on a remote system through generic fs plugin.
 """
 
 import traceback
-import os
 import sys
+import os
 import errno
 import time
 import threading
+import Queue
 import json
 import syndicate.util.gateway as gateway
-import sagfsdriver.lib.abstractfs as abstractfs
+import sgfsdriver.lib.abstractfs as abstractfs
 
-from sagfsdriver.lib.pluginloader import pluginloader
+from sgfsdriver.lib.pluginloader import pluginloader
 
-dataset_dir = None
-path_queue = []
+storage_dir = None
+sync_fully = False
 fs = None
-lock = None
 
-ENTRY_UPDATED = 0
-ENTRY_ADDED = 1
-ENTRY_REMOVED = 2
+# will store commands to be processed
+command_queue = Queue.Queue(0)
+
+DEFAULT_SCAN_FILE_TTL = 1000 * 60 * 5 # 5mins
+DEFAULT_SCAN_DIRECTORY_TTL = 1000 # expire very soon
+DEFAULT_REFRESH_FILE_TTL = 1000 * 60 * 5 # 5mins
+DEFAULT_REFRESH_DIRECTORY_TTL = 1000 * 60 * 5 # 5 mins
+DEFAULT_READ_TTL = 1000 * 60 *5 # 5min
+
 
 def _initFS( driver_config, driver_secrets, role ):
     global fs
-    global dataset_dir
+    global storage_dir
+    global sync_fully
+
+    gateway.log_debug( "_initFS" )
 
     if fs:
         return True
 
     # continue only when fs is not initialized
-    if not driver_config.has_key('DRIVER_FS_PLUGIN'):
-        gateway.log_error("No DRIVER_FS_PLUGIN defined")
+    if not driver_config.has_key( 'DRIVER_FS_PLUGIN' ):
+        gateway.log_error( "No DRIVER_FS_PLUGIN defined" )
         return False
 
-    if not driver_config.has_key('DRIVER_FS_PLUGIN_CONFIG'):
-        gateway.log_error("No DRIVER_FS_PLUGIN_CONFIG defined")
+    if not driver_config.has_key( 'DRIVER_FS_PLUGIN_CONFIG' ):
+        gateway.log_error( "No DRIVER_FS_PLUGIN_CONFIG defined" )
         return False
 
     if not driver_config.has_key('DATASET_DIR'):
-        gateway.log_error("No DATASET_DIR defined")
+        gateway.log_error( "No DATASET_DIR defined" )
         return False
 
-    dataset_dir = driver_config['DATASET_DIR']
-    dataset_dir = "/" + dataset_dir.strip("/")
+    storage_dir = driver_config['DATASET_DIR']
+    storage_dir = "/" + storage_dir.strip("/")
+
+    if driver_config.has_key('DATASET_SYNC_FULLY'):
+        sync_fully = driver_config['DATASET_SYNC_FULLY']
+    else:
+        sync_fully = True
 
     plugin = driver_config['DRIVER_FS_PLUGIN']
 
-    if isinstance(driver_config['DRIVER_FS_PLUGIN_CONFIG'], dict):
+    if isinstance( driver_config['DRIVER_FS_PLUGIN_CONFIG'], dict ):
         plugin_config = driver_config['DRIVER_FS_PLUGIN_CONFIG']
-    elif isinstance(driver_config['DRIVER_FS_PLUGIN_CONFIG'], basestring):
+    elif isinstance( driver_config['DRIVER_FS_PLUGIN_CONFIG'], basestring ):
         json_plugin_config = driver_config['DRIVER_FS_PLUGIN_CONFIG']
-        plugin_config = json.loads(json_plugin_config)
+        plugin_config = json.loads( json_plugin_config )
 
     plugin_config["secrets"] = driver_secrets
-    plugin_config["dataset_root"] = dataset_dir
+    plugin_config["work_root"] = storage_dir
 
     try:
         loader = pluginloader()
-        fs = loader.load(plugin, plugin_config, role)
+        fs = loader.load( plugin, plugin_config, role )
 
         if not fs:
-            gateway.log_error("No such driver plugin found: %s" % plugin )
+            gateway.log_error( "No such driver plugin found: %s" % plugin )
             return False
 
         fs.set_notification_cb(datasets_update_cb)
         fs.connect()
     except Exception as e:
-        gateway.log_error("Unable to initialize a driver")
-        gateway.log_error(str(e))
+        gateway.log_error( "Unable to initialize a driver" )
+        gateway.log_error( str( e ) )
         traceback.print_exc()
         return False
+
+    gateway.log_debug( "Driver initialized" )
     return True
+
 
 def _shutdownFS():
     global fs
+
+    gateway.log_debug( "_shutdownFS" )
+
     if fs:
         try:
             fs.close()
-        except Exception as e:
+        except Exception:
             pass
     fs = None
 
-def datasets_update_cb(updated_entries, added_entries, removed_entries):
-    global path_queue
-    global lock
 
-    _lock()
+def datasets_update_cb( updated_entries, added_entries, removed_entries ):
+    global command_queue
+
+    gateway.log_debug( "datasets_update_cb" )
+
     for u in updated_entries:
-        entry = {}
-        entry["flag"] = ENTRY_UPDATED
-        entry["stat"] = u
-        path_queue.append(entry)
+        if u.stat and not u.stat.directory:
+            # file
+            cmd = gateway.make_metadata_command( "put", "file", 0555, u.stat.size, u.path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_SCAN_FILE_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, None) )
+        else:
+            # directory
+            cmd = gateway.make_metadata_command( "put", "directory", 0555, None, u.path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_SCAN_DIRECTORY_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, None) )
 
     for a in added_entries:
-        entry = {}
-        entry["flag"] = ENTRY_ADDED
-        entry["stat"] = a
-        path_queue.append(entry)
+        if a.stat and not a.stat.directory:
+            # file
+            cmd = gateway.make_metadata_command( "put", "file", 0555, a.stat.size, a.path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_SCAN_FILE_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, None) )
+        else:
+            # directory
+            cmd = gateway.make_metadata_command( "put", "directory", 0555, None, a.path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_SCAN_DIRECTORY_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, None) )
 
     for r in removed_entries:
-        entry = {}
-        entry["flag"] = ENTRY_REMOVED
-        entry["stat"] = r
-        path_queue.append(entry)
-    _unlock()
+        cmd = gateway.make_metadata_delete_command( r.path )
+        gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+        command_queue.put( (cmd, None) )
 
-def _lock():
-    global lock
-    lock.acquire()
 
-def _unlock():
-    global lock
-    lock.release()
+def _resync( path ):
+    global fs
+    global sync_fully
+
+    gateway.log_debug( "_resync" )
+
+    stack = [path]
+    while len( stack ) > 0:
+        last_dir = stack.pop( 0 )
+        fs.clear_cache( last_dir )
+        entries = fs.list_dir( last_dir )
+        if entries:
+            for entry in entries:
+                # entry is a filename
+                entry_path = last_dir.rstrip( "/" ) + "/" + entry
+                st = fs.stat( entry_path )
+                e = abstractfs.afsevent( entry_path, st )
+
+                if st.directory:
+                    if sync_fully:
+                        # do sync recursively
+                        stack.append( entry_path )
+
+                datasets_update_cb( [], [e], [] )
+
 
 def driver_init( driver_config, driver_secrets ):
     """
@@ -140,28 +190,36 @@ def driver_init( driver_config, driver_secrets ):
     """
 
     global fs
-    global dataset_dir
-    global lock
+    global storage_dir
 
-    lock = threading.RLock()
+    gateway.log_debug( "driver_init" )
 
+    # detect a role
+    rolestr = sys.argv[1]
     role = abstractfs.afsrole.DISCOVER
-    if sys.argv[1] == "read":
+    if rolestr == "read":
         role = abstractfs.afsrole.READ
-    elif sys.argv[1] == "crawl":
+    elif rolestr == "crawl":
         role = abstractfs.afsrole.DISCOVER
+    else:
+        gateway.log_error( "Unknown role: %s" % rolestr )
+        return False
 
     if not _initFS( driver_config, driver_secrets, role ):
-        gateway.log_error("Unable to init filesystem")
+        gateway.log_error( "Unable to init filesystem")
         return False
 
-    if not fs.exists( dataset_dir ):
-        gateway.log_error("No such file or directory: %s" % dataset_dir )
-        return False 
-
-    if not fs.is_dir( dataset_dir ):
-        gateway.log_error("Not a directory: %s" % dataset_dir )
+    if not fs.exists( "/" ):
+        gateway.log_error( "No such file or directory: %s" % storage_dir )
         return False
+
+    if not fs.is_dir( "/" ):
+        gateway.log_error( "Not a directory: %s" % storage_dir )
+        return False
+
+    if role == abstractfs.afsrole.DISCOVER:
+        # add initial dataset
+        _resync( "/" )
 
     return True
 
@@ -170,8 +228,11 @@ def driver_shutdown():
     """
     Do the one-time driver shutdown
     """
+
+    gateway.log_debug( "driver_shutdown" )
+
     _shutdownFS()
-    
+
 
 def next_dataset( driver_config, driver_secrets ):
     """
@@ -183,49 +244,17 @@ def next_dataset( driver_config, driver_secrets ):
     Return False if not.
     """
 
-    global path_queue
+    global command_queue
 
-    next_stat = None
+    gateway.log_debug( "next_dataset" )
 
-    # find the next file or directory 
+    # find the next command
     while True:
-        next_stat = None
-        _lock()
-        if len(path_queue) > 0:
-            next_stat = path_queue[0]
-            path_queue.pop(0)
-        _unlock()
-
-        if next_stat is None:
-            # no more data at this moment.
-            # sleep for 1-sec
-            time.sleep(1)
-            continue;
-
-        flag = next_stat["flag"]
-        stat = next_stat["stat"]
-
-        if not stat.path.startswith(dataset_dir):
-            gateway.log_error("Not belong to a dataset: %s" % stat.path )
-            continue
-
-        publish_path = stat.path[len(dataset_dir):]
-        
-        cmd = None
-
-        if stat.directory:
-            # directory 
-            if flag == ENTRY_UPDATED or flag == ENTRY_ADDED:
-                cmd = gateway.make_metadata_command( "put", "directory", 0555, None, publish_path )
-            elif flag == ENTRY_REMOVED:
-                cmd = gateway.make_metadata_command( "delete", "directory", 0555, None, publish_path )
-
-        else:
-            # file 
-            if flag == ENTRY_UPDATED or flag == ENTRY_ADDED:
-                cmd = gateway.make_metadata_command( "put", "file", 0555, stat.size, publish_path )
-            elif flag == ENTRY_REMOVED:
-                cmd = gateway.make_metadata_command( "delete", "file", 0555, stat.size, publish_path )
+        # this will block if command is not immediately available
+        cmd_sem = command_queue.get(True)
+        cmd = cmd_sem[0]
+        sem = cmd_sem[1]
+        gateway.log_debug( "Processing a new command %s" % cmd['path'] )
 
         if cmd is not None:
             # send the command to the AG and get back the result
@@ -233,14 +262,72 @@ def next_dataset( driver_config, driver_secrets ):
             if rc != 0:
                 gateway.log_error( "Failed to crawl %s" % cmd['path'] )
 
-            # have more data
+            command_queue.task_done()
+            if sem:
+                sem.release()
+            gateway.log_debug( "Processed a command %s" % cmd['path'] )
+
+            # have more data - wait for next commands
             return True
         else:
-            # try next path 
-            gateway.log_error( "unhandled changes - could not create the command" )
+            # try next path
+            gateway.log_error( "Could not fetch the command" )
             continue
 
     return False
+
+
+def refresh( request, driver_config, driver_secrets ):
+    """
+    Request to refresh a particular path.
+    Verify that it still exists, and if so,
+    queue it for republishing.
+    """
+
+    global fs
+    global command_queue
+
+    gateway.log_debug( "refresh" )
+
+    path = gateway.request_path( request )
+    file_path = gateway.path_join( "/", path )
+
+    fs.clear_cache( file_path )
+    cmd = None
+    sem = threading.Semaphore()
+    sem.acquire()
+
+    if not fs.exists( file_path ):
+        # delete
+        gateway.log_debug( "No longer present: '%s'" % file_path )
+        cmd = gateway.make_metadata_delete_command( file_path )
+        gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+        command_queue.put( (cmd, sem) )
+    else:
+        # update
+        gateway.log_debug( "Still present: '%s'" % file_path )
+        stat = fs.stat( file_path )
+        if not stat.directory:
+            # file
+            cmd = gateway.make_metadata_command( "put", "file", 0555, stat.size, file_path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_REFRESH_FILE_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, sem) )
+        else:
+            # directory
+            cmd = gateway.make_metadata_command( "put", "directory", 0555, None, file_path, read_ttl=DEFAULT_READ_TTL, write_ttl=DEFAULT_REFRESH_DIRECTORY_TTL )
+            gateway.log_debug( "Queuing a command %s" % cmd['path'] )
+            command_queue.put( (cmd, sem) )
+
+    # need to block until the queued command is processed
+    gateway.log_debug( "Waiting for a new command to be processed" )
+    # wait for semaphore release by next_dataset
+    sem.acquire()
+    # do nothing
+    sem.release()
+    #command_queue.join()
+
+    return 0
+
 
 def read( request, chunk_fd, driver_config, driver_secrets ):
     """
@@ -252,34 +339,34 @@ def read( request, chunk_fd, driver_config, driver_secrets ):
     """
 
     global fs
-    global dataset_dir
+
+    gateway.log_debug( "read" )
 
     path = gateway.request_path( request )
-    file_path = gateway.path_join( dataset_dir, path )
+    file_path = gateway.path_join( "/", path )
     byte_offset = gateway.request_byte_offset( request )
     byte_len = gateway.request_byte_len( request )
-    buf = None
 
     if byte_offset is None:
         # this is a bug
-        gateway.log_error("BUG: byte offset of request on %s is not defined" % file_path )
-        sys.exit(1)
+        gateway.log_error( "BUG: byte offset of request on %s is not defined" % file_path )
+        sys.exit( 1 )
 
     if byte_len is None:
         # this is a bug
-        gateway.log_error("BUG: byte len of request on %s is not defined" % file_path )
-        sys.exit(1)
+        gateway.log_error( "BUG: byte len of request on %s is not defined" % file_path )
+        sys.exit( 1 )
 
     if not fs.exists( file_path ):
-        gateway.log_error("No such file or directory: %s" % file_path )
+        gateway.log_error( "No such file or directory: %s" % file_path )
         return -errno.ENOENT
 
     try:
-        buf = fs.read( file_path, byte_offset, byte_len)
+        buf = fs.read( file_path, byte_offset, byte_len )
     except Exception, e:
-        gateway.log_error("Failed to read %s: %s" % (file_path, e))
-        sys.exit(1)
+        gateway.log_error( "Failed to read %s: %s" % ( file_path, e ) )
+        return -errno.EREMOTEIO
 
     # send it off
     chunk_fd.write( buf )
-    return 0 
+    return 0

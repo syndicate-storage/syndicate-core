@@ -1,0 +1,340 @@
+#!/usr/bin/env python
+
+"""
+   Copyright 2016 The Trustees of Princeton University
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+"""
+
+"""
+Filesystem RG driver.
+Serves files on a remote system through generic fs plugin.
+"""
+
+import traceback
+import sys
+import os
+import errno
+import threading
+import json
+import syndicate.util.gateway as gateway
+import sgfsdriver.lib.abstractfs as abstractfs
+import sgfsdriver.lib.replication as replication
+
+from sgfsdriver.lib.pluginloader import pluginloader
+from syndicate.protobufs.sg_pb2 import DriverRequest, Manifest
+
+storage_dir = None
+fs = None
+block_replication = True
+lock = None
+
+MANIFEST_DIR = "/.manifest/"
+
+def _initFS( driver_config, driver_secrets, role ):
+    global fs
+    global storage_dir
+    global block_replication
+
+    gateway.log_debug( "_initFS" )
+
+    if fs:
+        return True
+
+    # continue only when fs is not initialized
+    if not driver_config.has_key( 'DRIVER_FS_PLUGIN' ):
+        gateway.log_error( "No DRIVER_FS_PLUGIN defined" )
+        return False
+
+    if not driver_config.has_key( 'DRIVER_FS_PLUGIN_CONFIG' ):
+        gateway.log_error( "No DRIVER_FS_PLUGIN_CONFIG defined" )
+        return False
+
+    if not driver_config.has_key('STORAGE_DIR'):
+        gateway.log_error( "No STORAGE_DIR defined" )
+        return False
+
+    storage_dir = driver_config['STORAGE_DIR']
+    storage_dir = "/" + storage_dir.strip("/")
+
+    plugin = driver_config['DRIVER_FS_PLUGIN']
+
+    if isinstance( driver_config['DRIVER_FS_PLUGIN_CONFIG'], dict ):
+        plugin_config = driver_config['DRIVER_FS_PLUGIN_CONFIG']
+    elif isinstance( driver_config['DRIVER_FS_PLUGIN_CONFIG'], basestring ):
+        json_plugin_config = driver_config['DRIVER_FS_PLUGIN_CONFIG']
+        plugin_config = json.loads( json_plugin_config )
+
+    plugin_config["secrets"] = driver_secrets
+    plugin_config["work_root"] = storage_dir
+
+    if driver_config.has_key('BLOCK_REPLICATION'):
+        block_replication = bool(driver_config['BLOCK_REPLICATION'])
+
+    try:
+        loader = pluginloader()
+        fs = loader.load( plugin, plugin_config, role )
+
+        if not fs:
+            gateway.log_error( "No such driver plugin found: %s" % plugin )
+            return False
+
+        fs.connect()
+    except Exception as e:
+        gateway.log_error( "Unable to initialize a driver" )
+        gateway.log_error( str( e ) )
+        traceback.print_exc()
+        return False
+    return True
+
+def _shutdownFS():
+    global fs
+
+    gateway.log_debug( "_shutdownFS" )
+
+    if fs:
+        try:
+            fs.close()
+        except Exception:
+            pass
+    fs = None
+
+def driver_init( driver_config, driver_secrets ):
+    """
+    Do the one-time driver setup.
+    """
+
+    gateway.log_debug( "driver_init" )
+
+    global fs
+    global storage_dir
+    global lock
+
+    # create a re-entrant lock (not a read lock)
+    lock = threading.RLock()
+
+    role = abstractfs.afsrole.WRITE
+    if not _initFS( driver_config, driver_secrets, role ):
+        gateway.log_error( "Unable to init filesystem")
+        return False
+
+    if not fs.exists( "/" ):
+        gateway.log_error( "No such file or directory: %s" % storage_dir )
+        return False
+
+    if not fs.is_dir( "/" ):
+        gateway.log_error( "Not a directory: %s" % storage_dir )
+        return False
+
+    return True
+
+
+def driver_shutdown():
+    """
+    Do the one-time driver shutdown
+    """
+
+    gateway.log_debug( "driver_shutdown" )
+
+    _shutdownFS()
+
+
+def read_chunk( chunk_request, outfile, driver_config, driver_secrets ):
+    """
+        Read a chunk of data.
+        @chunk_request is a DriverRequest
+        @outfile is a file to return the data read.
+        @driver_config is a dict containing the driver's config
+        @driver_secrets is a dict containing the driver's unencrypted secrets
+    """
+
+    global fs
+    global block_replication
+
+    gateway.log_debug( "read_chunk - %d" % chunk_request.request_type )
+
+    try:
+        if block_replication:
+            file_path = gateway.request_to_storage_path( chunk_request )
+
+            # check if the block file exists
+            if not fs.exists( file_path ):
+                gateway.log_error( "WARN: '%s' does not exist" % file_path )
+                return -errno.ENOENT
+
+            # read
+            buf = fs.read( file_path, 0,  chunk_request.block_size )
+            outfile.write( buf )
+        else:
+            # file_replication
+            if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+
+                # use replication module to access a file containing the block
+                replica = replication.replica( fs, file_path, chunk_request.block_size )
+                replica.makeConsistent()
+                buf = replica.readBlock( chunk_request.block_id, chunk_request.block_version )
+                if not buf:
+                    gateway.log_error("WARN: block %d of '%s' does not exist" % ( chunk_request.block_id, file_path ) )
+                    return -errno.ENOENT
+                outfile.write( buf )
+                if len(buf) < chunk_request.block_size:
+                    # zero-padding
+                    outfile.write( bytearray(chunk_request.block_size - len(buf)) )
+            elif chunk_request.request_type == DriverRequest.MANIFEST:
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
+
+                if not fs.exists( file_path ):
+                    gateway.log_error( "WARN: '%s' does not exist" % file_path )
+                    return -errno.ENOENT
+
+                # read
+                buf = fs.read( file_path, 0,  chunk_request.block_size )
+                outfile.write( buf )
+    except Exception:
+        gateway.log_error( traceback.format_exc() )
+        return -errno.EIO
+    return 0
+
+
+def write_chunk( chunk_request, chunk_buf, driver_config, driver_secrets ):
+    global fs
+    global block_replication
+
+    gateway.log_debug( "write_chunk - %d" % chunk_request.request_type )
+
+    byte_offset = gateway.request_byte_offset( chunk_request )
+    byte_len = gateway.request_byte_len( chunk_request )
+
+    block_end = (chunk_request.block_id + 1) * chunk_request.block_size
+    block_start = chunk_request.block_id * chunk_request.block_size
+    actual_block_size = chunk_request.block_size
+
+    if (byte_len + byte_offset) < block_start:
+        gateway.log_error( "WARN: Ignoring ranged out block write - blockId = %d, byte_offset = %d, byte_len = %d" % (chunk_request.block_id, byte_len, byte_offset) )
+        return -errno.EIO
+    elif byte_offset >= block_end:
+        gateway.log_error( "WARN: Ignoring ranged out block write - blockId = %d, byte_offset = %d, byte_len = %d" % (chunk_request.block_id, byte_len, byte_offset) )
+        return -errno.EIO
+
+    if (byte_len + byte_offset) < block_end:
+        # calculate actual block size when the block is not aligned to the block
+        actual_block_size = byte_len + byte_offset - block_start
+
+    try:
+        if block_replication:
+            file_path = gateway.request_to_storage_path( chunk_request )
+
+            # create parent directory
+            parent_path = os.path.dirname( file_path )
+            if not fs.exists( parent_path ):
+                fs.make_dirs( parent_path )
+
+            # write
+            fs.write( file_path, 0, chunk_buf )
+        else:
+            if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+                parent_path = os.path.dirname( file_path )
+                if not fs.exists( parent_path ):
+                    fs.make_dirs( parent_path )
+
+                # use replication module to access a file containing the block
+                replica = replication.replica( fs, file_path, chunk_request.block_size )
+                replica.makeConsistent()
+                replica.replicateBlock( chunk_request.block_id, chunk_buf[:actual_block_size], chunk_request.block_version )
+            elif ((chunk_request.request_type == DriverRequest.MANIFEST) or
+                 (chunk_request.request_type == DriverRequest.RENAME_HINT)):
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
+                parent_path = os.path.dirname( file_path )
+                if not fs.exists( parent_path ):
+                    fs.make_dirs( parent_path )
+
+                if fs.exists( file_path ):
+                    fs.unlink( file_path )
+
+                fs.write( file_path, 0, chunk_buf )
+
+    except Exception:
+        gateway.log_error( traceback.format_exc() )
+        return -errno.EIO
+    return 0
+
+
+def delete_chunk( chunk_request, driver_config, driver_secrets ):
+    global fs
+    global block_replication
+
+    gateway.log_debug( "delete_chunk - %d" % chunk_request.request_type )
+
+    try:
+        if block_replication:
+            file_path = gateway.request_to_storage_path( chunk_request )
+
+            # delete
+            if fs.exists( file_path ):
+                fs.unlink( file_path )
+        else:
+            if chunk_request.request_type == DriverRequest.BLOCK:
+                path = gateway.request_path( chunk_request )
+                file_path = gateway.path_join( "/", path )
+
+                # use replication module to access a file containing the block
+                replica = replication.replica( fs, file_path, chunk_request.block_size )
+                replica.makeConsistent()
+                replica.deleteBlock( chunk_request.block_id, chunk_request.block_version )
+            elif ((chunk_request.request_type == DriverRequest.MANIFEST) or
+                 (chunk_request.request_type == DriverRequest.RENAME_HINT)):
+                path = gateway.request_to_storage_path( chunk_request )
+                file_path = gateway.path_join( MANIFEST_DIR, path )
+
+                if fs.exists( file_path ):
+                    fs.unlink( file_path )
+
+    except Exception:
+        gateway.log_error( traceback.format_exc() )
+        return -errno.EIO
+    return 0
+
+
+def rename_file( chunk_request, old_path, new_path, driver_config, driver_secrets ):
+    global fs
+    global block_replication
+
+    gateway.log_debug( "rename_file - %d" % chunk_request.request_type )
+
+    from_path = gateway.request_path( chunk_request )
+    to_path = gateway.request_new_path( chunk_request )
+
+    gateway.log_debug( "rename hint: '%s' --> '%s'" % (from_path, to_path) )
+    try:
+        if block_replication:
+            # don't need to handle
+            pass
+        else:
+            if chunk_request.request_type == DriverRequest.RENAME_HINT:
+                from_file_path = gateway.path_join( "/", from_path )
+                to_file_path = gateway.path_join( "/", to_path )
+
+                # use replication module to rename replica
+                replica = replication.replica( fs, from_file_path, chunk_request.block_size )
+                replica.rename( to_file_path )
+
+    except Exception:
+        gateway.log_error( traceback.format_exc() )
+        return -errno.EIO
+    return 0
