@@ -1361,8 +1361,8 @@ int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Reque
    int rc = 0;
 
    // ignore anon 
-   if( request_gateway_id == SG_GATEWAY_ANON ) {
-      SG_error("%s", "Ignore message from anonymous gateway\n");
+   if( request_user_id == SG_USER_ANON ) {
+      SG_error("%s", "Ignore message from anonymous user\n");
       return -EINVAL;
    }
    
