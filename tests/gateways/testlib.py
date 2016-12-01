@@ -36,6 +36,17 @@ import syndicate.util.client as rpcclient
 
 debug = True
 
+def make_env(env={}):
+    """
+    make an environment variable bundle
+    """
+    if os.environ.get('PYTHONPATH', None) is not None:
+        env['PYTHONPATH'] = os.environ['PYTHONPATH']
+
+    env['SYNDICATE_DEBUG'] = "1"
+    return env
+
+
 def get_logger(name=None, debug=True):
     """
     Get a logger
@@ -104,7 +115,7 @@ def start( path, *args, **kw ):
     stdout_fd = subprocess.PIPE
     stdin = None
     stdout_path = "(fd)"
-    env = {'SYNDICATE_DEBUG': '1'}
+    env = make_env()
 
     if kw.has_key('stdin') and kw['stdin']:
         stdin_fd = subprocess.PIPE
@@ -172,7 +183,8 @@ def run( path, *args, **kw ):
    
     out_fdes, out_path = tempfile.mkstemp(prefix='syndicate-test-')
     out_fd = os.fdopen(out_fdes, "w")
-    env = {'SYNDICATE_DEBUG': '1'}
+
+    env = make_env()
 
     if kw.has_key('env'):
         env = kw['env']
@@ -286,7 +298,7 @@ def save_output( test_output_dir, name, output ):
     print '$ cat "%s"' % out_path
 
 
-def add_test_volume( config_dir, email=testconf.SYNDICATE_ADMIN, blocksize=4096, prefix="testvolume-" ):
+def add_test_volume( config_dir, email=testconf.SYNDICATE_ADMIN, blocksize=4096, prefix="testvolume-", allow_anon=False, private=True ):
     """
     Create a volume with a random name.
     Return the name of the volume.
@@ -299,7 +311,9 @@ def add_test_volume( config_dir, email=testconf.SYNDICATE_ADMIN, blocksize=4096,
                          'name=%s' % random_name,
                          'description="test volume"',
                          'blocksize=%s' % blocksize,
-                         'email=%s' % email)
+                         'email=%s' % email,
+                         'private=%s' % private,
+                         'allow_anon=%s' % allow_anon)
 
     if exitcode != 0:
         print >> sys.stderr, out
@@ -314,10 +328,11 @@ def read_volume( config_dir, volume_name ):
     Return a dict with the volume attributes on success
     Raise on error
     """
+    env = make_env()
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_volume',
-                        volume_name, env={})
+                        volume_name, env=env)
 
     if exitcode != 0:
         print >> sys.stderr, out
@@ -393,10 +408,11 @@ def read_gateway( config_dir, gateway_name ):
     Return a dict with the gateway attributes on success
     Raise on error
     """
+    env = make_env()
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_gateway',
-                        gateway_name, env={})
+                        gateway_name, env=env)
 
     if exitcode != 0:
         print >> sys.stderr, out
