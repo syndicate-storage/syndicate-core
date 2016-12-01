@@ -414,7 +414,9 @@ class Gateway( storagetypes.Object ):
          raise Exception("Volume ID mismatch: cert has %s; expected %s" % (kwargs['volume_id'], volume.volume_id))
       
       if kwargs['owner_id'] != user.owner_id:
-         raise Exception("User ID mismatch: cert has %s; expected %s" % (kwargs['owner_id'], user.owner_id) ) 
+         # this is only okay if the user is the volume owner, and the gateway ID is the anonymous gateway 
+         if not (kwargs['owner_id'] == USER_ID_ANON and volume.owner_id == user.owner_id):
+             raise Exception("User ID mismatch: cert has %s; expected %s" % (kwargs['owner_id'], user.owner_id) ) 
       
       # sanity check: do we have everything we need?
       missing = cls.find_missing_attrs( kwargs )
