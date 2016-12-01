@@ -792,7 +792,7 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
    int64_t file_version = UG_inode_file_version( inode );
    int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
 
-   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+   if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
    }
 
@@ -864,7 +864,7 @@ int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char con
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
 
-   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+   if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
    }
 
@@ -1240,7 +1240,7 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
    int rc = 0;
    struct UG_inode* inode = NULL;
 
-   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+   if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
    }
 
@@ -1328,7 +1328,7 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
 
-   if( SG_gateway_id( gateway ) == SG_GATEWAY_ANON ) {
+   if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
    }
 
