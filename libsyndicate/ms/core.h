@@ -82,7 +82,7 @@ struct ms_client {
    // (except for portnum, TODO: restart the http server on a new port if this ever changes)
    bool inited;               // set to true if this structure was initialized
    uint64_t owner_id;         // ID of the User account running this ms_client
-   uint64_t gateway_id;       // ID of the Gateway running this ms_client (pass SG_GATEWAY_ANON for the anonymous gateway)
+   uint64_t gateway_id;       // ID of the Gateway running this ms_client
    uint64_t gateway_type;     // what kind of gateway is this for?
    
    int portnum;               // port the gateway listens on
