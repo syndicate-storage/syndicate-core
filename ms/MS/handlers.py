@@ -126,7 +126,8 @@ class MSUserCertRequestHandler(webapp2.RequestHandler):
       user = SyndicateUser.Read( username_or_id )
       if user is None:
          response_user_error( self, 404, "No such user" )
-         
+         return
+
       response_end( self, 200, user.user_cert_protobuf, "application/octet-stream")
       return
 
