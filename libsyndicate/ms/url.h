@@ -36,7 +36,6 @@ char* ms_client_volume_url( char const* ms_url, uint64_t volume_id );
 char* ms_client_volume_url_by_name( char const* ms_url, char const* name );
 
 char* ms_client_cert_url( char const* ms_url, uint64_t volume_id, uint64_t cert_version, uint64_t gateway_type, uint64_t gateway_id, uint64_t gateway_cert_version );
-char* ms_client_cert_manifest_url( char const* ms_url, uint64_t volume_id, uint64_t cert_version, uint64_t include_gateway_id );
 
 }
 
