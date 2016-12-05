@@ -169,6 +169,26 @@ def serialize_config( config_data ):
    return "[syndicate]\n" + "\n".join( ["%s=%s" % (config_key, config_value) for (config_key, config_value) in config_data.items()] )
 
 
+
+def get_config_section( config_path, section ):
+    """
+    Read an ini-formatted file and extract a particular section's key/values
+
+    Return a dict with the data
+    """
+    parser = ConfigParser.SafeConfigParser()
+    parser.read(config_path)
+
+    if not parser.has_section(section):
+        return {}
+
+    ret = {}
+    for k in parser.options(section):
+        ret[k] = parser.get(section, k)
+
+    return ret
+
+
 def load_config( config_path, config_str, opts, config_header, config_options, parse_all=False ):
    """
    Load configuration options from an ini-formatted string and from parsed command-line options.
@@ -197,7 +217,7 @@ def load_config( config_path, config_str, opts, config_header, config_options, p
    # convert to dictionary, merging in argv opts
    config_keys = None
    if parse_all:
-       assert config is not None:
+       assert config is not None
        if not config.has_section(config_header):
            # nothing
            config_keys = []
