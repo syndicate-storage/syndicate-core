@@ -172,10 +172,24 @@ def serialize_config( config_data ):
 
 def get_config_section( config_path, section ):
     """
-    Read an ini-formatted file and extract a particular section's key/values
+    Read an ini-formatted file and extract a particular section's key/values.
+
+    If config_path is None, then use the path given in argv.
+    If no such argument is given, raise an exception
 
     Return a dict with the data
     """
+
+    if config_path is None:
+        argv = sys.argv
+        parser = build_parser( argv[0], CONFIG_DESCRIPTION, CONFIG_OPTIONS )
+        opts, _ = parser.parse_known_args( argv[1:] )
+   
+        if hasattr( opts, "config" ) and opts.config != None:
+            config_path = opts.config[0]
+        else:
+            raise Exception("No config_path given, and not present in argv")
+
     parser = ConfigParser.SafeConfigParser()
     parser.read(config_path)
 
