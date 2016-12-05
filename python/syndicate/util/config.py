@@ -169,7 +169,7 @@ def serialize_config( config_data ):
    return "[syndicate]\n" + "\n".join( ["%s=%s" % (config_key, config_value) for (config_key, config_value) in config_data.items()] )
 
 
-def load_config( config_path, config_str, opts, config_header, config_options ):
+def load_config( config_path, config_str, opts, config_header, config_options, parse_all=False ):
    """
    Load configuration options from an ini-formatted string and from parsed command-line options.
    Prefer command-line options to config str options.
@@ -195,7 +195,20 @@ def load_config( config_path, config_str, opts, config_header, config_options ):
    ret["_in_config"] = []
   
    # convert to dictionary, merging in argv opts
-   for arg_opt in config_options.keys():
+   config_keys = None
+   if parse_all:
+       assert config is not None:
+       if not config.has_section(config_header):
+           # nothing
+           config_keys = []
+        
+       else:
+           config_keys = config.options(config_header)
+
+   else:
+       config_keys = config_options.keys()
+
+   for arg_opt in config_keys:
       if hasattr(opts, arg_opt) and getattr(opts, arg_opt) != None:
          ret[arg_opt] = getattr(opts, arg_opt)
          
@@ -558,7 +571,7 @@ def get_config_from_argv( argv ):
     return config
 
 
-def get_extra_config( argv, section_name, section_options ):
+def get_extra_config( argv, section_name, section_options, parse_all=False ):
     """
     Load extra configuration from argv 
     and from the config file, under the header
@@ -598,7 +611,7 @@ def get_extra_config( argv, section_name, section_options ):
     config_str = storage.read_file( config_file_path )
 
     # get the extra options 
-    extra_config = load_config( config_file_path, config_str, opts, section_name, section_options )
+    extra_config = load_config( config_file_path, config_str, opts, section_name, section_options, parse_all=parse_all )
     if extra_config is None:
         log.error("No configuration for '%s'" % section_name )
         return None 
