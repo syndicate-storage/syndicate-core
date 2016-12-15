@@ -953,7 +953,7 @@ def update_gateway( g_name_or_id, **kw ):
        raise Exception("No such gateway '%s'" % g_name_or_id)
 
    # user must own this gateway, or gateway must be anonymous and the user must be the volume owner, or the caller user must be admin
-   if (gateway.owner_id != USER_ID_ANON and gateway.owner_id != user.owner_id) or (gateway.owner_id == USER_ID_ANON and user.owner_id != volume.owner_id) or (not caller_user.is_admin):
+   if ((gateway.owner_id != USER_ID_ANON and gateway.owner_id != user.owner_id) or (gateway.owner_id == USER_ID_ANON and user.owner_id != volume.owner_id)) and (not caller_user.is_admin):
        owning_user_id = user.owner_id if gateway.owner_id != USER_ID_ANON else volume.owner_id
        raise Exception("User '%s' does not own gateway '%s' (%s)" % (owning_user_id, gateway.name, gateway.owner_id))
 
