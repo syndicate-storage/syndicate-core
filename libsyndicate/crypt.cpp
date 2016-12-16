@@ -240,7 +240,7 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    rc = EVP_DigestVerifyInit( mdctx, &pkey_ctx, sha256, NULL, public_key );
    if( rc <= 0 ) {
       
-      SG_error("EVP_DigestVerifyInit_ex( %p ) rc = %d\n", public_key, rc);
+      SG_error("EVP_DigestVerifyInit_ex( %p ) rc = %d, error_code = %ld\n", public_key, rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -252,7 +252,7 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    rc = EVP_PKEY_CTX_set_rsa_padding( pkey_ctx, RSA_PKCS1_PSS_PADDING );
    if( rc <= 0 ) {
       
-      SG_error( "EVP_PKEY_CTX_set_rsa_padding rc = %d\n", rc );
+      SG_error("EVP_PKEY_CTX_set_rsa_padding rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -263,7 +263,7 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    rc = EVP_PKEY_CTX_set_rsa_pss_saltlen( pkey_ctx, -1 );
    if( rc <= 0 ) {
       
-      SG_error( "EVP_PKEY_CTX_set_rsa_pss_saltlen rc = %d\n", rc );
+      SG_error("EVP_PKEY_CTX_set_rsa_pss_saltlen rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -272,7 +272,7 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    rc = EVP_DigestVerifyUpdate( mdctx, (void*)data, len );
    if( rc <= 0 ) {
       
-      SG_error("EVP_DigestVerifyUpdate rc = %d\n", rc );
+      SG_error("EVP_DigestVerifyUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -281,7 +281,7 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    rc = EVP_DigestVerifyFinal( mdctx, (unsigned char*)sig_bin, sig_bin_len );
    if( rc <= 0 ) {
       
-      SG_error("EVP_DigestVerifyFinal rc = %d\n", rc );
+      SG_error("EVP_DigestVerifyFinal rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EBADMSG;
@@ -343,7 +343,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
    int rc = EVP_DigestSignInit( mdctx, &pkey_ctx, sha256, NULL, pkey );
    
    if( rc <= 0 ) {
-      SG_error("EVP_DigestSignInit rc = %d\n", rc);
+      SG_error("EVP_DigestSignInit rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -354,7 +354,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
    // activate PSS
    rc = EVP_PKEY_CTX_set_rsa_padding( pkey_ctx, RSA_PKCS1_PSS_PADDING );
    if( rc <= 0 ) {
-      SG_error( "EVP_PKEY_CTX_set_rsa_padding rc = %d\n", rc );
+      SG_error("EVP_PKEY_CTX_set_rsa_padding rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -364,7 +364,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
    // This is only because PyCrypto (used by the MS) does this in its PSS implementation.
    rc = EVP_PKEY_CTX_set_rsa_pss_saltlen( pkey_ctx, -1 );
    if( rc <= 0 ) {
-      SG_error( "EVP_PKEY_CTX_set_rsa_pss_saltlen rc = %d\n", rc );
+      SG_error( "EVP_PKEY_CTX_set_rsa_pss_saltlen rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -372,7 +372,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
    
    rc = EVP_DigestSignUpdate( mdctx, (void*)data, len );
    if( rc <= 0 ) {
-      SG_error("EVP_DigestSignUpdate rc = %d\n", rc );
+      SG_error("EVP_DigestSignUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -382,7 +382,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
    size_t sig_bin_len = 0;
    rc = EVP_DigestSignFinal( mdctx, NULL, &sig_bin_len );
    if( rc <= 0 ) {
-      SG_error("EVP_DigestSignFinal rc = %d\n", rc );
+      SG_error("EVP_DigestSignFinal rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -397,7 +397,7 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
 
    rc = EVP_DigestSignFinal( mdctx, sig_bin, &sig_bin_len );
    if( rc <= 0 ) {
-      SG_error("EVP_DigestSignFinal rc = %d\n", rc );
+      SG_error("EVP_DigestSignFinal rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       EVP_MD_CTX_destroy( mdctx );
       return -EINVAL;
@@ -757,7 +757,7 @@ int md_encrypt( EVP_PKEY* sender_pkey, EVP_PKEY* receiver_pubkey, char const* in
    // encrypt!
    rc = EVP_SealUpdate( &ctx, ciphertext, &ciphertext_len, (unsigned char const*)in_data, in_data_len );
    if( rc == 0 ) {
-      SG_error("EVP_SealUpdate rc = %d\n", rc );
+      SG_error("EVP_SealUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       memset( ek, 0, EVP_PKEY_size( receiver_pubkey ) );
@@ -772,7 +772,7 @@ int md_encrypt( EVP_PKEY* sender_pkey, EVP_PKEY* receiver_pubkey, char const* in
    int tmplen = 0;
    rc = EVP_SealFinal( &ctx, ciphertext + ciphertext_len, &tmplen );
    if( rc == 0 ) {
-      SG_error("EVP_SealFinal rc = %d\n", rc );
+      SG_error("EVP_SealFinal rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       memset( ek, 0, EVP_PKEY_size( receiver_pubkey ) );
@@ -989,7 +989,7 @@ int md_decrypt( EVP_PKEY* sender_pubkey, EVP_PKEY* receiver_pkey, char const* in
    // initialize the cipher and start decrypting
    rc = EVP_OpenInit( &ctx, cipher, ek, ek_len, iv, receiver_pkey );
    if( rc == 0 ) {
-      SG_error("EVP_OpenInit rc = %d\n", rc );
+      SG_error("EVP_OpenInit rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       EVP_CIPHER_CTX_cleanup( &ctx );
@@ -1009,7 +1009,7 @@ int md_decrypt( EVP_PKEY* sender_pubkey, EVP_PKEY* receiver_pkey, char const* in
    // decrypt everything
    rc = EVP_OpenUpdate( &ctx, output_buf, &output_buf_written, ciphertext, ciphertext_len );
    if( rc == 0 ) {
-      SG_error("EVP_OpenUpdate rc = %d\n", rc );
+      SG_error("EVP_OpenUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       EVP_CIPHER_CTX_cleanup( &ctx );
@@ -1022,7 +1022,7 @@ int md_decrypt( EVP_PKEY* sender_pubkey, EVP_PKEY* receiver_pkey, char const* in
    
    rc = EVP_OpenFinal( &ctx, output_buf + output_buf_written, &output_written_final );
    if( rc == 0 ) {
-      SG_error("EVP_OpenFinal rc = %d\n", rc );
+      SG_error("EVP_OpenFinal rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       EVP_CIPHER_CTX_cleanup( &ctx );
@@ -1179,7 +1179,7 @@ int md_encrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    
    rc = EVP_EncryptInit_ex(&e_ctx, cipher, NULL, key, iv);
    if( rc == 0 ) {
-      SG_error("EVP_EncryptInit_ex rc = %d\n", rc );
+      SG_error("EVP_EncryptInit_ex rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       return -1;
@@ -1205,7 +1205,7 @@ int md_encrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    rc = EVP_EncryptUpdate( &e_ctx, c_buf, &c_buf_len, (unsigned char*)data, data_len );
    if( rc == 0 ) {
       
-      SG_error("EVP_EncryptUpdate rc = %d\n", rc );
+      SG_error("EVP_EncryptUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
    
       memset( c_buf, 0, md_encrypt_symmetric_ex_ciphertext_len( data_len ) );
@@ -1218,7 +1218,7 @@ int md_encrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    int final_len = 0;
    rc = EVP_EncryptFinal_ex( &e_ctx, c_buf + c_buf_len, &final_len );
    if( rc == 0 ) {
-      SG_error("EVP_EncryptFinal_ex rc = %d\n", rc );
+      SG_error("EVP_EncryptFinal_ex rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       memset( c_buf, 0, md_encrypt_symmetric_ex_ciphertext_len( data_len ) );
@@ -1277,7 +1277,7 @@ int md_decrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    
    rc = EVP_DecryptInit_ex(&d_ctx, cipher, NULL, key, iv);
    if( rc == 0 ) {
-      SG_error("EVP_EncryptInit_ex rc = %d\n", rc );
+      SG_error("EVP_EncryptInit_ex rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       return -1;
@@ -1301,7 +1301,7 @@ int md_decrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    
    rc = EVP_DecryptUpdate( &d_ctx, p_buf, &p_buf_len, (unsigned char*)ciphertext_data, ciphertext_len );
    if( rc == 0 ) {
-      SG_error("EVP_EncryptUpdate rc = %d\n", rc );
+      SG_error("EVP_EncryptUpdate rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
    
       memset( p_buf, 0, md_decrypt_symmetric_ex_ciphertext_len( ciphertext_len ) );
@@ -1314,7 +1314,7 @@ int md_decrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
    int final_len = 0;
    rc = EVP_DecryptFinal_ex( &d_ctx, p_buf + p_buf_len, &final_len );
    if( rc == 0 ) {
-      SG_error("EVP_EncryptFinal_ex rc = %d\n", rc );
+      SG_error("EVP_EncryptFinal_ex rc = %d, error_code = %ld\n", rc, ERR_get_error() );
       md_openssl_error();
       
       memset( p_buf, 0, md_decrypt_symmetric_ex_ciphertext_len( ciphertext_len ) );
