@@ -73,7 +73,8 @@ struct UG_inode* UG_handle_inode( UG_handle_t* fi ) {
 
 // generate and send a WRITE message to another UG.
 // write_data should be prepopuldated with the manifest, owner, mode, mtime, etc.--everything *but* the routing info (which will get overwritten)
-// return 0 on success, get back the latest inode data via *inode_out and sy
+// return 0 on success, get back the latest inode data via *inode_out
+// return -EPERM if this gateway is anonymous
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM 
 // return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
@@ -86,6 +87,11 @@ int UG_send_WRITE( struct UG_state* state, char const* fs_path, struct SG_client
    struct SG_gateway* gateway = UG_state_gateway( state );
    struct UG_inode* inode = NULL;
    
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    struct ms_client* ms = SG_gateway_ms( gateway );
    uint64_t volume_id = ms_client_get_volume_id( ms );
    uint64_t coordinator_id = 0;
@@ -247,6 +253,7 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 
 // update, for when we're the coordinator of the file AND the file is locked
 // return 0 on success
+// return -EPERM if this gateway is anonymous
 // return -ENOMEM on OOM
 // return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
 // return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
@@ -263,6 +270,11 @@ int UG_update_locked( struct UG_state* ug, struct UG_inode* inode, int64_t write
 
     memset( &inode_data, 0, sizeof(struct md_entry) );
     memset( &inode_data_out, 0, sizeof(struct md_entry) );
+   
+    // can't do this if anonymous 
+    if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+       return -EPERM;
+    }
 
     // get inode info
     rc = UG_inode_export( &inode_data, inode, 0 );
@@ -450,6 +462,7 @@ static int UG_update_remote( struct UG_state* state, char const* fs_path, struct
 // update inode metadata--if local, issue the call to the MS; if remote, issue the call to the coordinator or try to become the coordinator if that fails.
 // NULL data will be ignored 
 // return 0 on success
+// return -EPERM if this gateway is anonymous
 // return -EINVAL if all data are NULL
 // return -ENOMEM on OOM 
 // NOTE: inode->entry must be unlocked!
@@ -464,6 +477,11 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
    uint64_t coordinator_id = 0;
    uint64_t parent_id = 0;
    int64_t write_nonce = 0;
+
+   // anonymous gateways can't do this 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
 
    // ensure fresh first
    rc = UG_consistency_path_ensure_fresh( gateway, path );
@@ -543,14 +561,26 @@ int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent 
 // POSIX-y mkdir(2)
 // forward to fskit, which will take care of communicating with the MS
 int UG_mkdir( struct UG_state* state, char const* path, mode_t mode ) {
+    struct SG_gateway* gateway = UG_state_gateway( state );
    
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    return fskit_mkdir( UG_state_fs( state ), path, mode, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
 
 // more advanced mkdir, setting extra syndicate-specific fields
 int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struct md_entry* ent_data ) {
+    struct SG_gateway* gateway = UG_state_gateway( state );
    
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    // sanity check 
    if( ent_data->type != MD_ENTRY_DIR ) {
       return -EINVAL;
@@ -568,6 +598,11 @@ int UG_unlink( struct UG_state* state, char const* path ) {
    int rc = 0;
    struct SG_gateway* gateway = UG_state_gateway( state );
    
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    // refresh path 
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -585,7 +620,12 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
    
    int rc = 0;
    struct SG_gateway* gateway = UG_state_gateway( state );
-   
+  
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    // refresh path 
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -603,6 +643,7 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 // can be called repeatedly to recover from failure.
 // call the unlink()/rmdir() routes in fskit as well.
 // return 0 on success
+// return -EPERM if this gateway is anonymous
 // return -ENONET if the path doesn't exist
 // return -EPERM if we couldn't complete an operation
 // return -EACCES if we couldn't search a directory or unlink a path 
@@ -617,6 +658,12 @@ int UG_rmtree( struct UG_state* state, char const* root_path ) {
    char* child_path = NULL;
    size_t num_children = 0;
    bool empty = true;
+   struct SG_gateway* gateway = UG_state_gateway(state);
+
+   // can't do this if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
 
    char* root_path_dup = SG_strdup_or_null(root_path);
    if( root_path_dup == NULL ) {
@@ -820,6 +867,11 @@ int UG_rename( struct UG_state* state, char const* path, char const* newpath ) {
    struct SG_gateway* gateway = UG_state_gateway( state );
    bool new_path_exists = false;
 
+   // anonymous gateways can never rename 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    // refresh paths
    rc = UG_consistency_path_ensure_fresh( gateway, path );
    if( rc != 0 ) {
@@ -967,7 +1019,12 @@ int UG_chcoord( struct UG_state* state, char const* path, uint64_t* new_coordina
    unsigned char ms_xattr_hash2[ SHA256_DIGEST_LENGTH ];
    
    uint64_t caps = ms_client_get_gateway_caps( ms, SG_gateway_id( gateway ) );
-   
+  
+   // anonymous gateways can never coordinate 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    // *can* we coordinate?
    if( (caps & SG_CAP_COORDINATE) == 0 ) {
       
@@ -1169,6 +1226,7 @@ int UG_refresh( struct UG_state* state, char const* path ) {
 // start vacuuming a file inode's old data (used to recover after an unclean shutdown)
 // set up and return *vctx to be a waitable vacuum context 
 // return 0 on success
+// return -EPERM if this gateway is anonymous
 // return -ENOMEM on OOM
 // return -ENOENT if there so such path
 // return -EACCES if we can't write to the file 
@@ -1182,6 +1240,11 @@ int UG_vacuum_begin( struct UG_state* state, char const* path, struct UG_vacuum_
    struct UG_vacuum_context* vctx = NULL;
    struct fskit_entry* fent = NULL;
    struct UG_inode* inode = NULL;
+
+   // anonymous? then not permitted 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
 
    // refresh path 
    rc = UG_consistency_path_ensure_fresh( gateway, path );
