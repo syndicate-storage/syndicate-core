@@ -1114,7 +1114,7 @@ class StubObject( object ):
       Store it as the 'email' key.
       """
    
-      if not email_regex.match(email) and email != 'NOBODY':
+      if not email_regex.match(email) and email != 'ANONYMOUS':
          raise Exception("Not an email address: '%s'" % email)
       else:
          if lib is not None:
@@ -2347,7 +2347,7 @@ class Gateway( StubObject ):
          if existing_gateway_cert is not None:
             owner_id = existing_gateway_cert.owner_id 
             if owner_id == msconfig.GATEWAY_ID_ANON:
-                owner_username = 'NOBODY'
+                owner_username = 'ANONYMOUS'
 
             else:
                 # find the associated username, so we can get the public key
@@ -2440,7 +2440,7 @@ class Gateway( StubObject ):
             caps = 0
      
       # anonymous?
-      if owner_username == 'NOBODY':
+      if owner_username == 'ANONYMOUS':
           anonymous = True
           caps &= (msconfig.GATEWAY_CAP_READ_DATA | msconfig.GATEWAY_CAP_READ_METADATA)
 

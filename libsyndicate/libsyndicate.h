@@ -212,7 +212,7 @@ struct md_syndicate_conf {
 #define SG_USER_ANON               (uint64_t)0x7FFFFFFFFFFFFFFLL
 #define SG_GATEWAY_ANON            (uint64_t)0x7FFFFFFFFFFFFFFLL
 #define SG_GATEWAY_TOOL            (uint64_t)0x7FFFFFFFFFFFFFELL       // gateway id used by messages from the administrative tool
-#define SG_GATEWAY_ANONYMOUS_USER  "NOBODY"
+#define SG_GATEWAY_ANONYMOUS_USER  "ANONYMOUS"
 
 // config elements
 #define SG_CONFIG_VOLUMES_PATH            "volumes"
