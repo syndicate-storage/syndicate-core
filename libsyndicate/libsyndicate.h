@@ -205,7 +205,7 @@ struct md_syndicate_conf {
    EVP_PKEY* volume_pubkey;
 
    // misc
-   bool is_client;                                    // if true for a UG, always fetch data from RGs
+   bool is_client;                                    // if true, then the gateway is anonymous and cannot send messages
 };
 
 // #define SG_USER_ANON               (uint64_t)0xFFFFFFFFFFFFFFFFLL
