@@ -1668,7 +1668,7 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    struct ms_client* ms = SG_gateway_ms( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
    bool need_request_refresh = false;
-
+   uint64_t user_id = 0;
    char* fs_dirpath = md_dirname( fs_path, NULL );
    char* fent_name = md_basename( fs_path, NULL );
 
@@ -1689,8 +1689,9 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    coordinator_id = UG_inode_coordinator_id( inode );
    file_version = UG_inode_file_version( inode );
    write_nonce = UG_inode_write_nonce( inode );
+   user_id = SG_gateway_user_id( gateway );
 
-   need_request_refresh = (UG_inode_is_write_stale( inode, &now ) && coordinator_id != SG_gateway_id(gateway));
+   need_request_refresh = (UG_inode_is_write_stale( inode, &now ) && coordinator_id != SG_gateway_id(gateway) && user_id != SG_USER_ANON);
    if( !need_request_refresh && !UG_inode_is_read_stale( inode, &now ) ) {
 
       // still fresh
