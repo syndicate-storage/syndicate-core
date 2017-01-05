@@ -369,6 +369,11 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
   
    SG_debug("fsync %s\n", path);
    
+   // if this gateway is anonymous, then only reads are permitted, and we can short-circuit here
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return 0;
+   } 
+
    fskit_entry_wlock( fent );
  
    inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
