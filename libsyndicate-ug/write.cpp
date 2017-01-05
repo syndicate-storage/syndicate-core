@@ -698,6 +698,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
 // return 0 on success
 // return -ENOMEM on OOM
 // return -EROFS if there are no replica gateways known to us
+// return -EPERM if this gateway is anonymous
 // return -errno on failure to read unaligned blocks or flush data to cache
 // NOTE: fent should not be locked
 int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len, off_t offset, void* handle_data ) {
@@ -713,7 +714,12 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    // basic sanity check: there must be at least one RG 
    if( UG_state_num_replica_gateways( ug ) == 0 ) {
        return -EROFS;
-   } 
+   }
+
+   // basic sanity check: must not be anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+       return -EPERM;
+   }
    
    UG_dirty_block_map_t write_blocks;                   // all the blocks we'll write.
    
