@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     # should cause the RG to get updated that there's a new gateway 
     gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email=testconf.SYNDICATE_ADMIN )
-    cat_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email="NOBODY" )
+    cat_gateway_name = testlib.add_test_gateway( config_dir, volume_name, "UG", caps="ALL", email="ANONYMOUS" )
 
     random_part = hex(random.randint(0, 2**32-1))[2:]
     output_paths = []
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     for i in xrange(0, NUM_FILES):
         path = output_paths[i]
-        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', 'NOBODY', '-v', volume_name, '-g', cat_gateway_name, path, valgrind=True )
+        exitcode, out = testlib.run( CAT_PATH, '-d2', '-f', '-c', os.path.join(config_dir, 'syndicate.conf'), '-u', 'ANONYMOUS', '-v', volume_name, '-g', cat_gateway_name, path, valgrind=True )
         testlib.save_output( output_dir, 'syndicate-cat-%s' % i, out )
         
         if exitcode != 0:
