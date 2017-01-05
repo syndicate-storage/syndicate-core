@@ -898,7 +898,7 @@ def user_is_anonymous( user_name_or_id ):
         pass
 
     if type(user_name_or_id) in [str, unicode]:
-        if user_name_or_id.lower() == "nobody":
+        if user_name_or_id.lower() == "anonymous":
             return True
         else:
             return False
