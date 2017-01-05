@@ -155,8 +155,8 @@ def next_dataset( driver_config, driver_secrets ):
                     continue
 
                 file_path = os.path.join(full_path, name)
-                if not os.path.isfile(file_path):
-                    continue
+                #if not os.path.isfile(file_path):
+                #    continue
 
                 sb = os.stat(file_path)
                 if sb.st_mtime >= dirsb.st_mtime:
