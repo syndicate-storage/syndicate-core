@@ -127,6 +127,11 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
    uint64_t old_size = 0;
    bool is_mkdir = false;
 
+   // do nothing if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+       return -EPERM;
+   }
+
    if( caller_inode_data == NULL ) {
 
        // generate inode data
@@ -736,6 +741,7 @@ static int UG_fs_trunc_remote( struct SG_gateway* gateway, char const* fs_path, 
 // fskit route for truncating files.
 // In the UG, this simply tells the MS that the size has changed.
 // return 0 on success
+// return -EPERM if the gateway is anonymous
 // return -ENOMEM on OOM 
 // return -errno on failure to connect to the MS
 // NOTE: fent will be write-locked by fskit
@@ -747,6 +753,10 @@ static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* rout
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
 
+   // cannot proceed if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
 
    UG_try_or_coordinate( gateway, path, UG_inode_coordinator_id( inode ),
                          UG_fs_trunc_local( gateway, path, inode, new_size ),
@@ -953,6 +963,7 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
 // support hard links, this method will get called only when the user unlinks or rmdirs and inode.
 // We switch over to UG_fs_destroy when cleaning up on exit.
 // return 0 on success 
+// return -EPERM if the gateway is anonymous
 // return -ENOMEM on OOM 
 // return -EAGAIN if the caller should try detaching again
 // return -errno on failure to connect to the MS 
@@ -964,7 +975,12 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
    char* path = fskit_route_metadata_get_path( route_metadata );
    bool renamed = fskit_route_metadata_renamed( route_metadata ); 
-   
+  
+   // cannot proceed if anonymous 
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    fskit_entry_rlock( fent );
    
    int type = fskit_entry_get_type( fent );
@@ -1050,7 +1066,11 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
    
    unsigned char* old_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
    unsigned char* new_xattr_hash = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
-    
+   
+   if( SG_gateway_user_id(gateway) == SG_USER_ANON ) {
+      return -EPERM;
+   }
+
    if( old_xattr_hash == NULL || new_xattr_hash == NULL ) {
       SG_safe_free( new_xattr_hash );
       SG_safe_free( old_xattr_hash );
