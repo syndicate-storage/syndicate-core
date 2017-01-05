@@ -539,6 +539,11 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
    char* value_buf = NULL;
    size_t xattr_buf_len = 0;
 
+   // system xattr?  ignore 
+   if( strncmp(name, "system.", strlen("system.")) == 0 || strncmp(name, "security.", strlen("security.")) == 0 ) {
+       return -ENOATTR;
+   }
+
    // built-in?
    rc = UG_xattr_fgetxattr_builtin( gateway, path, fent, name, value, size );
    if( rc != 0 ) {
@@ -791,6 +796,11 @@ int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fsk
    uint64_t file_id = UG_inode_file_id( inode );
    int64_t file_version = UG_inode_file_version( inode );
    int64_t xattr_nonce = UG_inode_xattr_nonce( inode );
+
+   // system xattr?  ignore 
+   if( strncmp(name, "system.", strlen("system.")) == 0 || strncmp(name, "security.", strlen("security.")) == 0 ) {
+       return -EPERM;
+   }
 
    if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
@@ -1239,6 +1249,11 @@ int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, stru
 
    int rc = 0;
    struct UG_inode* inode = NULL;
+
+   // system xattr?  ignore 
+   if( strncmp(name, "system.", strlen("system.")) == 0 || strncmp(name, "security.", strlen("security.")) == 0 ) {
+       return -ENOATTR;
+   }
 
    if( SG_gateway_user_id( gateway ) == SG_USER_ANON ) {
       return -EPERM;
