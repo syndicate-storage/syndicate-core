@@ -1226,31 +1226,48 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    }
 
    // will vacuum the old inode, removing its old manifest
-   rc = UG_vacuum_context_init( vctx_old, ug, old_path, old_inode, NULL );
-   if( rc != 0 ) {
+   if( old_fent_metadata.type == MD_ENTRY_FILE ) { 
+       rc = UG_vacuum_context_init( vctx_old, ug, old_path, old_inode, NULL );
+       if( rc != 0 ) {
       
-      // OOM 
-      md_entry_free( &old_fent_metadata );
-      md_entry_free( &new_fent_metadata );
-      SG_manifest_free( &new_manifest );
-      SG_safe_free( vctx_old );
-      SG_safe_free( vctx_new );
-      return rc;
-   }
-  
-   // will vacuum the new inode (if it exists), removing its old blocks and manifests
-   if( new_inode != NULL ) { 
-      rc = UG_vacuum_context_init( vctx_new, ug, new_path, new_inode, NULL );
-      if( rc != 0 ) {
-
-         // OOM 
+          // OOM 
          md_entry_free( &old_fent_metadata );
          md_entry_free( &new_fent_metadata );
          SG_manifest_free( &new_manifest );
-         UG_vacuum_context_free( vctx_old );
          SG_safe_free( vctx_old );
          SG_safe_free( vctx_new );
-         return -ENOMEM;
+         return rc;
+      }
+   }
+  
+   // will vacuum the new inode (if it exists), removing its old blocks and manifests
+   if( new_inode != NULL ) {
+      if( new_fent_metadata.type == MD_ENTRY_FILE ) { 
+         rc = UG_vacuum_context_init( vctx_new, ug, new_path, new_inode, NULL );
+         if( rc != 0 ) {
+
+            // OOM 
+            md_entry_free( &old_fent_metadata );
+            md_entry_free( &new_fent_metadata );
+            SG_manifest_free( &new_manifest );
+            UG_vacuum_context_free( vctx_old );
+            SG_safe_free( vctx_old );
+            SG_safe_free( vctx_new );
+            return -ENOMEM;
+         }
+      }
+      else {
+         // directory must not be empty
+         if( new_fent_metadata.num_children > 0 ) {
+            SG_error("Directory %s not empty\n", new_path);
+            md_entry_free( &old_fent_metadata );
+            md_entry_free( &new_fent_metadata );
+            SG_manifest_free( &new_manifest );
+            UG_vacuum_context_free( vctx_old );
+            SG_safe_free( vctx_old );
+            SG_safe_free( vctx_new );
+            return -ENOTEMPTY;
+         }
       }
    }
 
@@ -1361,13 +1378,15 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
       return rc;
    }
   
-   // remove the old manifest
-   old_manifest_modtime = UG_inode_old_manifest_modtime( old_inode );
-   UG_vacuum_context_set_manifest_modtime( vctx_old, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
+   // remove the old manifest, if the old inode is a file
+   if( old_fent_metadata.type == MD_ENTRY_FILE ) {
+       old_manifest_modtime = UG_inode_old_manifest_modtime( old_inode );
+       UG_vacuum_context_set_manifest_modtime( vctx_old, old_manifest_modtime.tv_sec, old_manifest_modtime.tv_nsec );
+   }
 
    // garbate-collect 
    SG_debug("Vacuum '%s'\n", old_path);
-   while( 1 ) {
+   while( old_fent_metadata.type == MD_ENTRY_FILE ) {
       
       rc = UG_vacuum_run( vacuumer, vctx_old );
       if( rc != 0 ) {
@@ -1382,7 +1401,7 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
    // vacuum the new inode (if it exists)
    if( new_inode != NULL ) {
       SG_debug("Vacuum '%s'\n", new_path);
-      while( 1 ) {
+      while( new_fent_metadata.type == MD_ENTRY_FILE ) {
          
          rc = UG_vacuum_run( vacuumer, vctx_new );
          if( rc != 0 ) {
