@@ -1419,6 +1419,9 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
 
    UG_vacuum_context_free( vctx_old );
    SG_safe_free( vctx_old );
+
+   // force refresh on the destination on next access
+   UG_inode_set_read_stale( old_inode, true );
    return rc;
 }
 

@@ -1842,7 +1842,6 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
       request->set_new_mtime_sec( dat->mtime.tv_sec );
       request->set_new_mtime_nsec( dat->mtime.tv_nsec );
    }
-
    if( dat->has_new_size ) {
 
       request->set_new_size( dat->new_size );
