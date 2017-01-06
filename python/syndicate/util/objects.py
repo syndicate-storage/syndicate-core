@@ -1714,7 +1714,8 @@ class Volume( StubObject ):
          args = [lib.volume_name]
          kwargs = {}
          extras = {
-            "volume_name": lib.volume_name
+            "volume_name": lib.volume_name,
+            "optime": time.time()
          }
 
          # it's okay if we don't have the cert, but we should try anyway 
