@@ -1892,7 +1892,8 @@ class Volume( StubObject ):
          "volume_cert": volume_cert,
          "volume_name": volume_name,
          "volume_id": volume_id,
-         "bundle_version": volume_cert_versions
+         "bundle_version": volume_cert_versions,
+         "optime": time.time()
       }
       
       if method_name == 'update_volume':
@@ -1969,6 +1970,12 @@ class Volume( StubObject ):
                   bundle_path = os.path.join(cert_dir, "%s.bundle.version" % volume_id)
                   if os.path.exists(bundle_path):
                       os.unlink(bundle_path)
+
+      if method_name in ['create_volume', 'update_volume', 'delete_volume']:
+          # these operations must take at least 1 second, so the clock on the MS can advance
+          now = time.time()
+          if now - extras['optime'] < 1.0:
+              time.sleep( now - extras['optime'] )
 
 
 class Gateway( StubObject ):
@@ -2603,6 +2610,7 @@ class Gateway( StubObject ):
       extras['changed_caps'] = need_volume_cert_bundle
       extras['need_volume_reload'] = need_volume_cert_bundle or anonymous
       extras['volume_owner_id'] = volume_owner_id
+      extras['optime'] = time.time()
       
       return args, kw, extras
       
@@ -2717,6 +2725,10 @@ class Gateway( StubObject ):
                         log.warn( "   " + "\n   ".join(sorted(failed)) )
                         log.warn( "If they are running, you can reload them manually with the `reload_gateway` directive." )
 
+            # these operations must take at least 1 second, so the clock on the MS can advance
+            now = time.time()
+            if now - extras['optime'] < 1.0:
+                time.sleep( now - extras['optime'] )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
