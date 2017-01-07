@@ -2961,7 +2961,7 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
              
              // newer version information 
              // synchronously reload 
-             SG_debug("Reloadig cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
+             SG_debug("Reloading cert graph up to (%" PRIu64 ",%" PRIu64 ") at the request of user %" PRIu64 "\n", 
                    request_msg->volume_version(), request_msg->cert_version(), reqdat->user_id );
 
              SG_gateway_start_reload( gateway );
