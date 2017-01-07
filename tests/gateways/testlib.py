@@ -329,6 +329,8 @@ def read_volume( config_dir, volume_name ):
     Raise on error
     """
     env = make_env()
+    del env['SYNDICATE_DEBUG']
+
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_volume',
@@ -409,10 +411,23 @@ def read_gateway( config_dir, gateway_name ):
     Raise on error
     """
     env = make_env()
+    del env['SYNDICATE_DEBUG']
+   
+    SYNDICATE_DEBUG = False
+    if os.environ.has_key('SYNDICATE_DEBUG'):
+        SYNDICATE_DEBUG = os.environ['SYNDICATE_DEBUG']
+        
+    os.unsetenv('SYNDICATE_DEBUG')
+
+    print 'SYNDICATE_DEBUG = {}'.format(os.environ.get('SYNDICATE_DEBUG', '(unset)'))
+
     exitcode, out = run(testconf.SYNDICATE_TOOL,
                         '-c', os.path.join(config_dir, 'syndicate.conf'),
                         'read_gateway',
                         gateway_name, env=env)
+
+    if SYNDICATE_DEBUG:
+        os.environ['SYNDICATE_DEBUG'] = SYNDICATE_DEBUG
 
     if exitcode != 0:
         print >> sys.stderr, out
