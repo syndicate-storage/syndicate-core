@@ -982,12 +982,13 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     volume_cert_version = 1
     cached_volume_cert = get_volume_cert( config, volume_name_or_id, download=False )
     if cached_volume_cert is not None:
+        log.warning("No cached volume cert for volume '%s'" % volume_name_or_id)
         volume_cert_version = cached_volume_cert.volume_version
 
     # get cert bundle
     cert_bundle = get_cert_bundle( config, volume_name_or_id, volume_cert_version, volume_cert_bundle_version )
     assert cert_bundle is not None, "Failed to get cert bundle for %s.%s" % (volume_name_or_id, volume_cert_bundle_version)
-
+    
     # get volume owner 
     volume_owner_cert = get_user_cert( config, cert_bundle.owner_id )
     assert volume_owner_cert is not None, "Failed to get volume owner cert for %s" % (volume_name_or_id)
@@ -999,6 +1000,8 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     # verify cert bundle 
     rc = cert_bundle_verify( cert_bundle, volume_owner_cert )
     assert rc, "Failed to verify cert bundle"
+
+    log.debug("Got valid cert bundle for %s (volume_version=%s, cert_bundle_version=%s) from %s" % (volume_name_or_id, cert_bundle.file_version, cert_bundle.mtime_sec, volume_owner_cert.email))
 
     # get the volume cert
     volume_cert = get_volume_cert( config, volume_name_or_id )
@@ -1019,6 +1022,8 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     # sanity check... 
     assert volume_owner_cert.user_id == volume_cert.owner_id, "Volume cert owner mismatch"
     assert volume_owner_cert.email == volume_cert.owner_email, "Volume cert email mismatch"
+
+    log.debug("Got valid volume certificate for %s" % volume_name_or_id)
 
     # get gateway cert 
     gateway_cert = get_gateway_cert( config, gateway_name_or_id, check_cache=False )

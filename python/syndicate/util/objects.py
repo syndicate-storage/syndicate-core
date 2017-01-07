@@ -918,7 +918,8 @@ def make_volume_cert_bundle( config, volume_owner, volume_name, volume_id=None, 
    sig = crypto.sign_data( owner_privkey, manifest_str )
    
    cert_manifest.signature = base64.b64encode( sig )
-   
+  
+   return cert_manifest
    return cert_manifest.SerializeToString()
 
    
@@ -1857,7 +1858,8 @@ class Volume( StubObject ):
       
       volume_cert.signature = base64.b64encode( volume_cert_sig )
       
-      volume_cert_bundle_str = make_volume_cert_bundle( config, owner_username, volume_name, new_volume_cert=volume_cert, volume_id=volume_id )
+      volume_cert_bundle = make_volume_cert_bundle( config, owner_username, volume_name, new_volume_cert=volume_cert, volume_id=volume_id )
+      volume_cert_bundle_str = volume_cert_bundle.SerializeToString()
 
       # put cert bundle version, so we can load it later
       volume_cert_bundle = parse_volume_cert_bundle( volume_cert_bundle_str )
@@ -1904,6 +1906,7 @@ class Volume( StubObject ):
          args = [volume_id]
          kwargs = {}
          
+      log.debug("New volume cert bundle for %s\n%s" % (volume_name, volume_cert_bundle))
       return args, kwargs, extras
             
       
@@ -2534,6 +2537,7 @@ class Gateway( StubObject ):
       gateway_cert.signature = base64.b64encode( sig )
       gateway_cert_str = gateway_cert.SerializeToString()
 
+      volume_cert_bundle = None
       volume_cert_bundle_str = None 
       need_volume_cert_bundle = False
 
@@ -2568,17 +2572,16 @@ class Gateway( StubObject ):
                  raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
 
          # generate a certificate bundle.
-         volume_cert_bundle_str = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, volume_id=volume_id, new_gateway_cert=gateway_cert )
-         if volume_cert_bundle_str is None:
+         volume_cert_bundle = make_volume_cert_bundle( config, volume_owner_cert.email, volume_name, volume_id=volume_id, new_gateway_cert=gateway_cert )
+         if volume_cert_bundle is None:
              raise Exception("Failed to generate volume cert bundle for Volume '%s' (Gateway '%s')" % (volume_name_or_id, gateway_name))
       
          # put cert bundle version, so we can load it later on volume-wide reload
-         volume_cert_bundle = parse_volume_cert_bundle( volume_cert_bundle_str )
-         assert volume_cert_bundle is not None, "Failed to parse volume cert bundle"
-
          volume_cert_versions = get_volume_cert_bundle_version_vector( volume_cert_bundle )
          volume_cert_versions_txt = json.dumps( volume_cert_versions )
          store_object_file( config, "volume", str(volume_id) + ".bundle.version", volume_cert_versions_txt )
+
+         volume_cert_bundle_str = volume_cert_bundle.SerializeToString()
 
       # generate the actual keyword arguments for the API call
       args = []
@@ -2612,7 +2615,10 @@ class Gateway( StubObject ):
       extras['need_volume_reload'] = need_volume_cert_bundle or anonymous
       extras['volume_owner_id'] = volume_owner_id
       extras['optime'] = time.time()
-      
+     
+      if volume_cert_bundle is not None:
+          log.debug("New volume cert bundle for %s\n%s" % (volume_name, volume_cert_bundle))
+
       return args, kw, extras
       
    
