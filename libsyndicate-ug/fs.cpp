@@ -608,13 +608,15 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
    inode_data.write_nonce += 1;
    inode_data.manifest_mtime_sec = new_manifest_modtime.tv_sec;          // preserve modtime of manifest we replicated
    inode_data.manifest_mtime_nsec = new_manifest_modtime.tv_nsec;
-   inode_data.xattr_hash = xattr_hash;
+   inode_data.xattr_hash = xattr_hash;  // careful...this is on the stack
    
    SG_debug("'%s' (%" PRIX64 ") version %" PRId64 " --> %" PRId64 ", write_nonce %" PRId64 " --> %" PRId64 "\n", 
             fs_path, inode_data.file_id, inode_data.version - 1, inode_data.version, inode_data.write_nonce - 1, inode_data.write_nonce);
 
    // update size and version remotely
    rc = ms_client_update( ms, &inode_data_out, &inode_data );
+   inode_data.xattr_hash = NULL;    // do NOT free this, since it's on the stack
+
    if( rc != 0 ) {
       SG_error("ms_client_update('%s', %jd) rc = %d\n", fs_path, new_size, rc );
       
@@ -626,7 +628,6 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
       return rc;
    }
 
-   inode_data.xattr_hash = NULL;
    md_entry_free( &inode_data );
 
    UG_inode_set_write_nonce( inode, inode_data_out.write_nonce );
