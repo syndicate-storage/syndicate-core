@@ -339,13 +339,23 @@ static int UG_fs_open( struct fskit_core* fs, struct fskit_route_metadata* route
 }
 
 
-// fskit close/closedir callback--free up the handle 
-// return 0 on success (always succeeds)
-// fent is not even accessed--no locking is needed
+// fskit close callback (i.e. FUSE release)--free up the handle
+// if it's a file handle, then try to fsync it for good measure.  ERRORS WILL BE MASKED
+// NOTE: it is incorrect for a program to rely on close or flush to synchronize data to the RGs.
+// correct programs should call fsync().  Calling fsync() here does *not* guarantee that data will
+// be persistent, since there is no way to re-try a close().
 static int UG_fs_close( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, void* handle_data ) {
    
    struct UG_file_handle* handle = (struct UG_file_handle*)handle_data;
-   
+   char const* path = fskit_route_metadata_get_path(route_metadata);
+
+   // to be safe, try to fsync it. 
+   int rc = UG_sync_fsync_ex( fs, path, fent );
+   if( rc != 0 ) {
+
+      SG_error("Failed to fsync '%s', rc = %d\n", path, rc);
+   }
+
    // free up
    if( handle != NULL ) {
       
@@ -353,7 +363,7 @@ static int UG_fs_close( struct fskit_core* fs, struct fskit_route_metadata* rout
       SG_safe_free( handle );
    }
    
-   return 0;
+   return rc;
 }
 
 
