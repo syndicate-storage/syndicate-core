@@ -296,7 +296,7 @@ static int md_cache_cb_add_lru( char const* block_path, void* cls ) {
 // always succeeds
 int md_cache_block_future_clean( struct md_cache_block_future* f ) {
    if( f->block_fd >= 0 ) {
-      fsync( f->block_fd );
+      // fsync( f->block_fd );
       close( f->block_fd );
       f->block_fd = -1;
    }
