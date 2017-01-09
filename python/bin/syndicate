@@ -659,6 +659,9 @@ def main( argv ):
    * Sends the request, receives the response, and performs any method-specific post-processing.
    """
 
+   if os.environ.get("SYNDICATE_DEBUG") is not None:
+       log.debug("Debugging enabled")
+
    # get opts, methodname, args
    opts, method_name, args, kw = parse_argv( argv )
    if method_name == "setup":
