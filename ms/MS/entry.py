@@ -1791,7 +1791,7 @@ class MSEntry( storagetypes.Object ):
                storagetypes.concurrent_return( 0 )
          
          # next ent
-         ent = yield MSEntry.__read_msentry( volume_id, ent.parent_id, num_shards )
+         ent = yield MSEntry.__read_msentry( volume_id, ent.parent_id, num_shards, use_memcache=False )
          
          if ent == None:
             # this ent got removed concurrently
@@ -1871,6 +1871,7 @@ class MSEntry( storagetypes.Object ):
          logging.error("Invalid dest mutate attrs")
          return (rc, None)
       
+      # NOTE: src carries new name, dest carries old name (since dest will be discarded)
       new_name = src_attrs['name']
       src_file_id = src_attrs['file_id']
       src_parent_id = dest_attrs['parent_id']   # swapped by the client (since src needs to have the right, new parent ID)
@@ -1880,7 +1881,8 @@ class MSEntry( storagetypes.Object ):
       overwritten_name = dest_attrs['name']
 
       delete_dest = False
-      
+            
+
       # file IDs are strings, so convert them to ints
       src_file_id_int = MSEntry.serialize_id( src_file_id )
       
@@ -1907,6 +1909,16 @@ class MSEntry( storagetypes.Object ):
               logging.error("Cannot rename over root")
               return (-errno.EINVAL, None)
 
+ 
+      # keys for cleaning up the cache (now that we know dest_file_id)
+      cache_delete = [
+         MSEntry.make_key_name( volume_id, src_parent_id ),
+         MSEntry.make_key_name( volume_id, dest_parent_id ),
+         MSEntry.make_key_name( volume_id, src_file_id ),
+         MSEntry.make_key_name( volume_id, dest_file_id ),
+         MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ),
+         MSEntryNameHolder.make_key_name( volume_id, dest_parent_id, new_name )
+      ]
 
       ents_to_get = [src_file_id, src_parent_id, dest_parent_id]
       if dest_file_id != 0:
@@ -1918,6 +1930,7 @@ class MSEntry( storagetypes.Object ):
          ent = storagetypes.memcache.get( cache_ent_key )
          
          if ent == None:
+            # logging.info("cache MISS: %s" % fid)
             if fid != dest_file_id:
                 ent_fut = MSEntry.__read_msentry( volume_id, fid, volume.num_shards, use_memcache=False )
             else:
@@ -1927,6 +1940,7 @@ class MSEntry( storagetypes.Object ):
             futs.append( ent_fut )
          
          else:
+            # logging.info("cache HIT: %s (wn = %s)" % (ent, ent.write_nonce))
             ents[fid] = ent
       
       
@@ -2067,11 +2081,19 @@ class MSEntry( storagetypes.Object ):
       if dest_empty_rc != 0:
          # dest is not empty or has unvacuumed data, but we were about to rename over it
          logging.error("dest is not empty or has unvacuumed data")
+         if delete_dest:
+             MSEntry.__delete_undo( dest )
+             storagetypes.memcache.delete_multi( cache_delete )
+
          return (dest_empty_rc, None)
       
       if src_absent_rc != 0:
          # src is its own parent
          logging.error("src is its own parent")
+         if delete_dest:
+             MSEntry.__delete_undo( dest )
+             storagetypes.memcache.delete_multi( cache_delete )
+
          return (src_absent_rc, None)
       
       rc = 0
@@ -2103,15 +2125,6 @@ class MSEntry( storagetypes.Object ):
       storagetypes.wait_futures( futs )
       
       # clean up cache
-      cache_delete = [
-         MSEntry.make_key_name( volume_id, src_parent_id ),
-         MSEntry.make_key_name( volume_id, dest_parent_id ),
-         MSEntry.make_key_name( volume_id, src_file_id ),
-         MSEntry.make_key_name( volume_id, dest_file_id ),
-         MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ),
-         MSEntryNameHolder.make_key_name( volume_id, dest_parent_id, new_name )
-      ]
-      
       storagetypes.memcache.delete_multi( cache_delete )
      
       return (rc, dest)
