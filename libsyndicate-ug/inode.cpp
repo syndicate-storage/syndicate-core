@@ -671,14 +671,14 @@ int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t paren
    dest->ent_sig_len = 0;
 
    /////////////////////////////////////
-   /*
+   
    char* tmp = NULL;
    int rc = md_entry_to_string( dest, &tmp );
    if( rc == 0 && tmp != NULL ) {
       SG_debug("Exported '%s' with:\n%s\n", dest->name, tmp );
       SG_safe_free( tmp );
    }
-   */
+   
    /////////////////////////////////////
    return 0;
 }
@@ -881,6 +881,10 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
    dest->generation = src->generation;
    dest->ms_num_children = src->num_children;
    dest->ms_capacity = src->capacity;
+
+   if( src->type == MD_ENTRY_FILE ) {
+       dest->write_nonce = MAX( dest->write_nonce, src->write_nonce );
+   }
 
    if( src->xattr_hash != NULL ) {
        memcpy( dest->ms_xattr_hash, src->xattr_hash, SHA256_DIGEST_LENGTH );
