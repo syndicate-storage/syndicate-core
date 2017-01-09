@@ -1433,6 +1433,10 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
 
    // force refresh on the destination on next access
    UG_inode_set_read_stale( old_inode, true );
+   if( new_inode != NULL ) {
+      UG_inode_set_read_stale( new_inode, true );
+   }
+
    return rc;
 }
 
