@@ -173,11 +173,11 @@ def _getattr( owner_id, volume, file_id, file_version, write_nonce ):
       if file_data.version == file_version and file_data.write_nonce == write_nonce and file_data.ftype == MSENTRY_TYPE_FILE:
          need_refresh = False
          
-         logging.info("%s has type %s version %s write_nonce %s, status=NOCHANGE" % (file_data.name, file_data.ftype, file_data.version, file_data.write_nonce))
+         logging.info("%s (%s) has type %s version %s write_nonce %s, status=NOCHANGE" % (file_data.name, file_data.file_id, file_data.ftype, file_data.version, file_data.write_nonce))
 
       else:
          
-         logging.info("%s has type %s version %s write_nonce %s, status=NEW" % (file_data.name, file_data.ftype, file_data.version, file_data.write_nonce))
+         logging.info("%s (%s) has type %s version %s write_nonce %s, status=NEW" % (file_data.name, file_data.file_id, file_data.ftype, file_data.version, file_data.write_nonce))
 
       error = file_read_allowed( owner_id, file_data )
       
@@ -592,16 +592,17 @@ def file_rename( reply, gateway, volume, update ):
    
    src_attrs = MSEntry.unprotobuf_dict( update.entry )
    dest_attrs = MSEntry.unprotobuf_dict( update.dest )
-   
+  
+   # NOTE: src carries new name; dest carries old name
    logging.info("rename /%s/%s (name=%s, parent=%s, version=%s, wn=%s) to (name=%s, parent=%s, version=%s, wn=%s)" % 
-                  (src_attrs['volume_id'], src_attrs['file_id'], src_attrs['name'], src_attrs['parent_id'], src_attrs['version'], src_attrs['write_nonce'], 
-                   dest_attrs['name'], dest_attrs['parent_id'], dest_attrs['version'], dest_attrs['write_nonce']) )
+                  (src_attrs['volume_id'], src_attrs['file_id'], dest_attrs['name'], src_attrs['parent_id'], src_attrs['version'], src_attrs['write_nonce'], 
+                   src_attrs['name'], dest_attrs['parent_id'], dest_attrs['version'], dest_attrs['write_nonce']) )
    
    rc, ent = MSEntry.Rename( gateway.owner_id, gateway, volume, src_attrs, dest_attrs )
    
    logging.info("rename /%s/%s (name=%s, parent=%s, version=%s, wn=%s) to (name=%s, parent=%s, version=%s, wn=%s) rc = %s" % 
-                  (src_attrs['volume_id'], src_attrs['file_id'], src_attrs['name'], src_attrs['parent_id'], src_attrs['version'], src_attrs['write_nonce'], 
-                   dest_attrs['name'], dest_attrs['parent_id'], dest_attrs['version'], dest_attrs['write_nonce'], rc) )
+                  (src_attrs['volume_id'], src_attrs['file_id'], dest_attrs['name'], src_attrs['parent_id'], src_attrs['version'], src_attrs['write_nonce'], 
+                   src_attrs['name'], dest_attrs['parent_id'], dest_attrs['version'], dest_attrs['write_nonce'], rc) )
 
    # have an entry 
    if ent is not None:
