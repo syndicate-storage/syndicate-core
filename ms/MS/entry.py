@@ -2052,7 +2052,10 @@ class MSEntry( storagetypes.Object ):
             return (-errno.ENOTDIR, None)
          else:
             return (-errno.EISDIR, None)
-      
+     
+      if dest is not None and dest.ftype == MSENTRY_TYPE_DIR and dest.num_children > 0:
+         return (-errno.ENOTEMPTY, None)
+
       dest_delete_fut = None
       src_verify_absent = None
       
