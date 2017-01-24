@@ -411,11 +411,6 @@ int UG_file_handle_init( struct UG_file_handle* fh, struct UG_inode* inode, int 
       return -EINVAL;
    }
 
-   fh->evicts = SG_safe_new( UG_inode_block_eviction_map_t() );
-   if( fh->evicts == NULL ) {
-      return -ENOMEM;
-   }
-
    fh->inode_ref = inode;
    fh->flags = flags;
 
@@ -427,8 +422,6 @@ int UG_file_handle_init( struct UG_file_handle* fh, struct UG_inode* inode, int 
 // return 0 on success
 // return -ENOMEM on OOM
 int UG_file_handle_free( struct UG_file_handle* fh ) {
-
-   SG_safe_delete( fh->evicts );
 
    memset( fh, 0, sizeof(struct UG_file_handle) );
 
@@ -1313,10 +1306,11 @@ int UG_inode_dirty_block_update_manifest( struct SG_gateway* gateway, struct UG_
 
    int rc = 0;
 
-   SG_debug("update manifest %" PRId64 ".%d for %" PRIX64 "[%" PRIu64 ".%" PRId64 "] (%p)\n",
+   SG_debug("update manifest %" PRId64 ".%d for %" PRIX64 "[%" PRIu64 ".%" PRId64 "] (%p) (dirty=%d)\n",
             SG_manifest_get_modtime_sec( UG_inode_manifest( inode ) ), SG_manifest_get_modtime_nsec( UG_inode_manifest( inode ) ),
-            UG_inode_file_id( inode ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), dirty_block );
+            UG_inode_file_id( inode ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), dirty_block, UG_dirty_block_dirty(dirty_block) );
 
+   /* DEPRECATED; don't delay writes needlessly
    // sanity check: must be flushed to disk
    if( !UG_dirty_block_is_flushed( dirty_block ) ) {
 
@@ -1324,13 +1318,20 @@ int UG_inode_dirty_block_update_manifest( struct SG_gateway* gateway, struct UG_
       exit(1);
       return -EINVAL;
    }
+   */
 
+   /*
    // sanity check: must be dirty
    if( !UG_dirty_block_dirty( dirty_block ) ) {
 
       SG_error("BUG: block [%" PRIu64 ".%" PRId64 "] is not dirty\n", UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ) );
       exit(1);
       return -EINVAL;
+   }
+   */
+   if( !UG_dirty_block_dirty( dirty_block ) ) {
+      // nothing to do 
+      return 0;
    }
 
    struct SG_manifest_block old_block_info;
@@ -1414,6 +1415,7 @@ int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* in
 
    SG_debug("commit %" PRIX64 "[%" PRIu64 ".%" PRId64 "] (%p)\n", UG_inode_file_id( inode ), UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), dirty_block );
 
+   /* DEPRECATED; don't delay writes needlessly
    // sanity check: must be flushed to disk
    if( !UG_dirty_block_is_flushed( dirty_block ) ) {
 
@@ -1421,6 +1423,7 @@ int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* in
       exit(1);
       return -EINVAL;
    }
+   */
 
    // sanity check: must be dirty
    if( !UG_dirty_block_dirty( dirty_block ) ) {
@@ -1451,51 +1454,6 @@ int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* in
    }
 
    return rc;
-}
-
-
-// remember to evict a non-dirty block when we close this descriptor
-// return 0 on success
-// return -ENOMEM on OOM
-int UG_file_handle_evict_add_hint( struct UG_file_handle* fh, uint64_t block_id, int64_t block_version ) {
-
-   try {
-      (*fh->evicts)[ block_id ] = block_version;
-   }
-   catch( bad_alloc& ba ) {
-      return -ENOMEM;
-   }
-
-   return 0;
-}
-
-
-// clear all non-dirty blocks from the inode that this file handle created
-// return 0 on success
-// NOTE: fh->inode_ref->entry must be write-locked
-int UG_file_handle_evict_blocks( struct UG_file_handle* fh ) {
-
-   for( UG_inode_block_eviction_map_t::iterator itr = fh->evicts->begin(); itr != fh->evicts->end(); itr++ ) {
-
-      UG_dirty_block_map_t::iterator block_itr = fh->inode_ref->dirty_blocks->find( itr->first );
-      if( block_itr != fh->inode_ref->dirty_blocks->end() ) {
-
-         struct UG_dirty_block* dirty_block = &block_itr->second;
-
-         // clear, if the version matches and it's not dirty
-         if( UG_dirty_block_version( dirty_block ) == itr->second && !UG_dirty_block_dirty( dirty_block ) ) {
-
-            // evict
-            fh->inode_ref->dirty_blocks->erase( block_itr );
-
-            UG_dirty_block_free( dirty_block );
-         }
-      }
-   }
-
-   fh->evicts->clear();
-
-   return 0;
 }
 
 
@@ -2011,13 +1969,6 @@ void UG_inode_set_dirty( struct UG_inode* inode, bool val ) {
    inode->dirty = val;
 }
 
-/*
-void UG_inode_set_dirty_region( struct UG_inode* inode, uint64_t offset, uint64_t len ) {
-   inode->dirty_write_offset = offset;
-   inode->dirty_write_len = len;
-}
-*/
-
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent ) {
    inode->entry = ent;
 }
@@ -2055,3 +2006,66 @@ void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode ) {
       UG_inode_set_old_manifest_modtime( inode, &ts );
    }
 }
+
+
+// count up how many non-dirty blocks there are in the inode's dirty block set 
+// (these blocks get cached here on read)
+// NOTE: inode->entry must be read-locked
+uint64_t UG_inode_count_clean_blocks( struct UG_inode* inode ) {
+    
+    uint64_t count = 0;
+    for( UG_dirty_block_map_t::iterator itr = inode->dirty_blocks->begin(); itr != inode->dirty_blocks->end(); itr++ ) {
+        if( !UG_dirty_block_dirty( &itr->second ) ) {
+           count += 1;
+        }
+    }
+
+    return count;
+}
+
+
+// get the block ID of the nth non-dirty block
+// return (uint64_t)(-1) on failure
+// NOTE: inode->entry must be read-locked
+uint64_t UG_inode_find_clean_block_id( struct UG_inode* inode, uint64_t n ) {
+    
+   uint64_t block_id = -1;
+   uint64_t i = n;
+   for( UG_dirty_block_map_t::iterator itr = inode->dirty_blocks->begin(); itr != inode->dirty_blocks->end(); itr++ ) {
+       if( !UG_dirty_block_dirty( &itr->second ) ) {
+            i--;
+            if( i == 0 ) {
+               block_id = itr->first;
+               break;
+            }
+       }
+   }
+
+   return block_id;
+}
+
+
+// evict a clean block from the dirty inode set 
+// return 0 on success
+// return -ENOENT on absent
+// return -EINVAL if dirty
+// NOTE: inode->entry must be write-locked
+int UG_inode_evict_clean_block( struct UG_inode* inode, uint64_t block_id ) {
+
+    UG_dirty_block_map_t::iterator itr = inode->dirty_blocks->find(block_id);
+    if( itr == inode->dirty_blocks->end() ) {
+       return -ENOENT;
+    }
+
+    if( UG_dirty_block_dirty( &itr->second ) ) {
+       return -EINVAL;
+    }
+
+    struct UG_dirty_block* dirty_block = &itr->second;
+    inode->dirty_blocks->erase( itr );
+    UG_dirty_block_free( dirty_block );
+    return 0;
+}
+
+
+

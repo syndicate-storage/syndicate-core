@@ -33,9 +33,6 @@ struct UG_sync_context;
 // queue for threads waiting to synchronize blocks
 typedef queue< struct UG_sync_context* > UG_inode_fsync_queue_t;
 
-// map block IDs to their versions, so we know which block to evict on close
-typedef map< uint64_t, int64_t > UG_inode_block_eviction_map_t;
-
 // UG-specific inode information, for fskit
 struct UG_inode;
 
@@ -47,8 +44,6 @@ struct UG_file_handle {
    struct UG_inode* inode_ref;          // reference to the parent inode (i.e. so we can release dirty blocks)
 
    struct fskit_file_handle* handle_ref;        // refernece to the parent fskit file handle
-
-   UG_inode_block_eviction_map_t* evicts;       // non-dirty blocks to evict on close
 };
 
 
@@ -98,10 +93,6 @@ int UG_inode_dirty_blocks_modified( struct UG_inode* inode, UG_dirty_block_map_t
 // add a dirty block and update our manifest
 int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block );
 int UG_inode_dirty_block_update_manifest( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block );
-
-// eviction hints
-int UG_file_handle_evict_add_hint( struct UG_file_handle* fh, uint64_t block_id, int64_t block_version );
-int UG_file_handle_evict_blocks( struct UG_file_handle* fh );
 
 // manifest
 int UG_inode_manifest_replace( struct UG_inode* inode, struct SG_manifest* manifest );
@@ -194,6 +185,10 @@ void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode );
 // publish
 int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, struct md_entry* ent_data, struct UG_inode** ret_inode_data );
 
+// block cache management
+uint64_t UG_inode_count_clean_blocks( struct UG_inode* inode );
+uint64_t UG_inode_find_clean_block_id( struct UG_inode* inode, uint64_t n );
+int UG_inode_evict_clean_block( struct UG_inode* inode, uint64_t block_id );
 }
 
 #endif
