@@ -301,7 +301,8 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
           // copy in data from write buffer to this unaligned block
           SG_debug("Existing partial HEAD: fill block %" PRIu64 " at %" PRId64 " from %" PRIu64 " length %" PRIu64 "\n", first_affected_block, block_copy_start, buf_offset, buf_copy_len );
           memcpy( UG_dirty_block_buf( dirty_block )->data + block_copy_start, buf + buf_offset, buf_copy_len );
-      
+          UG_dirty_block_set_dirty(dirty_block, true);
+
           // reversion 
           UG_dirty_block_set_version( dirty_block, md_random64() );
        }
@@ -342,6 +343,7 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
 
           // gifted, so unshared 
           UG_dirty_block_set_unshared( &head_block, true );
+          UG_dirty_block_set_dirty( &head_block, true);
 
           try {
 
@@ -373,6 +375,7 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
           // copy data from the write buffer to this unaligned block 
           SG_debug("Existing partial TAIL: fill block %" PRIu64 " at %" PRId64 " from %" PRIu64 " length %" PRIu64 "\n", last_affected_block, block_copy_start, buf_offset, buf_copy_len );
           memcpy( UG_dirty_block_buf( dirty_block )->data + block_copy_start, buf + buf_offset, buf_copy_len );
+          UG_dirty_block_set_dirty(dirty_block, true);
 
           // reversion 
           UG_dirty_block_set_version( dirty_block, md_random64() );
@@ -414,6 +417,7 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
 
           // gifted, so unshared 
           UG_dirty_block_set_unshared( &tail_block, true );
+          UG_dirty_block_set_dirty( &tail_block, true);
 
           try {
 
@@ -515,6 +519,7 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
 
       // reversion
       UG_dirty_block_set_version( &next_block, md_random64() );
+      UG_dirty_block_set_dirty( &next_block, true );
       block_info = NULL;
 
       SG_debug("Version of %" PRIu64 " is now %" PRIu64 "\n", aligned_block_id, UG_dirty_block_version( &next_block ));
@@ -638,7 +643,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
          io_hints.block_size = last_block_fragment;
       }
       
-      // serialize and send to disk
+      // serialize, update block hash, and begin sending to disk
       // NOTE: this will update the block's hash 
       rc = UG_dirty_block_flush_async( gateway, fs_path, UG_inode_file_id( inode ), UG_inode_file_version( inode ), block, &io_hints );
       if( rc != 0 ) {
@@ -654,10 +659,12 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
 
    // finish flushing all blocks, and commit them to the manifest
    // (NOTE: the act of flushing will update the block's information, but we need to keep it coherent with the manifest's information) 
+   // TODO: move cache-write-waits off the critical path
    for( UG_dirty_block_map_t::iterator itr = new_dirty_blocks->begin(); itr != new_dirty_blocks->end(); ) {
 
       struct UG_dirty_block* block = &itr->second;
 
+      /*
       // finish flushing (NOTE: regenerates block hash)
       rc = UG_dirty_block_flush_finish_keepbuf( block );
       if( rc != 0 ) {
@@ -667,6 +674,7 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
         
          return rc; 
       }
+      */
  
       // insert this dirty block into the manifest, and retain info from the old version of this block so we can garbage-collect it later. 
       // this propagates the new block hash to the inode manifest.
@@ -847,6 +855,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    }
   
 
+   /*
    // mark all modified blocks as dirty...
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
       UG_dirty_block_set_dirty( &itr->second, true );
@@ -857,6 +866,7 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
          exit(1);
       }
    }
+   */
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
 
