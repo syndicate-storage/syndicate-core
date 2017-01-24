@@ -133,6 +133,7 @@ int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* in
          }
       }
 
+      /* DEPRECATED; handled by write()
       // make it coherent with the inode's manifest 
       rc = UG_inode_dirty_block_update_manifest( gateway, inode, &itr->second );
       if( rc != 0 ) {
@@ -143,6 +144,7 @@ int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* in
          worst_rc = rc;
          break;
       }
+      */
    }
 
    return worst_rc;
