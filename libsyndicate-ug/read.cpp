@@ -730,7 +730,8 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
 // return -ENOMEM on OOM
 // return -EINVAL if we're missing a block 
 // NOTE: each block in blocks must be pre-allocated 
-int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* block_requests, UG_dirty_block_map_t* blocks, uint64_t offset, uint64_t len, struct SG_manifest* absent ) {
+int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* block_requests,
+                           UG_dirty_block_map_t* blocks, uint64_t offset, uint64_t len, struct SG_manifest* absent ) {
    
    int rc = 0;
    struct SG_IO_hints io_hints;
@@ -804,7 +805,7 @@ int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, stru
       }
       else {
 
-         SG_debug("Read cached block %" PRIu64 "\n", UG_dirty_block_id( dirty_block ) );
+         SG_debug("Read cached block %" PRIu64 "\n", UG_dirty_block_id( dirty_block ) );         
       }
    }
    
@@ -861,12 +862,14 @@ int UG_read_dirty_blocks( struct SG_gateway* gateway, struct UG_inode* inode, UG
    return rc;
 }
 
+
 // read locally-available blocks 
 // try the inode's dirty blocks, and then disk cached blocks 
 // return 0 on success, and fill in *blocks on success
 // return -ENOMEM on OOM 
 // NOTE: inode->entry must be read-locked!
-int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, UG_dirty_block_map_t* blocks, uint64_t offset, uint64_t len, struct SG_manifest* blocks_not_local ) {
+int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, UG_dirty_block_map_t* blocks,
+                          uint64_t offset, uint64_t len, struct SG_manifest* blocks_not_local ) {
    
    int rc = 0;
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -880,7 +883,7 @@ int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struc
       
       return rc;
    }
-   
+
    // try dirty blocks
    rc = UG_read_dirty_blocks( gateway, inode, blocks, &blocks_not_dirty );
    if( rc != 0 ) {
@@ -906,8 +909,8 @@ int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struc
       
       SG_error("UG_read_cached_blocks( %" PRIX64 ".%" PRId64 " ) rc = %d\n", UG_inode_file_id( inode ), UG_inode_file_version( inode ), rc );
    }
-  
-   // if we have write-holes at the head or tail, remove them from blocks_not_local (they'bve already been satisfied) 
+
+   // if we have write-holes at the head or tail, remove them from blocks_not_local (they've already been satisfied) 
    if( !SG_manifest_is_block_present( UG_inode_manifest( inode ), head_id ) && UG_read_has_unaligned_head( offset, block_size ) ) {
 
       // already filled in 
@@ -1040,8 +1043,12 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    uint64_t volume_id = ms_client_get_volume_id( ms );
    
    UG_dirty_block_map_t read_blocks;
-   
+   UG_dirty_block_map_t* inode_blocks = NULL;
+
    struct UG_dirty_block* last_block_read = NULL;
+   uint64_t free_clean_block_id = 0;
+   bool cached_clean_block = false;
+   bool last_block_cached = false;
    UG_dirty_block_map_t::iterator last_block_read_itr;
    
    struct SG_manifest blocks_to_download;
@@ -1165,6 +1172,9 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
       return rc;
    }
 
+   // is the last block in the dirty block set?
+   last_block_cached = (UG_inode_dirty_blocks(inode)->find(last_block) != UG_inode_dirty_blocks(inode)->end());
+
    // don't hold the lock during network I/O
    fskit_entry_unlock( fent );
 
@@ -1257,34 +1267,61 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
    }
 
    // optimization: cache last read block, but only if no writes occurred while we were fetching remote blocks
-   /*
-   fskit_entry_wlock( fent );
-   
-   if( file_version == UG_inode_file_version( inode ) && write_nonce == UG_inode_write_nonce( inode ) ) {
+   // and only if it wasn't already cached.
+   if( have_unaligned_tail && !last_block_cached ) {
+
+      fskit_entry_wlock( fent );
       
-      last_block_read_itr = read_blocks.find( last_block );
-      if( last_block_read_itr != read_blocks.end() ) {
-         
-         last_block_read = &last_block_read_itr->second;
-         
-         // remember to evict this block when we close 
-         UG_file_handle_evict_add_hint( fh, last_block, UG_dirty_block_version( last_block_read ) );
-         
-         // cache this block
-         rc = UG_inode_dirty_block_put( gateway, inode, last_block_read, false );
-         if( rc != 0 ) {
-            
-            // not fatal, but annoying...
-            SG_error("UG_inode_dirty_block_put( %s, %zu, %jd ) rc = %d\n", fskit_route_metadata_get_path( route_metadata ), buf_len, offset, rc );
+      if( file_version == UG_inode_file_version( inode ) && write_nonce == UG_inode_write_nonce( inode ) ) {
+          
+         inode_blocks = UG_inode_dirty_blocks(inode);
+         last_block_read_itr = read_blocks.find( last_block );
+         if( last_block_read_itr != read_blocks.end() && inode_blocks->find(last_block) == inode_blocks->end() ) {
+           
+            // this block is not cached. 
+            last_block_read = &last_block_read_itr->second;
+
             rc = 0;
+            UG_dirty_block_set_dirty(last_block_read, false);
+
+            if( !have_unaligned_tail ) {
+                // need to unshare 
+                rc = UG_dirty_block_buf_unshare(last_block_read);
+            } 
+
+            if( rc == 0 ) {
+                // cache this block
+                rc = UG_inode_dirty_block_put( gateway, inode, last_block_read, false );
+                if( rc != 0 ) {
+               
+                   // not fatal, but annoying...
+                   SG_error("UG_inode_dirty_block_put( %s, %zu, %jd ) rc = %d\n", fskit_route_metadata_get_path( route_metadata ), buf_len, offset, rc );
+                   rc = 0;
+                }
+
+                // don't free; we've gifted it
+                read_blocks.erase( last_block_read_itr ); 
+                cached_clean_block = true;
+            }
+            else {
+               // OOM
+               // not fatal here, but annoying 
+               rc = 0;
+            }
          }
 
-         read_blocks.erase( last_block_read_itr ); 
+         // also, free an earlier clean block if possible
+         if( cached_clean_block ) {
+             free_clean_block_id = UG_inode_find_clean_block_id( inode, 0 );
+             if( free_clean_block_id < UG_dirty_block_id(&last_block_read_itr->second) ) {
+                SG_debug("Evict earlier clean block %" PRIu64 "\n", free_clean_block_id);
+                UG_inode_evict_clean_block( inode, free_clean_block_id );
+             } 
+         }
       }
+      
+      fskit_entry_unlock( fent );
    }
-   
-   fskit_entry_unlock( fent );
-   */
 
 UG_read_impl_fail:
 
