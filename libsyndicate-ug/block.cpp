@@ -123,7 +123,7 @@ int UG_dirty_block_load_from_cache( struct SG_gateway* gateway, char const* fs_p
    memset( &raw_block, 0, sizeof(struct SG_chunk) );
    memset( &block_buf, 0, sizeof(struct SG_chunk) );
 
-   if( UG_dirty_block_is_flushed( dirty_block ) ) { // || UG_dirty_block_mmaped( dirty_block ) ) {
+   if( UG_dirty_block_is_flushed( dirty_block ) ) { 
 
       SG_error("BUG: block [%" PRIu64 ".%" PRId64 "] flushed or mmap'ed\n", UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ) );
       exit(1);
@@ -293,7 +293,7 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
       // in progress
       return -EINPROGRESS;
    }
-   
+  
    if( !UG_dirty_block_in_RAM( dirty_block ) ) {
       // can't flush
       SG_error("BUG: block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] is not in RAM\n", file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ) );
@@ -306,13 +306,21 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
       SG_error("BUG: block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] is flushed to disk already\n", file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ) );
       exit(1);
    }
-   
+
+   if( !UG_dirty_block_dirty( dirty_block ) ) {
+      
+      // not dirty
+      return 0;
+   }    
+  
+   /* 
    if( !dirty_block->dirty ) {
       
       // nothing to do 
       SG_error("BUG: block %" PRIX64 ".%" PRId64 "[%" PRIu64 ".%" PRId64 "] is not dirty\n", file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ) );
       exit(1);
    }
+   */
   
    // synthesize a block request
    rc = SG_request_data_init_block( gateway, fs_path, file_id, file_version, UG_dirty_block_id( dirty_block ), UG_dirty_block_version( dirty_block ), &reqdat );
@@ -366,7 +374,6 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
 int UG_dirty_block_flush_finish_ex( struct UG_dirty_block* dirty_block, bool free_chunk ) {
    
    int rc = 0;
-   int block_fd = -1;
    
    struct md_cache_block_future* block_fut = dirty_block->block_fut;
    
@@ -375,11 +382,16 @@ int UG_dirty_block_flush_finish_ex( struct UG_dirty_block* dirty_block, bool fre
       // nothing to do
       return -EINVAL;
    }
-   
-   else if( !dirty_block->dirty && block_fut == NULL ) {
-      
+
+   else if( dirty_block->flushed ) {
       // nothing to do 
       return 0;
+   }
+   
+   else if( !dirty_block->dirty && block_fut == NULL ) {
+     
+      // clean up 
+      goto UG_dirty_block_flush_finish_ex_out;
    }
    
    rc = md_cache_flush_write( block_fut );
@@ -391,6 +403,7 @@ int UG_dirty_block_flush_finish_ex( struct UG_dirty_block* dirty_block, bool fre
       return rc;
    }
    
+   /*
    // detach the file descriptor from the future, and put it into the dirty block (in order to keep the data referenced) 
    block_fd = md_cache_block_future_release_fd( block_fut );
    if( block_fd < 0 ) {
@@ -401,12 +414,16 @@ int UG_dirty_block_flush_finish_ex( struct UG_dirty_block* dirty_block, bool fre
       return block_fd;
    }
    close( block_fd );
+   */
 
+UG_dirty_block_flush_finish_ex_out:
    if( free_chunk && dirty_block->unshared ) {
       SG_chunk_free( &dirty_block->buf );
    }
    
-   md_cache_block_future_free( block_fut );
+   if( block_fut != NULL ) {
+      md_cache_block_future_free( block_fut );
+   }
    
    dirty_block->block_fut = NULL;
    dirty_block->flushed = true;
