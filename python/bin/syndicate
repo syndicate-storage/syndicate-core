@@ -324,7 +324,10 @@ def export_object_files( config, object_type, object_name_or_id, dest_path ):
     Export an object's relevant keys and certificates
     """
 
-    if os.path.isdir(dest_path):
+    # dest_path can be a relative path
+    dest_path = os.path.abspath(dest_path)
+
+    if os.path.isdir(dest_abs_path):
         dest_path = os.path.join(dest_path, str(object_name_or_id))
 
     # find the relevant .cert and .pkey files
