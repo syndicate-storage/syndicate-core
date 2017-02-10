@@ -28,6 +28,7 @@ import stat
 import copy
 import socket
 import random
+import tarfile
 
 import syndicate.ms.jsonrpc as jsonrpc
 import syndicate.ms.msconfig as msconfig
@@ -672,7 +673,30 @@ def main( argv ):
            print >> sys.stderr, "Usage: %s setup USERNAME /path/to/private/key MS_URL" % sys.argv[0]
            sys.exit(1)
 
-       do_setup( opts, args[0], args[1], args[2] )
+       if tarfile.is_tarfile(args[1]):
+          # from exported package
+          try:
+             t = tarfile.open(args[1], 'r')
+             priv_key = 'users/%s.pkey' % args[0]
+             if priv_key in t.getnames():
+                # pkey is in the tar file - extract
+                tmpdir = tempfile.mkdtemp()
+                t.extract(priv_key, tmpdir)
+                t.close()
+                
+                do_setup( opts, args[0], "%s/%s" % (tmpdir, priv_key), args[2] )
+                shutil.rmtree(tmpdir)
+             else:
+                t.close()
+                print >> sys.stderr, 'Failed to find the private key'
+                sys.exit(1)
+          except Exception, e:
+             log.exception(e)
+             print >> sys.stderr, traceback.format_exc()
+             print >> sys.stderr, 'Failed to read the private key'
+             sys.exit(1)
+       else:
+           do_setup( opts, args[0], args[1], args[2] )
        sys.exit(0)
 
    CONFIG = init_config( argv, method_name )
