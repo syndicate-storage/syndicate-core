@@ -513,7 +513,7 @@ class MSEntryXAttr( storagetypes.Object ):
       Only use this when deleting an MSEntry.
       """
       # get the xattr
-      xattr_key_name = MSEntryXAttr.make_key_name( volume.volume_id, msent.file_id, xattr_name )
+      xattr_key_name = MSEntryXAttr.make_key_name( volume_id, msent.file_id, xattr_name )
       xattr_key = storagetypes.make_key( MSEntryXAttr, xattr_key_name )
       
       # delete the xattr
