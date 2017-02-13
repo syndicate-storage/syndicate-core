@@ -62,62 +62,62 @@ log = conf.log
 
 # -------------------
 def fetch_syndicate_public_key( config ):
-   """
-   Use a helper program to go and fetch the Syndicate public key.
-   Return the key itself on success.
-   Return None on error
-   """
-   try:
-      assert 'syndicate_host' in config
-      assert 'no_tls' in config
-   except:
-      log.error("Incomplete config")
-      return None
+    """
+    Use a helper program to go and fetch the Syndicate public key.
+    Return the key itself on success.
+    Return None on error
+    """
+    try:
+        assert 'syndicate_host' in config
+        assert 'no_tls' in config
+    except:
+        log.error("Incomplete config")
+        return None
 
-   port = config.get("syndicate_port", None)
-   if port is None:
-      port = conf.default_syndicate_port( config['syndicate_host'], config['no_tls'] )
+    port = config.get("syndicate_port", None)
+    if port is None:
+        port = conf.default_syndicate_port( config['syndicate_host'], config['no_tls'] )
 
-   url = client.make_ms_url( config['syndicate_host'], port, config['no_tls'] )
+    url = client.make_ms_url( config['syndicate_host'], port, config['no_tls'] )
 
-   downloader_path = config['helpers'].get('fetch_syndicate_pubkey')
-   if downloader_path is None:
-      log.error("No 'fetch_syndicate_pubkey' defined in the 'helpers' config section")
-      return None
+    downloader_path = config['helpers'].get('fetch_syndicate_pubkey')
+    if downloader_path is None:
+        log.error("No 'fetch_syndicate_pubkey' defined in the 'helpers' config section")
+        return None
 
-   if not os.path.exists( downloader_path ):
-      log.error("'%s' does not exist" % downloader_path )
-      return None
+    if not os.path.exists( downloader_path ):
+        log.error("'%s' does not exist" % downloader_path )
+        return None
 
-   downloader = subprocess.Popen( [downloader_path, url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
-   pubkey_out, pubkey_err = downloader.communicate()
-   downloader.wait()
+    downloader = subprocess.Popen( [downloader_path, url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    pubkey_out, pubkey_err = downloader.communicate()
+    downloader.wait()
 
-   if downloader.returncode != 0:
-       log.error("Downloader helper exited %s" % downloader.returncode)
-       return None
+    if downloader.returncode != 0:
+        log.error("Downloader helper exited %s" % downloader.returncode)
+        return None
 
-   pubkey_pem = pubkey_out.strip()
+    pubkey_pem = pubkey_out.strip()
 
-   # validate
-   try:
-      pubkey = CryptoKey.importKey( pubkey_pem )
-   except Exception, e:
-      log.error("Invalid Syndicate public key (from %s)" % url)
-      return None
+    # validate
+    try:
+        pubkey = CryptoKey.importKey( pubkey_pem )
+    except Exception, e:
+        log.error("Invalid Syndicate public key (from %s)" % url)
+        return None
 
-   return pubkey.publickey().exportKey()
+    return pubkey.publickey().exportKey()
 
 
 # -------------------
 def prompt_trust_public_key( name, port, pubkey ):
-   """
-   Ask the user if the given public key should be trusted
-   for the given server hostname and port.
-   Return True if the user trusts it.
-   Return False if not.
-   """
-   print """
+    """
+    Ask the user if the given public key should be trusted
+    for the given server hostname and port.
+    Return True if the user trusts it.
+    Return False if not.
+    """
+    print """
 Syndicate at %s:%s accessed for the first time!
 
 To securely access Syndicate at %s:%s automatically, do you wish to remember its
@@ -128,61 +128,61 @@ The public key is:
 %s
 """ % (name, port, name, port, pubkey)
 
-   prompt = "Trust this key? (Y/n): "
-   while True:
-      trust = raw_input(prompt)
-      if trust not in ['Y', 'y', 'N', 'n']:
-         prompt = "Please enter 'Y' or 'N': "
-         continue
+    prompt = "Trust this key? (Y/n): "
+    while True:
+        trust = raw_input(prompt)
+        if trust not in ['Y', 'y', 'N', 'n']:
+            prompt = "Please enter 'Y' or 'N': "
+            continue
 
-      break
+        break
 
-   if trust in ['Y', 'y']:
-      return True
-   else:
-      return False
+    if trust in ['Y', 'y']:
+        return True
+    else:
+        return False
 
 
 # -------------------
 def serialize_positional_arg( value ):
-   # try to cast value to something for a positional argument (not a keyword argument)
-   if "." in value or "e" in value:
-      # float?
-      try:
-         value = float(value)
-         return value
-      except:
-         pass
+    # try to cast value to something for a positional argument (not a keyword argument)
+    if "." in value or "e" in value:
+        # float?
+        try:
+            value = float(value)
+            return value
+        except:
+            pass
 
-   if value == "True" or value == "False":
-      # bool?
-      try:
-         value = eval(value)
-         return value
-      except:
-         pass
+    if value == "True" or value == "False":
+        # bool?
+        try:
+            value = eval(value)
+            return value
+        except:
+            pass
 
-   if value.strip().startswith("{") or value.strip().startswith("["):
-      # dict or list?
-      try:
-         value = eval(value)
-         return value
-      except:
-         pass
+    if value.strip().startswith("{") or value.strip().startswith("["):
+        # dict or list?
+        try:
+            value = eval(value)
+            return value
+        except:
+            pass
 
-   try:
-      # integer?
-      value = int(value)
-      return value
-   except:
-      pass
+    try:
+        # integer?
+        value = int(value)
+        return value
+    except:
+        pass
 
 
-   if value.find("=") == -1:
-      # string?
-      return value
+    if value.find("=") == -1:
+        # string?
+        return value
 
-   raise Exception("Could not parse '%s'" % param)
+    raise Exception("Could not parse '%s'" % param)
 
 
 # -------------------
@@ -239,56 +239,56 @@ def reload_volume( config, volume_name, gateway_names=None ):
 
 # -------------------
 def read_params( params ):
-   if len(params) == 0:
-      return (None, None, None)
+    if len(params) == 0:
+        return (None, None, None)
 
-   method_name = params[0]
-   params = params[1:]
-   args = []
-   kw = {}
-   for param in params:
-      try:
-         serialized_arg = serialize_positional_arg( param )
-      except:
-         # is this a keyword argument?
-         param_parts = param.split("=")
-         if len(param_parts) > 1:
-            kw[param_parts[0]] = serialize_positional_arg( "=".join( param_parts[1:] ) )
-         else:
-            raise Exception("Malformed parameter '%s'" % param)
-      else:
-         args.append( serialized_arg )
+    method_name = params[0]
+    params = params[1:]
+    args = []
+    kw = {}
+    for param in params:
+        try:
+            serialized_arg = serialize_positional_arg( param )
+        except:
+            # is this a keyword argument?
+            param_parts = param.split("=")
+            if len(param_parts) > 1:
+                kw[param_parts[0]] = serialize_positional_arg( "=".join( param_parts[1:] ) )
+            else:
+                raise Exception("Malformed parameter '%s'" % param)
+        else:
+            args.append( serialized_arg )
 
-   return (method_name, args, kw)
+    return (method_name, args, kw)
 
 
 # -------------------
 def make_object_directories( config ):
-   """
-   Create directories for each kind of object in the
-   ~/.syndicate config directory, if they don't exist already.
-   * gateways
-   * users
-   * volumes
-   * syndicate instances
-   """
-   # validate directories
-   for obj_type, obj_dirname in conf.OBJECT_DIR_NAMES.items():
-      obj_dirname = conf.OBJECT_DIR_NAMES.get(obj_type)
-      if obj_dirname is None:
-         # forgot to add an entry in OBJECT_DIR_NAMES for the given key type
-         raise Exception("BUG: unknown object type %s" % obj_type)
+    """
+    Create directories for each kind of object in the
+    ~/.syndicate config directory, if they don't exist already.
+    * gateways
+    * users
+    * volumes
+    * syndicate instances
+    """
+    # validate directories
+    for obj_type, obj_dirname in conf.OBJECT_DIR_NAMES.items():
+        obj_dirname = conf.OBJECT_DIR_NAMES.get(obj_type)
+        if obj_dirname is None:
+            # forgot to add an entry in OBJECT_DIR_NAMES for the given key type
+            raise Exception("BUG: unknown object type %s" % obj_type)
 
-      obj_dir = config.get(obj_dirname, None)
-      if obj_dir is None:
-         # forgot to set the path to this directory in the config
-         raise Exception("BUG: unknown directory %s" % obj_dirname)
+        obj_dir = config.get(obj_dirname, None)
+        if obj_dir is None:
+            # forgot to set the path to this directory in the config
+            raise Exception("BUG: unknown directory %s" % obj_dirname)
 
-      ret = storage.make_or_check_object_directory( obj_dir )
-      if not ret:
-         raise Exception("Failed to set up key directories")
+        ret = storage.make_or_check_object_directory( obj_dir )
+        if not ret:
+            raise Exception("Failed to set up key directories")
 
-   return True
+    return True
 
 
 # -------------------
@@ -428,86 +428,86 @@ def import_object_files( config, object_type, src_path, force=False ):
 
 # -------------------
 def parse_argv( argv ):
-   """
-   Given argv, extract the options, method name, positional args, and keyword args.
-   """
+    """
+    Given argv, extract the options, method name, positional args, and keyword args.
+    """
 
-   parser = conf.build_parser( argv[0], conf.CONFIG_DESCRIPTION, conf.CONFIG_OPTIONS )
-   opts, _ = parser.parse_known_args( argv[1:] )
-   method_name, args, kw = read_params( getattr(opts, 'params', [] ) )
+    parser = conf.build_parser( argv[0], conf.CONFIG_DESCRIPTION, conf.CONFIG_OPTIONS )
+    opts, _ = parser.parse_known_args( argv[1:] )
+    method_name, args, kw = read_params( getattr(opts, 'params', [] ) )
 
-   return (opts, method_name, args, kw )
+    return (opts, method_name, args, kw )
 
 
 # -------------------
 def install_syndicate_public_key( config ):
-   """
-   Obtain the syndicate public key and store it.
-   Unless told otherwise, prompt the user to trust it.
+    """
+    Obtain the syndicate public key and store it.
+    Unless told otherwise, prompt the user to trust it.
 
-   Returns the public key on success
-   Returns None on error
-   """
+    Returns the public key on success
+    Returns None on error
+    """
 
-   # go get it
-   syndicate_pubkey_pem = fetch_syndicate_public_key( config )
+    # go get it
+    syndicate_pubkey_pem = fetch_syndicate_public_key( config )
 
-   try:
-       syndicate_pubkey = CryptoKey.importKey( syndicate_pubkey_pem )
-   except Exception, e:
-       log.error("Failed to parse downloaded public key")
-       return None
+    try:
+        syndicate_pubkey = CryptoKey.importKey( syndicate_pubkey_pem )
+    except Exception, e:
+        log.error("Failed to parse downloaded public key")
+        return None
 
-   if not config.get('trust_public_key', False):
-       trust = prompt_trust_public_key( config["syndicate_host"], config["syndicate_port"], syndicate_pubkey_pem )
-       if not trust:
-           log.error("Will NOT trust public key")
-           return None
+    if not config.get('trust_public_key', False):
+        trust = prompt_trust_public_key( config["syndicate_host"], config["syndicate_port"], syndicate_pubkey_pem )
+        if not trust:
+            log.error("Will NOT trust public key")
+            return None
 
-   # store it
-   storage.store_public_key( config, "syndicate", conf.syndicate_object_name( config ), syndicate_pubkey )
+    # store it
+    storage.store_public_key( config, "syndicate", conf.syndicate_object_name( config ), syndicate_pubkey )
 
-   return syndicate_pubkey
+    return syndicate_pubkey
 
 
 # -------------------
 def init_config( argv, method_name ):
-   """
-   Given parsed options, load the config.
-   Return a dict with our config options set on success.
-   Return None on error
-   """
+    """
+    Given parsed options, load the config.
+    Return a dict with our config options set on success.
+    Return None on error
+    """
 
-   config = conf.get_config_from_argv( argv )
-   if config['syndicate_public_key'] is None:
+    config = conf.get_config_from_argv( argv )
+    if config['syndicate_public_key'] is None:
 
-       # go get it
-       syndicate_pubkey = install_syndicate_public_key( config )
-       if syndicate_pubkey is None:
-           return None
+        # go get it
+        syndicate_pubkey = install_syndicate_public_key( config )
+        if syndicate_pubkey is None:
+            return None
 
-       config['syndicate_public_key'] = syndicate_pubkey
-       config['syndicate_public_key_pem'] = syndicate_pubkey.exportKey()
+        config['syndicate_public_key'] = syndicate_pubkey
+        config['syndicate_public_key_pem'] = syndicate_pubkey.exportKey()
 
-   return config
+    return config
 
 
 # -------------------
 def do_method_help( config, method_name ):
-   """
-   Print a method's documentation and exit, given the
-   method parameters (including its name).
-   """
+    """
+    Print a method's documentation and exit, given the
+    method parameters (including its name).
+    """
 
-   import syndicate.ms.api as api
+    import syndicate.ms.api as api
 
-   try:
-      method_help = api.method_help_from_method_name( method_name )
-   except Exception, e:
-      log.exception(e)
-      method_help = "FIXME: General HELP goes here..."
+    try:
+        method_help = api.method_help_from_method_name( method_name )
+    except Exception, e:
+        log.exception(e)
+        method_help = "FIXME: General HELP goes here..."
 
-   print "Help for '%s':\n%s" % (method_name, method_help)
+    print "Help for '%s':\n%s" % (method_name, method_help)
 
 
 # -------------------
@@ -539,535 +539,537 @@ def make_admin_cert( username, admin_privkey ):
 
 # -------------------
 def do_setup( opts, username, admin_privkey_path, MS_url ):
-   """
-   Do one-time initial setup:
-   * create the config directory
-   * fill in the configdirectory  with object directories.
-   * generate a config file in config directory
-   * grab the MS's public key and ask to trust it, if it isn't here already.
-   * activate the admin's account on the MS.
-   * store the admin's ID
-   * fill in a default types.conf
-   """
+    """
+    Do one-time initial setup:
+    * create the config directory
+    * fill in the configdirectory  with object directories.
+    * generate a config file in config directory
+    * grab the MS's public key and ask to trust it, if it isn't here already.
+    * activate the admin's account on the MS.
+    * store the admin's ID
+    * fill in a default types.conf
+    """
 
-   config_path = None
-   if hasattr(opts, "config") and opts.config is not None:
-       config_path = opts.config[0]
-   else:
-       config_path = conf.default_config_path()
+    config_path = None
+    if hasattr(opts, "config") and opts.config is not None:
+        config_path = opts.config[0]
+    else:
+        config_path = conf.default_config_path()
 
-   # if the config file already exists, then bail
-   if os.path.exists( config_path ):
-       if os.path.isfile( config_path ):
-          raise Exception("Syndicate is already set up (in %s)" % config_path)
-       else:
-          raise Exception("%s: is a directory" % config_path )
+    # if the config file already exists, then bail
+    if os.path.exists( config_path ):
+        if os.path.isfile( config_path ):
+            raise Exception("Syndicate is already set up (in %s)" % config_path)
+        else:
+            raise Exception("%s: is a directory" % config_path )
 
-   # get admin private key
-   admin_privkey_pem = storage.read_file( admin_privkey_path )
-   if admin_privkey_pem is None:
-      raise Exception("Unable to load '%s'" % admin_privkey_path )
+    # get admin private key
+    admin_privkey_pem = storage.read_file( admin_privkey_path )
+    if admin_privkey_pem is None:
+        raise Exception("Unable to load '%s'" % admin_privkey_path )
 
-   try:
-      admin_privkey = CryptoKey.importKey( admin_privkey_pem )
-      admin_pubkey = admin_privkey.publickey()
-   except:
-      traceback.print_exc()
-      raise Exception("Unable to parse '%s'" % admin_privkey_path )
+    try:
+        admin_privkey = CryptoKey.importKey( admin_privkey_pem )
+        admin_pubkey = admin_privkey.publickey()
+    except:
+        traceback.print_exc()
+        raise Exception("Unable to parse '%s'" % admin_privkey_path )
 
-   if not admin_privkey.has_private():
-      raise Exception("Not a private key: '%s'" % admin_privkey_path )
+    if not admin_privkey.has_private():
+        raise Exception("Not a private key: '%s'" % admin_privkey_path )
 
-   key_dirs = {}
+    key_dirs = {}
 
-   # generate a default config...
-   config = {}
-   for key_type, key_dirname in conf.OBJECT_DIR_NAMES.items():
-      key_dirs[key_dirname] = key_dirname + "/"
+    # generate a default config...
+    config = {}
+    for key_type, key_dirname in conf.OBJECT_DIR_NAMES.items():
+        key_dirs[key_dirname] = key_dirname + "/"
 
-   conf.extend_key_paths( key_dirs, os.path.dirname(config_path) )
+    conf.extend_key_paths( key_dirs, os.path.dirname(config_path) )
 
-   conf.fill_defaults( config )
-   config["MS_url"] = MS_url
-   config["username"] = username
+    conf.fill_defaults( config )
+    config["MS_url"] = MS_url
+    config["username"] = username
 
-   host, port, no_tls = client.parse_url( MS_url )
+    host, port, no_tls = client.parse_url( MS_url )
 
-   config['syndicate_host'] = host
-   config['syndicate_port'] = port
-   config['no_tls'] = no_tls
+    config['syndicate_host'] = host
+    config['syndicate_port'] = port
+    config['no_tls'] = no_tls
 
-   # trust public key?
-   if opts.trust_public_key:
-       config['trust_public_key'] = True
-   else:
-       config['trust_public_key'] = False
+    # trust public key?
+    if opts.trust_public_key:
+        config['trust_public_key'] = True
+    else:
+        config['trust_public_key'] = False
 
-   config.update( key_dirs )
+    config.update( key_dirs )
 
-   for k in conf.CONFIG_SYNDICATE_KEYS:
-       if k not in config.keys():
-           config[k] = os.path.join( conf.default_config_dir(), k )
+    for k in conf.CONFIG_SYNDICATE_KEYS:
+        if k not in config.keys():
+            config[k] = os.path.join( conf.default_config_dir(), k )
 
-   # store only "syndicate" config values
-   write_config = copy.deepcopy( config )
-   for k in write_config.keys():
-       if k not in conf.CONFIG_SYNDICATE_KEYS:
-           del write_config[k]
+    # store only "syndicate" config values
+    write_config = copy.deepcopy( config )
+    for k in write_config.keys():
+        if k not in conf.CONFIG_SYNDICATE_KEYS:
+            del write_config[k]
 
-   # set up the directories
-   make_object_directories( config )
+    # set up the directories
+    make_object_directories( config )
 
-   config_str = conf.serialize_config( write_config )
-   log.debug("Storing config...")
+    config_str = conf.serialize_config( write_config )
+    log.debug("Storing config...")
 
-   # store config
-   try:
-      storage.write_file( config_path, config_str )
-   except Exception, e:
-      log.exception(e)
-      print >> sys.stderr, "Failed to write configuration"
-      sys.exit(1)
+    # store config
+    try:
+        storage.write_file( config_path, config_str )
+    except Exception, e:
+        log.exception(e)
+        raise Exception("Failed to write configuration: '%s'" % config_path )
 
-   # store first admin ID (always 0)
-   admin_cert = make_admin_cert( config['username'], admin_privkey )
-   object_stub.store_user_cert( config, admin_cert )
-   storage.store_private_key( config, "user", config['username'], admin_privkey )
+    # store first admin ID (always 0)
+    admin_cert = make_admin_cert( config['username'], admin_privkey )
+    object_stub.store_user_cert( config, admin_cert )
+    storage.store_private_key( config, "user", config['username'], admin_privkey )
 
-   # get syndicate public key
-   syndicate_pubkey = install_syndicate_public_key( config )
-   if syndicate_pubkey is None:
-       log.error("Failed to obtain syndicate public key")
-       sys.exit(1)
+    # get syndicate public key
+    syndicate_pubkey = install_syndicate_public_key( config )
+    if syndicate_pubkey is None:
+        raise Exception("Failed to obtain syndicate public key" )
 
-   # install type aliases for create_gateway
-   type_aliases = "UG=1\nRG=2\nAG=3\n"
-   types_path = conf.object_file_path( config, "gateway", "types.conf" )
-   with open(types_path, "w") as f:
-      f.write( type_aliases )
-      f.flush()
-
-   sys.exit(0)
+    # install type aliases for create_gateway
+    type_aliases = "UG=1\nRG=2\nAG=3\n"
+    types_path = conf.object_file_path( config, "gateway", "types.conf" )
+    with open(types_path, "w") as f:
+        f.write( type_aliases )
+        f.flush()
 
 
 # -------------------
 def main( argv ):
-   """
-   Top-level method for calling RPC methods.
-   * Takes an argument vector from the command line, loads up the
-   config files and keys from persistent storage, and generates our call options.
-   * Looks up the method, parses the arguments with its designated parser.
-   * Fetch the Syndicate public key if it is not yet local, and prmopt the user to trust it.
-   * Generates the request, and either sign it with the user's private key, or
-   uses OpenID to authenticate the user with the MS's OpenID provider.
-   * Sends the request, receives the response, and performs any method-specific post-processing.
-   """
+    """
+    Top-level method for calling RPC methods.
+    * Takes an argument vector from the command line, loads up the
+    config files and keys from persistent storage, and generates our call options.
+    * Looks up the method, parses the arguments with its designated parser.
+    * Fetch the Syndicate public key if it is not yet local, and prmopt the user to trust it.
+    * Generates the request, and either sign it with the user's private key, or
+    uses OpenID to authenticate the user with the MS's OpenID provider.
+    * Sends the request, receives the response, and performs any method-specific post-processing.
+    """
 
-   if os.environ.get("SYNDICATE_DEBUG") is not None:
-       log.debug("Debugging enabled")
+    if os.environ.get("SYNDICATE_DEBUG") is not None:
+        log.debug("Debugging enabled")
 
-   # get opts, methodname, args
-   opts, method_name, args, kw = parse_argv( argv )
-   if method_name == "setup":
-       if len(args) != 3:
-           print >> sys.stderr, "Usage: %s setup USERNAME /path/to/private/key MS_URL" % sys.argv[0]
-           sys.exit(1)
+    # get opts, methodname, args
+    opts, method_name, args, kw = parse_argv( argv )
+    if method_name == "setup":
+        if len(args) != 3:
+            print >> sys.stderr, "Usage: %s setup USERNAME /path/to/private/key MS_URL" % sys.argv[0]
+            sys.exit(1)
 
-       if tarfile.is_tarfile(args[1]):
-          # from exported package
-          try:
-             t = tarfile.open(args[1], 'r')
-             priv_key = 'users/%s.pkey' % args[0]
-             if priv_key in t.getnames():
-                # pkey is in the tar file - extract
-                tmpdir = tempfile.mkdtemp()
-                t.extract(priv_key, tmpdir)
-                t.close()
+        try:
+            if tarfile.is_tarfile(args[1]):
+                # from exported package
+                t = tarfile.open(args[1], 'r')
+                priv_key = 'users/%s.pkey' % args[0]
+                if priv_key in t.getnames():
+                    # pkey is in the tar file - extract
+                    tmpdir = tempfile.mkdtemp()
+                    t.extract(priv_key, tmpdir)
+                    t.close()
                 
-                do_setup( opts, args[0], "%s/%s" % (tmpdir, priv_key), args[2] )
-                shutil.rmtree(tmpdir)
-             else:
-                t.close()
-                print >> sys.stderr, 'Failed to find the private key'
-                sys.exit(1)
-          except Exception, e:
-             log.exception(e)
-             print >> sys.stderr, traceback.format_exc()
-             print >> sys.stderr, 'Failed to read the private key'
-             sys.exit(1)
-       else:
-           do_setup( opts, args[0], args[1], args[2] )
-       sys.exit(0)
+                    do_setup( opts, args[0], "%s/%s" % (tmpdir, priv_key), args[2] )
+                    shutil.rmtree(tmpdir)
+                else:
+                    t.close()
+                    print >> sys.stderr, 'Failed to find the private key'
+                    sys.exit(1)
 
-   CONFIG = init_config( argv, method_name )
-   if CONFIG is None:
-       return None
-
-   # called from main
-   CONFIG["__from_main__"] = True
-
-   # special cases
-   if method_name == "setup":
-       do_setup( CONFIG, argv[2] )
-       sys.exit(0)
-
-   if method_name == "help":
-
-       if len(args) == 0:
-           conf.usage( argv[0] )
-
-       else:
-           do_method_help( CONFIG, args[0] )
-           sys.exit(0)
-
-
-   if method_name == "reload_certs":
-       if len(args) != 3:
-           print >> sys.stderr, "Usage: %s reload_certs USER_NAME_OR_ID VOLUME_NAME_OR_ID GATEWAY_NAME_OR_ID" % sys.argv[0]
-           sys.exit(1)
-
-       try:
-           certs.certs_reload( CONFIG, args[0], args[1], args[2] )
-           sys.exit(0)
-       except Exception, e:
+            else:
+                do_setup( opts, args[0], args[1], args[2] )
+        except Exception, e:
            log.exception(e)
            print >> sys.stderr, traceback.format_exc()
-           print >> sys.stderr, 'Failed to reload certs'
            sys.exit(1)
 
-   elif method_name == "reload_driver":
-       if len(args) != 2:
-           print >> sys.stderr, "Usage: %s reload_driver VOLUME_NAME GATEWAY_NAME" % sys.argv[0]
-           sys.exit(1)
+        sys.exit(0)
 
-       try:
-           certs.driver_reload( CONFIG, args[0], args[1] )
-           sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to reload driver"
-           sys.exit(1)
+    CONFIG = init_config( argv, method_name )
+    if CONFIG is None:
+        return None
 
-   elif method_name == "reload_volume_cert":
-       if len(args) != 1:
-           print >> sys.stderr, "Usage: %s reload_volume_cert VOLUME_NAME_OR_ID" % sys.argv[0]
-           sys.exit(1)
+    # called from main
+    CONFIG["__from_main__"] = True
 
-       volume_cert = None
-       try:
-           volume_cert = certs.get_volume_cert( CONFIG, args[0], check_cache=False, download=True )
-           assert volume_cert is not None, "Failed to get volume cert for %s" % args[0]
-           object_stub.store_volume_cert( CONFIG, volume_cert )
-           sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to get volume cert"
-           sys.exit(1)
+    # special cases
+    if method_name == "setup":
+        try:
+            do_setup( CONFIG, argv[2] )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, traceback.format_exc()
+            sys.exit(1)
 
-   elif method_name == "reload_gateway_cert":
-       if len(args) != 1:
-           print >> sys.stderr, "Usage: %s reload_gateway_cert GATEWAY_NAME_OR_ID" % sys.argv[0]
-           sys.exit(1)
+    if method_name == "help":
 
-       gateway_cert = None
-       try:
-           gateway_cert = certs.get_gateway_cert( CONFIG, args[0], check_cache=False )
-           assert gateway_cert is not None, "Failed to get gateway cert for %s" % args[0]
-           object_stub.store_gateway_cert( CONFIG, gateway_cert )
-           sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to get gateway cert"
-           sys.exit(1)
+        if len(args) == 0:
+            conf.usage( argv[0] )
 
-   elif method_name == "reload_user_cert":
-       if len(args) != 1:
-           print >> sys.stderr, "Usage: %s reload_user_cert USER_NAME_OR_ID" % sys.argv[0]
-           sys.exit(1)
-
-       user_cert = None
-       try:
-           user_cert = certs.get_user_cert( CONFIG, args[0], check_cache=False )
-           assert user_cert is not None, "Failed to get user cert for %s" % args[0]
-           object_stub.store_user_cert( CONFIG, user_cert )
-           sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to get user cert"
-           sys.exit(1)
-
-   elif method_name == "export_volume":
-       if len(args) != 2:
-           print >> sys.stderr, "Usage: %s export_volume VOLUME_NAME_OR_ID PATH" % sys.argv[0]
-           sys.exit(1)
-
-       try:
-           rc = export_object_files( CONFIG, "volume", args[0], args[1] )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to export volume files"
-           sys.exit(1)
+        else:
+            do_method_help( CONFIG, args[0] )
+            sys.exit(0)
 
 
-   elif method_name == "export_gateway":
-       if len(args) != 2:
-           print >> sys.stderr, "Usage: %s export_gateway GATEWAY_NAME_OR_ID PATH" % sys.argv[0]
-           sys.exit(1)
+    if method_name == "reload_certs":
+        if len(args) != 3:
+            print >> sys.stderr, "Usage: %s reload_certs USER_NAME_OR_ID VOLUME_NAME_OR_ID GATEWAY_NAME_OR_ID" % sys.argv[0]
+            sys.exit(1)
 
-       try:
-           rc = export_object_files( CONFIG, "gateway", args[0], args[1] )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to export gateway files"
-           sys.exit(1)
+        try:
+            certs.certs_reload( CONFIG, args[0], args[1], args[2] )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, traceback.format_exc()
+            print >> sys.stderr, 'Failed to reload certs'
+            sys.exit(1)
 
+    elif method_name == "reload_driver":
+        if len(args) != 2:
+            print >> sys.stderr, "Usage: %s reload_driver VOLUME_NAME GATEWAY_NAME" % sys.argv[0]
+            sys.exit(1)
 
-   elif method_name == "export_user":
-       if len(args) != 2:
-           print >> sys.stderr, "Usage: %s export_user USER_EMAIL_OR_ID PATH" % sys.argv[0]
-           sys.exit(1)
+        try:
+            certs.driver_reload( CONFIG, args[0], args[1] )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to reload driver"
+            sys.exit(1)
 
-       try:
-           rc = export_object_files( CONFIG, "user", args[0], args[1] )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to export user files"
-           sys.exit(1)
+    elif method_name == "reload_volume_cert":
+        if len(args) != 1:
+            print >> sys.stderr, "Usage: %s reload_volume_cert VOLUME_NAME_OR_ID" % sys.argv[0]
+            sys.exit(1)
 
+        volume_cert = None
+        try:
+            volume_cert = certs.get_volume_cert( CONFIG, args[0], check_cache=False, download=True )
+            assert volume_cert is not None, "Failed to get volume cert for %s" % args[0]
+            object_stub.store_volume_cert( CONFIG, volume_cert )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to get volume cert"
+            sys.exit(1)
 
-   elif method_name == "import_volume":
-       if len(args) < 1:
-           print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
-           sys.exit(1)
+    elif method_name == "reload_gateway_cert":
+        if len(args) != 1:
+            print >> sys.stderr, "Usage: %s reload_gateway_cert GATEWAY_NAME_OR_ID" % sys.argv[0]
+            sys.exit(1)
 
-       force = False
-       if len(args) == 2 and args[1] == 'force':
-           force = True
-       else:
-           print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
-           sys.exit(1)
+        gateway_cert = None
+        try:
+            gateway_cert = certs.get_gateway_cert( CONFIG, args[0], check_cache=False )
+            assert gateway_cert is not None, "Failed to get gateway cert for %s" % args[0]
+            object_stub.store_gateway_cert( CONFIG, gateway_cert )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to get gateway cert"
+            sys.exit(1)
 
-       try:
-           rc = import_object_files( CONFIG, "volume", args[0], force=force )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to import volume files"
-           sys.exit(1)
+    elif method_name == "reload_user_cert":
+        if len(args) != 1:
+            print >> sys.stderr, "Usage: %s reload_user_cert USER_NAME_OR_ID" % sys.argv[0]
+            sys.exit(1)
 
+        user_cert = None
+        try:
+            user_cert = certs.get_user_cert( CONFIG, args[0], check_cache=False )
+            assert user_cert is not None, "Failed to get user cert for %s" % args[0]
+            object_stub.store_user_cert( CONFIG, user_cert )
+            sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to get user cert"
+            sys.exit(1)
 
-   elif method_name == "import_gateway":
-       if len(args) < 1:
-           print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
-           sys.exit(1)
+    elif method_name == "export_volume":
+        if len(args) != 2:
+            print >> sys.stderr, "Usage: %s export_volume VOLUME_NAME_OR_ID PATH" % sys.argv[0]
+            sys.exit(1)
 
-       force = False
-       if len(args) == 2 and args[1] == 'force':
-           force = True
-       else:
-           print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
-           sys.exit(1)
-
-       try:
-           rc = import_object_files( CONFIG, "gateway", args[0], force=force )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to import gateway files"
-           sys.exit(1)
-
-
-   elif method_name == "import_user":
-       if len(args) < 1:
-           print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
-           sys.exit(1)
-
-       force = False
-       if len(args) == 2 and args[1] == 'force':
-           force = True
-       else:
-           print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
-           sys.exit(1)
-
-       try:
-           rc = import_object_files( CONFIG, "user", args[0], force=force )
-           if not rc:
-               sys.exit(1)
-           else:
-               sys.exit(0)
-       except Exception, e:
-           log.exception(e)
-           print >> sys.stderr, "Failed to import user files"
-           sys.exit(1)
+        try:
+            rc = export_object_files( CONFIG, "volume", args[0], args[1] )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to export volume files"
+            sys.exit(1)
 
 
-   elif method_name == "reload_gateway":
-       # directly send a reload to one or more gateways
-       if len(args) != 1:
-           print >> sys.stderr, "Usage: %s reload_gateway GATEWAY_NAME_OR_ID" % sys.argv[0]
-           sys.exit(1)
+    elif method_name == "export_gateway":
+        if len(args) != 2:
+            print >> sys.stderr, "Usage: %s export_gateway GATEWAY_NAME_OR_ID PATH" % sys.argv[0]
+            sys.exit(1)
 
-       rc = reload_gateway( CONFIG, args[0] )
-       if not rc:
-           print >> sys.stderr, "Failed to reload gateway '%s'" % args[0]
-           sys.exit(1)
-       else:
-           sys.exit(0)
-
-
-   elif method_name == "reload_volume":
-       # directly reload all volume writers/coordinators
-       if len(args) < 1:
-           print >> sys.stderr, "Usage: %s reload_volume VOLUME_NAME [gateway_name gateway_name...]" % sys.argv[0]
-           sys.exit(1)
-
-       gateway_names = None
-       if len(args) > 1:
-           gateway_names = args[1:]
-
-       failed = reload_volume( CONFIG, args[0], gateway_names=gateway_names )
-       if len(failed) > 0:
-           for failed_gateway_name in failed:
-               print >> sys.stderr, "Failed to reload gateway '%s'" % failed_gateway_name
-
-           if CONFIG['debug']:
-               print >> sys.stderr, "Try again with:\n\t$ %s reload_volume %s %s" % (sys.argv[0], args[0], " ".join(failed) )
-
-           sys.exit(1)
-
-       else:
-           sys.exit(0)
-
-   elif method_name == "amd_server_setup":
-       # set up automount server
-       if len(args) < 1:
-           print >> sys.stderr, "Usage: %s amd_server_setup ['autofill' | portnum [private_key_path]]" % sys.argv[0]
-           sys.exit(1)
-
-       config_dir = CONFIG['config_dir']
-       key_path = os.path.join(config_dir, "amd-server.pkey")
-       autofill = False
-
-       if args[0] == 'autofill':
-           # testing purposes
-           autofill = True
-
-       server_portnum = None
-       if autofill:
-           server_portnum = 33334
-
-       else:
-           try:
-               server_portnum = int(args[0])
-           except:
-               print >> sys.stderr, "Invalid portnum"
-               sys.exit(1)
-
-       privkey_pem = None
-       if len(args) > 2 and not autofill:
-           private_key_path = args[1]
-           try:
-               with open(private_key_path, "r") as f:
-                   privkey_pem = f.read()
-           except:
-               print >> sys.stderr, "Failed to read '%s'" % private_key_path
-               sys.exit(1)
-
-       else:
-           print >> sys.stderr, "Generating server keypair..."
-           pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
-
-       # stash...
-       if os.path.exists(key_path):
-           if autofill:
-               # overwrite by default
-               os.unlink(key_path)
-
-           else:
-               while True:
-                   do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
-                   if do_unlink.lower() in ['yes', 'y']:
-                       os.unlink(key_path)
-                       break
-                   else:
-                       print "Please type 'yes' or 'no'"
-
-       storage.write_key( key_path, privkey_pem, overwrite=True )
-
-       # update config file
-       conf.write_config_section( CONFIG['config_path'], "amd-server", {"portnum": server_portnum, "private_key": key_path} )
-       sys.exit(0)
+        try:
+            rc = export_object_files( CONFIG, "gateway", args[0], args[1] )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to export gateway files"
+            sys.exit(1)
 
 
-   elif method_name == "amd_client_setup":
-       # set up automount client
-       if len(args) > 1 and args[1] in ['-h', '--help', 'help']:
-           print >> sys.stderr, "Usage: %s amd_client_setup ['autofill'|private_key_path]" % sys.argv[0]
-           sys.exit(1)
+    elif method_name == "export_user":
+        if len(args) != 2:
+            print >> sys.stderr, "Usage: %s export_user USER_EMAIL_OR_ID PATH" % sys.argv[0]
+            sys.exit(1)
 
-       config_dir = CONFIG['config_dir']
-       key_path = os.path.join(config_dir, "amd-client.pkey")
-       autofill = False
-
-       # generate key
-       privkey_pem = None
-       if len(args) > 0:
-           private_key_path_or_autofill = args[0]
-           if private_key_path_or_autofill == 'autofill':
-               # used for testing purposes
-               autofill = True
-
-           else:
-               private_key_path = private_key_path_or_autofill
-               try:
-                   with open(private_key_path, "r") as f:
-                       privkey_pem = f.read()
-               except:
-                   print >> sys.stderr, "Failed to read '%s'" % private_key_path
-                   sys.exit(1)
-
-       if privkey_pem is None:
-           print >> sys.stderr, "Generating client keypair..."
-           pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
+        try:
+            rc = export_object_files( CONFIG, "user", args[0], args[1] )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to export user files"
+            sys.exit(1)
 
 
-       # defaults
-       amd_conf = {
-           'private_key': key_path,
-           'mounts': os.path.join(config_dir, 'mounts'),
-           'logdir': os.path.join(config_dir, 'amd-logs'),
-           'hostname': socket.gethostname()
-       }
+    elif method_name == "import_volume":
+        if len(args) < 1:
+            print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
+            sys.exit(1)
 
-       if autofill:
-           # pick sensible defaults
-           chars = list("abcdefghijklmnopqrstuvwxyz")
-           random.shuffle(chars)
+        force = False
+        if len(args) == 2 and args[1] == 'force':
+            force = True
+        else:
+            print >> sys.stderr, "Usage: %s import_volume EXPORTED_VOLUME_PATH [force]" % sys.argv[0]
+            sys.exit(1)
 
-           amd_conf['server'] = 'http://localhost:33334'        # default portnum is 33334
-           amd_conf['instance_id'] = 'instance-%s' % "".join(chars[0:10])
-           amd_conf['portnum'] = 33335
-           amd_conf['poll_interval'] = 30
+        try:
+            rc = import_object_files( CONFIG, "volume", args[0], force=force )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to import volume files"
+            sys.exit(1)
 
-       field_names = {
+
+    elif method_name == "import_gateway":
+        if len(args) < 1:
+            print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
+            sys.exit(1)
+
+        force = False
+        if len(args) == 2 and args[1] == 'force':
+            force = True
+        else:
+            print >> sys.stderr, "Usage: %s import_gateway EXPORTED_GATEWAY_PATH [force]" % sys.argv[0]
+            sys.exit(1)
+
+        try:
+            rc = import_object_files( CONFIG, "gateway", args[0], force=force )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to import gateway files"
+            sys.exit(1)
+
+
+    elif method_name == "import_user":
+        if len(args) < 1:
+            print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
+            sys.exit(1)
+
+        force = False
+        if len(args) == 2 and args[1] == 'force':
+            force = True
+        else:
+            print >> sys.stderr, "Usage: %s import_user EXPORTED_USER_PATH [force]" % sys.argv[0]
+            sys.exit(1)
+
+        try:
+            rc = import_object_files( CONFIG, "user", args[0], force=force )
+            if not rc:
+                sys.exit(1)
+            else:
+                sys.exit(0)
+        except Exception, e:
+            log.exception(e)
+            print >> sys.stderr, "Failed to import user files"
+            sys.exit(1)
+
+
+    elif method_name == "reload_gateway":
+        # directly send a reload to one or more gateways
+        if len(args) != 1:
+            print >> sys.stderr, "Usage: %s reload_gateway GATEWAY_NAME_OR_ID" % sys.argv[0]
+            sys.exit(1)
+
+        rc = reload_gateway( CONFIG, args[0] )
+        if not rc:
+            print >> sys.stderr, "Failed to reload gateway '%s'" % args[0]
+            sys.exit(1)
+        else:
+            sys.exit(0)
+
+
+    elif method_name == "reload_volume":
+        # directly reload all volume writers/coordinators
+        if len(args) < 1:
+            print >> sys.stderr, "Usage: %s reload_volume VOLUME_NAME [gateway_name gateway_name...]" % sys.argv[0]
+            sys.exit(1)
+
+        gateway_names = None
+        if len(args) > 1:
+            gateway_names = args[1:]
+
+        failed = reload_volume( CONFIG, args[0], gateway_names=gateway_names )
+        if len(failed) > 0:
+            for failed_gateway_name in failed:
+                print >> sys.stderr, "Failed to reload gateway '%s'" % failed_gateway_name
+
+            if CONFIG['debug']:
+                print >> sys.stderr, "Try again with:\n\t$ %s reload_volume %s %s" % (sys.argv[0], args[0], " ".join(failed) )
+
+            sys.exit(1)
+
+        else:
+            sys.exit(0)
+
+    elif method_name == "amd_server_setup":
+        # set up automount server
+        if len(args) < 1:
+            print >> sys.stderr, "Usage: %s amd_server_setup ['autofill' | portnum [private_key_path]]" % sys.argv[0]
+            sys.exit(1)
+
+        config_dir = CONFIG['config_dir']
+        key_path = os.path.join(config_dir, "amd-server.pkey")
+        autofill = False
+
+        if args[0] == 'autofill':
+            # testing purposes
+            autofill = True
+
+        server_portnum = None
+        if autofill:
+            server_portnum = 33334
+
+        else:
+            try:
+                server_portnum = int(args[0])
+            except:
+                print >> sys.stderr, "Invalid portnum"
+                sys.exit(1)
+
+        privkey_pem = None
+        if len(args) > 2 and not autofill:
+            private_key_path = args[1]
+            try:
+                with open(private_key_path, "r") as f:
+                    privkey_pem = f.read()
+            except:
+                print >> sys.stderr, "Failed to read '%s'" % private_key_path
+                sys.exit(1)
+
+        else:
+            print >> sys.stderr, "Generating server keypair..."
+            pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
+
+        # stash...
+        if os.path.exists(key_path):
+            if autofill:
+                # overwrite by default
+                os.unlink(key_path)
+
+            else:
+                while True:
+                    do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
+                    if do_unlink.lower() in ['yes', 'y']:
+                        os.unlink(key_path)
+                        break
+                    else:
+                        print "Please type 'yes' or 'no'"
+
+        storage.write_key( key_path, privkey_pem, overwrite=True )
+
+        # update config file
+        conf.write_config_section( CONFIG['config_path'], "amd-server", {"portnum": server_portnum, "private_key": key_path} )
+        sys.exit(0)
+
+
+    elif method_name == "amd_client_setup":
+        # set up automount client
+        if len(args) > 1 and args[1] in ['-h', '--help', 'help']:
+            print >> sys.stderr, "Usage: %s amd_client_setup ['autofill'|private_key_path]" % sys.argv[0]
+            sys.exit(1)
+
+        config_dir = CONFIG['config_dir']
+        key_path = os.path.join(config_dir, "amd-client.pkey")
+        autofill = False
+
+        # generate key
+        privkey_pem = None
+        if len(args) > 0:
+            private_key_path_or_autofill = args[0]
+            if private_key_path_or_autofill == 'autofill':
+                # used for testing purposes
+                autofill = True
+
+            else:
+                private_key_path = private_key_path_or_autofill
+                try:
+                    with open(private_key_path, "r") as f:
+                        privkey_pem = f.read()
+                except:
+                    print >> sys.stderr, "Failed to read '%s'" % private_key_path
+                    sys.exit(1)
+
+        if privkey_pem is None:
+            print >> sys.stderr, "Generating client keypair..."
+            pubkey_pem, privkey_pem = crypto.generate_key_pair( msconfig.OBJECT_KEY_SIZE )
+
+
+        # defaults
+        amd_conf = {
+            'private_key': key_path,
+            'mounts': os.path.join(config_dir, 'mounts'),
+            'logdir': os.path.join(config_dir, 'amd-logs'),
+            'hostname': socket.gethostname()
+        }
+
+        if autofill:
+            # pick sensible defaults
+            chars = list("abcdefghijklmnopqrstuvwxyz")
+            random.shuffle(chars)
+
+            amd_conf['server'] = 'http://localhost:33334'        # default portnum is 33334
+            amd_conf['instance_id'] = 'instance-%s' % "".join(chars[0:10])
+            amd_conf['portnum'] = 33335
+            amd_conf['poll_interval'] = 30
+
+        field_names = {
             'server': 'Automount server URL',
             'private_key': 'Client private key path',
             'instance_id': 'Instance ID',
@@ -1076,72 +1078,72 @@ def main( argv ):
             'poll_interval': 'Server poll interval',
             'logdir': 'Log directory',
             'hostname': 'Client hostname'
-       }
+        }
 
-       if not autofill:
-           for field in field_names.keys():
-               value = None
-               if amd_conf.get(field, None) is None:
-                   while True:
-                       try:
-                           value = raw_input("(required) %s: " % field_names[field])
-                           if len(value) == 0:
-                               print >> sys.stderr, "Value required"
+        if not autofill:
+            for field in field_names.keys():
+                value = None
+                if amd_conf.get(field, None) is None:
+                    while True:
+                        try:
+                            value = raw_input("(required) %s: " % field_names[field])
+                            if len(value) == 0:
+                                print >> sys.stderr, "Value required"
 
-                           amd_conf[field] = value
-                           break
+                            amd_conf[field] = value
+                            break
 
-                       except KeyboardInterrupt:
-                           print >> sys.stderr, "Abort"
-                           sys.exit(1)
+                        except KeyboardInterrupt:
+                            print >> sys.stderr, "Abort"
+                            sys.exit(1)
 
-               else:
-                   value = raw_input("%s (default: '%s'): " % (field_names[field], amd_conf[field]) )
-                   if len(value) > 0:
-                       amd_conf[field] = value
+                else:
+                    value = raw_input("%s (default: '%s'): " % (field_names[field], amd_conf[field]) )
+                    if len(value) > 0:
+                        amd_conf[field] = value
 
-           # stash...
-           if os.path.exists(key_path):
-               while True:
-                   do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
-                   if do_unlink.lower() in ['yes', 'y']:
-                       os.unlink(key_path)
-                       break
-                   else:
-                       print "Please type 'yes' or 'no'"
-
-
-       if not os.path.exists(key_path):
-          storage.write_key( key_path, privkey_pem, overwrite=True )
-
-       conf.write_config_section( CONFIG['config_path'], "amd-client", amd_conf )
-       sys.exit(0)
+            # stash...
+            if os.path.exists(key_path):
+                while True:
+                    do_unlink = raw_input("Key '%s' exists!  Overwrite? (YES/no): " % key_path)
+                    if do_unlink.lower() in ['yes', 'y']:
+                        os.unlink(key_path)
+                        break
+                    else:
+                        print "Please type 'yes' or 'no'"
 
 
-   # debug
-   for opt in CONFIG.keys():
-      log.debug( "%s = %s" % (opt, CONFIG[opt] ) )
+        if not os.path.exists(key_path):
+            storage.write_key( key_path, privkey_pem, overwrite=True )
 
-   # sanity check
-   if not CONFIG.has_key("username") or not CONFIG.has_key("params"):
-      print >> sys.stderr, "Missing user ID or method"
-      conf.usage( argv[0] )
+        conf.write_config_section( CONFIG['config_path'], "amd-client", amd_conf )
+        sys.exit(0)
 
-   # do the call
-   rpc_client = client.make_rpc_client( CONFIG )
-   try:
-       result = client.ms_rpc( rpc_client, method_name, *args, **kw )
-       return result
-   except Exception, e:
-       log.exception(e)
-       do_method_help( CONFIG, method_name )
-       sys.exit(1)
+
+    # debug
+    for opt in CONFIG.keys():
+        log.debug( "%s = %s" % (opt, CONFIG[opt] ) )
+
+    # sanity check
+    if not CONFIG.has_key("username") or not CONFIG.has_key("params"):
+        print >> sys.stderr, "Missing user ID or method"
+        conf.usage( argv[0] )
+
+    # do the call
+    rpc_client = client.make_rpc_client( CONFIG )
+    try:
+        result = client.ms_rpc( rpc_client, method_name, *args, **kw )
+        return result
+    except Exception, e:
+        log.exception(e)
+        do_method_help( CONFIG, method_name )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-   ret = main( sys.argv )
-   if ret is None:
-       sys.exit(1)
+    ret = main( sys.argv )
+    if ret is None:
+        sys.exit(1)
 
-   output = json.dumps(ret, indent=4, sort_keys=True)
-   print output.replace("\\n", "\\\\n")
+    output = json.dumps(ret, indent=4, sort_keys=True)
+    print output.replace("\\n", "\\\\n")
