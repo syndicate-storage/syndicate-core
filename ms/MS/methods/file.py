@@ -766,7 +766,11 @@ def file_xattr_fetchxattrs( gateway, volume, file_id, unused=None, caller_is_adm
    else:
       # get the xattr names
       rc, xattr_names_and_values = MSEntryXAttr.FetchXAttrs( volume, msent )
-   
+  
+   if rc == 0:
+       for xattr_data in xattr_names_and_values:
+           logging.info("{}: {} = {}".format(file_id, xattr_data.xattr_name, xattr_data.xattr_value))
+
    logging.info("fetchxattrs /%s/%s rc = %d" % (volume.volume_id, file_id, rc) )
 
    return file_xattr_fetchxattrs_response( volume, rc, xattr_names_and_values, msent.xattr_nonce, msent.xattr_hash )
