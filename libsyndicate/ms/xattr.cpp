@@ -168,6 +168,8 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
        nlopt_qsort_r( order, num_xattrs, sizeof(int), xattr_names, ms_client_xattr_compar );
    }
    
+   SG_debug("Begin xattr hash on %" PRIX64 " (%zu xattrs)\n", file_id, num_xattrs);
+
    // hash metadata
    SHA256_Update( &context, &volume_id_nb, sizeof(volume_id_nb) );
    SHA256_Update( &context, &file_id_nb, sizeof(file_id_nb) );
@@ -177,13 +179,22 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
         
        // hash xattrs 
        for( size_t i = 0; i < num_xattrs; i++ ) {
-        
+       
+           
+           //////////////////////////////////////////////////////////////
+           char buf[50];
+           memset(buf, 0, 50);
+           strncpy(buf, xattr_values[order[i]], MIN(xattr_lengths[order[i]], 49));
+           SG_debug("  xattr hash: '%s' = '%s...'\n", xattr_names[order[i]],  buf);
+           //////////////////////////////////////////////////////////////
+
            SHA256_Update( &context, xattr_names[ order[i] ], strlen(xattr_names[order[i]]) );
            SHA256_Update( &context, xattr_values[ order[i] ], xattr_lengths[ order[i] ] );
        }
        
        SG_safe_free( order );
    }
+   SG_debug("End xattr hash on %" PRIX64 "\n", file_id);
    
    SHA256_Final( sha256_buf, &context );
 
