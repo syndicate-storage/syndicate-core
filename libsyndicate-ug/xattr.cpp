@@ -689,11 +689,22 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
         return rc;
     }
 
+
+    // temporarily insert xattr 
+    rc = fskit_xattr_fsetxattr(fs, UG_inode_fskit_entry(inode), name, value, value_len, flags);
+    if( rc != 0 ) {
+        SG_error("Failed to temporarily insert xattr '%s' into %" PRIu64 "\n", name, UG_inode_file_id(inode));
+        return rc;
+    }
+          
     // get new xattr hash, for the *next* nonce value
     cur_xattr_nonce = UG_inode_xattr_nonce( inode );
     UG_inode_set_xattr_nonce( inode, cur_xattr_nonce + 1 );
     rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
     UG_inode_set_xattr_nonce( inode, cur_xattr_nonce );
+
+    // remove xattr 
+    fskit_xattr_fremovexattr(fs, UG_inode_fskit_entry(inode), name);
 
     if( rc != 0 ) {
 
