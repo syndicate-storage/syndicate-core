@@ -168,9 +168,9 @@ class GatewayDriver( storagetypes.Object):
       if d is None:
           return True 
       
-      d.ref -= 1
-      if d.ref <= 0:
-          d.delete_async()
+      d.refcount -= 1
+      if d.refcount <= 0:
+          dk.delete_async()
       else:
           d.put_async()
           
