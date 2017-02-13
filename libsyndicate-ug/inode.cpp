@@ -590,15 +590,18 @@ int UG_inode_export_xattr_hash( struct fskit_core* fs, uint64_t gateway_id, stru
       return rc;
    }
 
-   /////////////////////////////////////////////////
-   size_t num_xattrs = 0;
-   for( num_xattrs = 0; xattr_names[num_xattrs] != NULL; num_xattrs++ );
+   if( xattr_names != NULL ) {
+       /////////////////////////////////////////////////
+       size_t num_xattrs = 0;
+       for( num_xattrs = 0; xattr_names[num_xattrs] != NULL; num_xattrs++ );
 
-   SG_debug("Will export hash over %zu xattrs (list follows)\n", num_xattrs);
-   for( size_t i = 0; i < num_xattrs; i++ ) {
-      SG_debug("   '%s'\n", xattr_names[i]);
+       SG_debug("Will export hash over %zu xattrs (list follows)\n", num_xattrs);
+       for( size_t i = 0; i < num_xattrs; i++ ) {
+          SG_debug("   '%s'\n", xattr_names[i]);
+       }
+       /////////////////////////////////////////////////
    }
-   /////////////////////////////////////////////////
+
    memset( xattr_hash, 0, SHA256_DIGEST_LENGTH );
    rc = ms_client_xattr_hash( xattr_hash, SG_manifest_get_volume_id( &inode->manifest ), UG_inode_file_id( inode ), inode->xattr_nonce, xattr_names, xattr_values, xattr_lengths );
 
