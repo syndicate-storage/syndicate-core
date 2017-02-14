@@ -185,7 +185,7 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
            char buf[50];
            memset(buf, 0, 50);
            strncpy(buf, xattr_values[order[i]], MIN(xattr_lengths[order[i]], 49));
-           SG_debug("  xattr hash: '%s' = '%s...'\n", xattr_names[order[i]],  buf);
+           SG_debug("  xattr hash: '%s' = '%s...' (%zu, %d)\n", xattr_names[order[i]],  buf, i, order[i]);
            //////////////////////////////////////////////////////////////
 
            SHA256_Update( &context, xattr_names[ order[i] ], strlen(xattr_names[order[i]]) );

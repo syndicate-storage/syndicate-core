@@ -543,6 +543,8 @@ int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*
       xattr_names[i] = xattr_name;
       xattr_values[i] = xattr_value;
       xattr_value_lengths[i] = xattr_value_len;
+
+      xattr_ptr += strlen(xattr_name) + 1;
    }
 
 UG_inode_export_xattrs_out:
