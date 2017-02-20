@@ -689,14 +689,13 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
         return rc;
     }
 
-
     // temporarily insert xattr 
     rc = fskit_xattr_fsetxattr(fs, UG_inode_fskit_entry(inode), name, value, value_len, flags);
     if( rc != 0 ) {
         SG_error("Failed to temporarily insert xattr '%s' into %" PRIu64 "\n", name, UG_inode_file_id(inode));
         return rc;
     }
-          
+     
     // get new xattr hash, for the *next* nonce value
     cur_xattr_nonce = UG_inode_xattr_nonce( inode );
     UG_inode_set_xattr_nonce( inode, cur_xattr_nonce + 1 );
@@ -1145,26 +1144,75 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
     struct ms_client* ms = SG_gateway_ms( gateway );
     struct md_entry inode_data;
     int64_t cur_xattr_nonce = 0;
+    char* value = NULL;
+    size_t value_len = 0;
     unsigned char xattr_hash[ SHA256_DIGEST_LENGTH ];
 
     memset( &inode_data, 0, sizeof(struct md_entry) );
+
+    rc = fskit_xattr_fgetxattr( fs, UG_inode_fskit_entry(inode), name, value, value_len );
+    if( rc < 0 ) {
+        SG_error("fskit_xattr_fgetxattr(%s) rc = %d\n", name, rc);
+        return rc;
+    }
+
+    value = SG_CALLOC(char, rc);
+    if( value == NULL ) {
+        return -ENOMEM;
+    }
+
+    rc = fskit_xattr_fgetxattr( fs, UG_inode_fskit_entry(inode), name, value, value_len );
+    if( rc < 0 ) {
+        SG_safe_free(value);
+        SG_error("fskit_xattr_fgetxattr(%s) rc = %d\n", name, rc);
+        return rc;
+    }
+
+    // temporarily remove xattr 
+    fskit_xattr_fremovexattr(fs, UG_inode_fskit_entry(inode), name);
 
     // get inode info
     rc = UG_inode_export( &inode_data, inode, 0 );
     if( rc != 0 ) {
 
+        // put back xattr 
+        rc = fskit_xattr_fsetxattr(fs, UG_inode_fskit_entry(inode), name, value, value_len, 0);
+        SG_safe_free(value);
+
+        if( rc != 0 ) {
+            SG_error("Failed to re-insert xattr '%s' into %" PRIu64 "\n", name, UG_inode_file_id(inode));
+            return rc;
+        }
         return rc;
     }
 
-    // get new xattr hash, for the *next* nonce value
+    // get new xattr hash (with the missing xattr), but for the *next* nonce value
     cur_xattr_nonce = UG_inode_xattr_nonce( inode );
     UG_inode_set_xattr_nonce( inode, cur_xattr_nonce + 1 );
     rc = UG_inode_export_xattr_hash( fs, SG_gateway_id( gateway ), inode, xattr_hash );
     UG_inode_set_xattr_nonce( inode, cur_xattr_nonce );
 
     if( rc != 0 ) {
-
+        
+        // put back xattr 
+        rc = fskit_xattr_fsetxattr(fs, UG_inode_fskit_entry(inode), name, value, value_len, 0);
+        SG_safe_free(value);
         md_entry_free( &inode_data );
+
+        if( rc != 0 ) {
+            SG_error("Failed to re-insert xattr '%s' into %" PRIu64 "\n", name, UG_inode_file_id(inode));
+            return rc;
+        }
+        return rc;
+    }
+
+    // put back xattr 
+    rc = fskit_xattr_fsetxattr(fs, UG_inode_fskit_entry(inode), name, value, value_len, 0);
+    SG_safe_free(value);
+
+    if( rc != 0 ) {
+        md_entry_free( &inode_data );
+        SG_error("Failed to re-insert xattr '%s' into %" PRIu64 "\n", name, UG_inode_file_id(inode));
         return rc;
     }
 
