@@ -1649,8 +1649,8 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
 // return 1 if the inode was not fresh, but we fetched and merged the new data successfully
 // return -ESTALE if we were unable to remotely refresh the inode, and it was remotely stale
 // return -errno on failure
-// inode->entry must NOT be locked
-int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
+// inode->entry must NOT be locked if locked is False.  If locked is True, then parent must be given
+int UG_consistency_inode_ensure_fresh_ex( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, bool locked, struct fskit_entry* dent ) {
 
    int rc = 0;
    ms_path_t ms_inode;
@@ -1663,7 +1663,6 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    struct ms_path_ent path_ent;
    struct md_entry entry;
    struct fskit_entry* fent = NULL;
-   struct fskit_entry* dent = NULL;
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct ms_client* ms = SG_gateway_ms( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
@@ -1682,7 +1681,9 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    memset( &entry, 0, sizeof(struct md_entry) );
    clock_gettime( CLOCK_REALTIME, &now );
 
-   fskit_entry_rlock( UG_inode_fskit_entry( inode ));
+   if( !locked ) {
+       fskit_entry_rlock( UG_inode_fskit_entry( inode ));
+   }
 
    volume_id = UG_inode_volume_id( inode );
    file_id = UG_inode_file_id( inode );
@@ -1695,13 +1696,21 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    if( !need_request_refresh && !UG_inode_is_read_stale( inode, &now ) ) {
 
       // still fresh
-      fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
+      if( !locked ) {
+          fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
+      }
       SG_safe_free( fent_name );
       SG_safe_free( fs_dirpath );
+   
+      SG_debug("Will NOT refresh %s (%" PRIX64 ")\n", fs_path, file_id);
       return 0;
    }
 
-   fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
+   SG_debug("Will refresh %s (%" PRIX64 ")\n", fs_path, file_id);
+
+   if( !locked ) {
+       fskit_entry_unlock( UG_inode_fskit_entry( inode ) );
+   }
 
    if( need_request_refresh ) {
       SG_debug("Requesting remote fresh on %" PRIX64 "\n", file_id );
@@ -1744,7 +1753,9 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
       SG_debug("Entry %" PRIX64 " is fresh\n", file_id );
 
       // mark as such if not intermittently changed
-      fskit_entry_wlock( UG_inode_fskit_entry(inode) );
+      if( !locked ) {
+          fskit_entry_wlock( UG_inode_fskit_entry(inode) );
+      }
 
       if( UG_inode_file_version(inode) == file_version && UG_inode_write_nonce(inode) == write_nonce && UG_inode_coordinator_id(inode) == coordinator_id ) {
          // no change
@@ -1752,20 +1763,36 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
          UG_inode_set_refresh_time_now( inode );
       }
 
-      fskit_entry_unlock( UG_inode_fskit_entry(inode) );
+      if( !locked ) {
+          fskit_entry_unlock( UG_inode_fskit_entry(inode) );
+      }
 
       return 0;
    }
 
    // write-lock both the parent and child, so we can reload
-   dent = fskit_entry_resolve_path( fs, fs_dirpath, 0, 0, true, &rc );
-   if( dent == NULL ) {
+   // if the given entry is already locked, then we have to assume that the
+   // parent is also write-locked 
+   if( !locked ) {
+       if( dent != NULL ) {
+          SG_error("dent = %p\n", dent);
+          exit(1);
+       }
 
-      // this entry does not exist anymore...
-      SG_safe_free( fent_name );
-      SG_safe_free( fs_dirpath );
-      md_entry_free( &entry );
-      return rc;
+       dent = fskit_entry_resolve_path( fs, fs_dirpath, 0, 0, true, &rc );
+
+       if( dent == NULL ) {
+
+          // this entry does not exist anymore...
+          SG_safe_free( fent_name );
+          SG_safe_free( fs_dirpath );
+          md_entry_free( &entry );
+          return rc;
+       }
+   }
+   else if( dent == NULL ) {
+      SG_error("dent = %p\n", dent);
+      exit(1);
    }
 
    fent = fskit_dir_find_by_name( dent, fent_name );
@@ -1775,18 +1802,41 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
       SG_safe_free( fent_name );
       SG_safe_free( fs_dirpath );
       md_entry_free( &entry );
-      fskit_entry_unlock( dent );
+
+      if( !locked ) {
+          fskit_entry_unlock( dent );
+      }
 
       return -ENOENT;
    }
 
-   fskit_entry_wlock( fent );
+   if( fent != UG_inode_fskit_entry(inode) ) {
+      // different
+      SG_error("BUG: inode mismatch: %p != %p\n", fent, UG_inode_fskit_entry(inode));
+      SG_safe_free( fent_name );
+      SG_safe_free( fs_dirpath );
+      md_entry_free( &entry );
+
+      if( !locked ) {
+          fskit_entry_unlock( dent );
+      }
+      return -ESTALE;
+   }
+
+   if( !locked && fent != dent ) {
+       fskit_entry_wlock( fent );
+   }
 
    SG_debug("Reload: '%s' (%" PRIu64 ")\n", fs_path, entry.file_id );
    rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, fent_name, &entry );
 
-   fskit_entry_unlock( fent );
-   fskit_entry_unlock( dent );
+   if( !locked && fent != dent ) {
+       fskit_entry_unlock( fent );
+   }
+
+   if( !locked ) {
+       fskit_entry_unlock( dent );
+   }
 
    SG_safe_free( fent_name );
    SG_safe_free( fs_dirpath );
@@ -1801,6 +1851,9 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
    return 1;
 }
 
+int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
+   return UG_consistency_inode_ensure_fresh_ex( gateway, fs_path, inode, false, NULL );
+}
 
 // merge a list of md_entrys into an fskit_entry directory.
 // for conflicts, if a local entry is newer than the given cut-off, keep it.  Otherwise replace it.

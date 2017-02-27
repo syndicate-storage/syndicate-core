@@ -53,6 +53,7 @@ int UG_consistency_fetchxattrs( struct SG_gateway* gateway, uint64_t file_id, in
 
 // ensure a locally-cached inode is fresh
 int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode );
+int UG_consistency_inode_ensure_fresh_ex( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, bool locked, struct fskit_entry* dent );
 
 // ask a remote gateway to refresh its inode
 int UG_consistency_request_refresh( struct SG_gateway* gateway, char const* path );
