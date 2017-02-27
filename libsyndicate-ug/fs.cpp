@@ -1535,7 +1535,21 @@ static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* rou
       
       new_inode = (struct UG_inode*)fskit_entry_get_user_data( dest );
    }
-   
+  
+   rc = UG_consistency_inode_ensure_fresh_ex( gateway, path, inode, true, fskit_route_metadata_get_parent(route_metadata) );
+   if( rc < 0 ) {
+      SG_error("Failed to refresh src %s inode %" PRIX64 ", rc = %d\n", path, fskit_entry_get_file_id(fent), rc );
+      return rc;
+   }
+
+   if( new_inode != NULL ) {
+       rc = UG_consistency_inode_ensure_fresh_ex( gateway, new_path, new_inode, true, fskit_route_metadata_get_new_parent(route_metadata) );
+       if( rc < 0 ) {
+           SG_error("Failed to refresh dest %s inode %" PRIX64 ", rc = %d\n", new_path, fskit_entry_get_file_id(dest), rc );
+           return rc;
+       }
+   }
+
    UG_try_or_coordinate( gateway, path, UG_inode_coordinator_id( inode ),
                          UG_fs_rename_local( fs, fskit_route_metadata_get_parent( route_metadata ), path, inode, fskit_route_metadata_get_new_parent( route_metadata ), new_path, new_inode ),
                          UG_fs_rename_remote( fs, fskit_route_metadata_get_parent( route_metadata ), path, inode, fskit_route_metadata_get_new_parent( route_metadata ), new_path, new_inode ),
