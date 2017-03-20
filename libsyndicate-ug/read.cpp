@@ -405,27 +405,38 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
    if( next_block.data == NULL ) {
       return -ENOMEM;
    }
-   
-   // sanity check--every block in blocks must be RAM-mapped to the reader's buffer
-   for( UG_dirty_block_map_t::iterator block_itr = blocks->begin(); block_itr != blocks->end(); block_itr++ ) {
-      
-      if( !UG_dirty_block_in_RAM( &block_itr->second ) ) {
+  
+   // sanity check--every block in blocks that we will request must have a RAM-mapped buffer
+   for( SG_manifest_block_iterator itr = SG_manifest_block_iterator_begin(block_requests); itr != SG_manifest_block_iterator_end(block_requests); itr++ ) {
+      uint64_t block_id = SG_manifest_block_iterator_id(itr);
+      UG_dirty_block_map_t::iterator block_itr = blocks->find(block_id);
+      struct UG_dirty_block* block = NULL;
 
+      if( block_itr == blocks->end() ) {
+         SG_error("BUG: no buffer for %" PRIX64 "[%" PRIu64 ".%" PRId64 "]\n",
+                  SG_manifest_get_file_id(block_requests), block_id, UG_dirty_block_version(block) );
+
+         exit(1);
+
+      }
+
+      block = &block_itr->second;
+
+      if( !UG_dirty_block_in_RAM(block) ) {
          SG_error("BUG: block %" PRIX64 "[%" PRIu64 ".%" PRId64 "] not RAM-mapped\n",
-               SG_manifest_get_file_id( block_requests ), UG_dirty_block_id( &block_itr->second ), UG_dirty_block_version( &block_itr->second ) );
+                  SG_manifest_get_file_id(block_requests), block_id, UG_dirty_block_version(block) );
 
          exit(1);
       }
 
-      // need a full buffer
-      if( (unsigned)UG_dirty_block_buf( &block_itr->second )->len < block_size ) {
+      if( (unsigned)UG_dirty_block_buf(block)->len < block_size ) {
          SG_error("BUG: block %" PRIX64 "[%" PRIu64 ".%" PRId64 "] has insufficient space (%zu)\n",
-               SG_manifest_get_file_id( block_requests ), UG_dirty_block_id( &block_itr->second ), UG_dirty_block_version( &block_itr->second ), (size_t)UG_dirty_block_buf( &block_itr->second )->len );
+                  SG_manifest_get_file_id(block_requests), block_id, UG_dirty_block_version(block), UG_dirty_block_buf(block)->len );
 
-         exit(1);
+         exit(1); 
       }
    }
-   
+
    // what are the gateways?
    rc = UG_read_download_gateway_list( gateway, SG_manifest_get_coordinator( block_requests ), &gateway_ids, &num_gateway_ids );
    if( rc != 0 ) {
