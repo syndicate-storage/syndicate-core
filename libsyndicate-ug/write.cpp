@@ -855,18 +855,10 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
    }
   
 
-   /*
-   // mark all modified blocks as dirty...
+   // update write alignment for the RG
    for( UG_dirty_block_map_t::iterator itr = write_blocks.begin(); itr != write_blocks.end(); itr++ ) {
-      UG_dirty_block_set_dirty( &itr->second, true );
       UG_dirty_block_set_logical_write( &itr->second, offset, buf_len );
-
-      if( UG_dirty_block_buf( &itr->second )->len == 0 ) {
-         SG_error("FATAL: block %p has zero length\n", UG_dirty_block_buf( &itr->second )->data);
-         exit(1);
-      }
    }
-   */
    
    SG_debug("%s: write %zu blocks: %" PRIu64 " through %" PRIu64 " (buf: %p - %p)\n", fs_path, write_blocks.size(), write_blocks.begin()->first, write_blocks.rbegin()->first, buf, buf + buf_len );
 
