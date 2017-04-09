@@ -914,6 +914,11 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
          // not found 
          return md_HTTP_create_response_builtin( resp, 404 );
       }
+      else if( rc == -ENODATA ) {
+
+         // driver error 
+         return md_HTTP_create_response_builtin( resp, 503 );
+      }
       else {
             
          // failed 

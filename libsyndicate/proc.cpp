@@ -373,7 +373,8 @@ int SG_proc_group_stop_unlocked( struct SG_proc_group* group, int timeout ) {
       for( int i = 0; i < group->capacity; i++ ) {
          
          if( group->procs[i] != NULL ) {
-            
+           
+            SG_debug("Send SIGINT to %d\n", group->procs[i]->pid); 
             SG_proc_kill( group->procs[i], SIGINT );
          }
       }
@@ -386,7 +387,12 @@ int SG_proc_group_stop_unlocked( struct SG_proc_group* group, int timeout ) {
       
       if( group->procs[i] != NULL ) {
          
-         SG_proc_kill( group->procs[i], SIGKILL );
+         int rc = SG_proc_kill( group->procs[i], 0 );
+         if( rc == 0 ) {
+             SG_debug("Send SIGKILL to %d\n", group->procs[i]->pid); 
+             SG_proc_kill( group->procs[i], SIGKILL );
+         }
+         
          SG_proc_list_remove( &group->free, group->procs[i] );
             
          SG_proc_free( group->procs[i] );
@@ -1487,6 +1493,8 @@ int SG_proc_start( struct SG_proc* proc, char const* exec_path, char const* exec
          proc->pid = pid;       // so the caller can join
          return rc;
       }
+
+      SG_debug("Started process %d (%s %s)\n", proc->pid, exec_path, exec_arg);
    }
    
    return 0;
@@ -1587,10 +1595,12 @@ int SG_proc_tryjoin( struct SG_proc* proc, int* child_status ) {
 // return -ENOMEM on OOM
 // return -errno on failure to start the new process
 // NOTE: group must be write-locked
-int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str, struct SG_chunk* new_config, struct SG_chunk* new_secrets, struct SG_chunk* new_driver ) {
+int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str, char const* new_exec_arg, char** new_helper_env, struct SG_chunk* new_config, struct SG_chunk* new_secrets, struct SG_chunk* new_driver ) {
    
    int rc = 0;
    struct SG_proc* new_proc = NULL;
+
+   SG_debug("Stop all processes in group %p\n", group);
 
    // stop the group 
    rc = SG_proc_group_stop_unlocked( group, 1 );
@@ -1599,13 +1609,14 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
       return rc;
    }
    
+   SG_debug("Start %d processes in group %p\n", group->capacity, group); 
    for( int i = 0; i < group->capacity; i++ ) {
       
-      if( group->procs[i] == NULL ) {
+      if( group->procs[i] != NULL ) {
          continue;
       }
      
-      SG_debug("Reload process '%s %s' (index %d, pid %d)\n", group->procs[i]->exec_str, group->procs[i]->exec_arg, i, group->procs[i]->pid );
+      SG_debug("Reload process '%s %s' (index %d)\n", new_exec_str, new_exec_arg, i);
 
       new_proc = SG_proc_alloc( 1 );
       if( new_proc == NULL ) {
@@ -1614,7 +1625,7 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
       }
      
       // start it up... 
-      rc = SG_proc_start( new_proc, new_exec_str, group->procs[i]->exec_arg, group->procs[i]->exec_env, new_config, new_secrets, new_driver );
+      rc = SG_proc_start( new_proc, new_exec_str, new_exec_arg, new_helper_env, new_config, new_secrets, new_driver );
       if( rc != 0 ) {
          
          SG_error("SG_proc_start(exec_arg='%s') rc = %d\n", group->procs[i]->exec_arg, rc );

@@ -762,14 +762,15 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
    if( driver->groups != NULL ) {
     
       for( SG_driver_proc_group_t::iterator itr = driver->groups->begin(); itr != driver->groups->end(); itr++ ) {
-         
+        
+         char const* role = itr->first.c_str(); 
          struct SG_proc_group* group = itr->second;
          
          SG_debug("Reload process group %p (%s)\n", group, itr->first.c_str() ); 
       
          // do not allow any subsequent requests for this group
          SG_proc_group_wlock( group );
-         rc = SG_proc_group_reload( group, driver->exec_str, &driver->driver_conf, &driver->driver_secrets, &driver->driver_text );
+         rc = SG_proc_group_reload( group, driver->exec_str, role, driver->conf->helper_env, &driver->driver_conf, &driver->driver_secrets, &driver->driver_text );
          SG_proc_group_unlock( group );
          
          if( rc != 0 ) {

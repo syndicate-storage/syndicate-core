@@ -422,6 +422,8 @@ struct UG_state* UG_init( int argc, char** argv ) {
 
    md_opts_free( overrides );
    SG_safe_free( overrides );
+
+   fskit_set_debug_level(2);
    return state;
 }
 
