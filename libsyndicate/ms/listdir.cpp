@@ -401,20 +401,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          }
          break;
       }
-       
-      // run the downloads 
-      rc = md_download_loop_run( dlloop );
-      if( rc != 0 ) {
-         
-         if( rc < 0 ) {
-             SG_error("md_download_loop_run rc = %d\n", rc );
-         }
-         else {
-            rc = 0;
-         }
-         break;
-      }
-
+      
       num_downloads_finished = 0;
 
       // process all completed downloads 
@@ -483,7 +470,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       
    } while( (batch_queue.size() > 0 || md_download_loop_running( dlloop )) && num_children_downloaded < (unsigned)num_children );
    
-   if( rc < 0 ) {
+   if( rc != 0 ) {
       
       // download stopped prematurely
       // manually unref and free downloads.
