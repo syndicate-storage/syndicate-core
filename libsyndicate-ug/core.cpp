@@ -659,7 +659,14 @@ struct UG_state* UG_init_ex( int argc, char** argv, struct md_opts* overrides, v
       UG_shutdown( state );
       return NULL;
    }
-   
+  
+   rc = md_wq_init(wq, NULL);
+   if( rc != 0 ) {
+      UG_shutdown(state);
+      SG_safe_free(wq);
+      return NULL;
+   }
+
    state->wq = wq;
    
    SG_debug("%s", "Starting vacuumer\n");

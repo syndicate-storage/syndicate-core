@@ -1494,14 +1494,14 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
    // refresh stale data
    rc = ms_client_getattr_multi( ms, &path_local, &remote_inodes_stale );
 
-   if( rc != 0 && rc != -ENOENT ) {
+   if( rc != 0 && remote_inodes_stale.reply_error != -ENOENT ) {
 
       UG_consistency_path_free( fs, &path_local );
 
       SG_error("ms_client_getattr_multi('%s') rc = %d, MS reply error %d\n", fs_path, rc, remote_inodes_stale.reply_error );
       return rc;
    }
-   else if( rc == -ENOENT ) {
+   else if( remote_inodes_stale.reply_error == -ENOENT ) {
 
       not_found = true;
    }
@@ -1868,6 +1868,8 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
 
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
    struct fskit_core* fs = UG_state_fs( ug );
+   struct fskit_dir_entry** existing = NULL;
+   uint64_t num_existing = 0;
 
    // set up the fs_path buffer
    for( size_t i = 0; i < num_ents; i++ ) {
@@ -1886,6 +1888,8 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
       return -ENOMEM;
    }
 
+   set<string> ent_listing_names;
+
    for( size_t i = 0; i < num_ents; i++ ) {
 
       struct md_entry* ent = &ents[i];
@@ -1893,6 +1897,8 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
       if( ent->name == NULL ) {
          continue;
       }
+
+      ent_listing_names.insert( string(ent->name) );
 
       struct fskit_entry* fent = fskit_dir_find_by_name( dent, ent->name );
 
@@ -1916,6 +1922,8 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
 
          if( md_timespec_diff_ms( &ctime, keep_cutoff ) < 0 ) {
 
+            SG_debug("Reload child '%s' with new listing\n", ent->name);
+
             // fent was created before the reload, and is in conflict.  reload
             rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, ent->name, ent );
             if( rc < 0 ) {
@@ -1937,6 +1945,7 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
          else {
 
             // preserve this entry
+            SG_debug("Preserve child '%s' with existing listing\n", ent->name);
             fskit_entry_unlock( fent );
          }
       }
@@ -1950,7 +1959,7 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
             break;
          }
 
-         SG_debug("Merge '%s' into '%s'\n", ent->name, fs_path_dir );
+         SG_debug("Insert '%s' into '%s'\n", ent->name, fs_path_dir );
          rc = UG_inode_fskit_entry_init( fs, fent, dent, ent );
          if( rc != 0 ) {
 
@@ -1973,6 +1982,53 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
       }
    }
 
+   // find the children that are no longer present, and remove them
+   existing = fskit_listdir_locked(fs, dent, &num_existing, &rc);
+   if( existing == NULL ) {
+      SG_error("fskit_listdir_locked('%s') rc = %d\n", fs_path_dir, rc);
+      return rc;
+   }
+
+   for( uint64_t i = 0; i < num_existing; i++ ) {
+     
+      struct fskit_dir_entry* dirent = existing[i]; 
+      if( strcmp(dirent->name, ".") == 0 || strcmp(dirent->name, "..") == 0 ) {
+         continue;
+      }
+
+      // absent now?
+      if( ent_listing_names.find(string(dirent->name)) == ent_listing_names.end() ) {
+        
+         SG_debug("Entry '%s' is no longer present.  Removing...\n", dirent->name);
+
+         struct fskit_entry* child = fskit_dir_find_by_name(dent, dirent->name);
+         if( child == NULL ) {
+            SG_debug("Already absent: '%s'\n", dirent->name);
+            continue;
+         }
+
+         char* fp = fskit_fullpath(fs_path_dir, dirent->name, NULL);
+         if( fp == NULL ) {
+            fskit_dir_entry_free_list(existing);
+            SG_safe_free(fs_path);
+            return -ENOMEM;
+         }
+
+         fskit_entry_wlock(child);
+         
+         rc = UG_deferred_remove(ug, fp, child);
+         
+         fskit_entry_unlock(child);
+
+         SG_safe_free(fp);
+
+         if( rc != 0 ) {
+            SG_error("UG_deferred_remove(%s) rc = %d\n", fp, rc);
+         }
+      }
+   }
+
+   fskit_dir_entry_free_list(existing);
    SG_safe_free( fs_path );
    return rc;
 }
@@ -2033,10 +2089,12 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
    if( md_timespec_diff_ms( &now, &dir_refresh_time ) <= max_read_freshness && md_timespec_diff_ms( &now, &children_refresh_time ) <= max_read_freshness ) {
 
       // still fresh
-      SG_debug("'%s' is fresh\n", fs_path );
+      SG_debug("Directory '%s' is fresh\n", fs_path );
       fskit_entry_unlock( dent );
       return 0;
    }
+
+   SG_debug("Refresh directory '%s'\n", fs_path);
 
    // stale--redownload
    file_id = fskit_entry_get_file_id( dent );
@@ -2081,6 +2139,8 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
 
       return rc;
    }
+
+   SG_debug("%s('%s') succeeded; merging %zu entries\n", method, fs_path, results.num_ents);
 
    // re-acquire
    fskit_entry_wlock( dent );

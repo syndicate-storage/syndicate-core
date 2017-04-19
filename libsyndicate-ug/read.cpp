@@ -1310,8 +1310,6 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
                    rc = 0;
                 }
 
-                // don't free; we've gifted it
-                read_blocks.erase( last_block_read_itr ); 
                 cached_clean_block = true;
             }
             else {
@@ -1324,10 +1322,13 @@ int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_me
          // also, free an earlier clean block if possible
          if( cached_clean_block ) {
              free_clean_block_id = UG_inode_find_clean_block_id( inode, 0 );
-             if( free_clean_block_id < UG_dirty_block_id(&last_block_read_itr->second) ) {
+             if( free_clean_block_id < UG_dirty_block_id(last_block_read) ) {
                 SG_debug("Evict earlier clean block %" PRIu64 "\n", free_clean_block_id);
                 UG_inode_evict_clean_block( inode, free_clean_block_id );
              } 
+                
+             // don't free; we've gifted it
+             read_blocks.erase( last_block_read_itr ); 
          }
       }
       
