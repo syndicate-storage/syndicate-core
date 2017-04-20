@@ -233,7 +233,7 @@ def read_request( f ):
 def request_to_storage_path( request ):
    """
    Create a storage path for a request.
-   It will be prefixed by UID, then volume ID, then 
+   It will be prefixed the volume ID, then 
    inode, then path, version, and either block ID or version
    or manifest timestamp (depending on what kind of 
    request this is).
@@ -243,7 +243,7 @@ def request_to_storage_path( request ):
    Return the string on success
    """
 
-   prefix = "%s/%s/%X" % (request.user_id, request.volume_id, request.file_id)
+   prefix = "%s/%X" % (request.volume_id, request.file_id)
 
    if request.request_type == DriverRequest.BLOCK:
        prefix = os.path.join( prefix, "%s/%s" % (request.block_id, request.block_version) )
