@@ -874,7 +874,7 @@ def create_gateway( **kw ):
    
    # if this is an archive volume, then there can be no other writers (DEPRECATED)
    if volume.archive and (gateway_cert.caps & (GATEWAY_CAP_WRITE_DATA | GATEWAY_CAP_WRITE_METADATA)):
-      writer_gateways_qry = Gateway.ListAll( {"Gateway.need_cert ==": True}, keys_only=True, query_only=True )
+      writer_gateways_qry = Gateway.ListAll( {"Gateway.need_cert ==": True, 'Gateway.volume_id ==': volume_id}, keys_only=True, query_only=True )
       if writer_gateways_qry.count() > 0:
          # there's already a writer 
          raise Exception("Archive volume '%s' already has a writer" % (volume.name))
