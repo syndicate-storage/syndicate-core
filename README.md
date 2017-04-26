@@ -1,13 +1,15 @@
 Syndicate
 =========
 
-Syndicate is a **scalable software-defined storage system for wide-area networks**.   Syndicate creates global read/write storage volumes on top of existing systems, but while preserving end-to-end domain-specific storage invariants.  With less than 200 lines of Python, and without having to run any servers of your own, you use a Syndicate volume to do things like:
+Syndicate is a **scalable software-defined storage system for wide-area networks**.   Syndicate creates global read/write storage volumes on top of existing systems, but while preserving end-to-end app-specific storage semantics.  With less than 200 lines of Python, and without having to run any servers of your own, you use a Syndicate volume to do things like:
 * Scale up reads on a remote server with a CDN while guaranteeing that readers always see fresh data.
 * Turn a collection of URLs as a copy-on-write shared filesystem which preserves your and your peers' changes.
 * Implement end-to-end encryption on top of your Dropbox folder, while mirroring your files to Amazon S3 and Google Drive.
 * Publish your code for the world to download, while guaranteeing end-to-end authenticity and integrity.
 
 This is the core software package, which contains the Syndicate Metadata Serivice and libraries needed to create Syndicate **gateways**.
+
+Syndicate is funded by the NSF [#1541318](https://https://www.nsf.gov/awardsearch/showAward?AWD_ID=1541318).  Syndicate is overseen by the NSF CC\*DNI DIBBS group, part of the NSF's [Advanced Cyberinfrastructure](https://www.nsf.gov/div/index.jsp?div=ACI) program.
 
 Examples
 --------
@@ -36,8 +38,6 @@ To build, type:
     $ make MS_APP_ADMIN_EMAIL=(your admin account email)
 ```
 
-**NOTE:**  At this time, there are no `install` targets for the executables (this will be added soon).  For now, executables are put into directories within `./build/out/bin`.
-
 To build Syndicate, you will need the following tools, libraries, and header files:
 * [libcurl](http://curl.haxx.se/libcurl/)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/)
@@ -48,7 +48,7 @@ To build Syndicate, you will need the following tools, libraries, and header fil
 * [libfuse](https://github.com/libfuse/)
 * [Python 2.x](https://www.python.org)
 * [Cython](https://github.com/cython/cython)
-* [GRequests](https://github.com/kennethreitz/grequests)
+* [grequests](https://github.com/kennethreitz/grequests)
 * [boto](https://github.com/boto/boto)
 
 
