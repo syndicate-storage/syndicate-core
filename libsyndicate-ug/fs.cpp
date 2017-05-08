@@ -734,7 +734,7 @@ static int UG_fs_trunc_remote( struct SG_gateway* gateway, char const* fs_path, 
    if( reply.error_code() != 0 ) {
       
       // failed to process
-      SG_error("SG_client_request_send(TRUNC '%s' %jd) reply error = %d\n", fs_path, new_size, rc );
+      SG_error("SG_client_request_send(TRUNC '%s' %jd) reply error = %d\n", fs_path, new_size, reply.error_code() );
       return reply.error_code();
    }
    
@@ -956,7 +956,7 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
    if( reply.error_code() != 0 ) {
       
       // failed to process
-      SG_error("SG_client_request_send(DETACH '%s') reply error = %d\n", fs_path, rc );
+      SG_error("SG_client_request_send(DETACH '%s') reply error = %d\n", fs_path, reply.error_code() );
       return reply.error_code();
    }
    
@@ -1509,7 +1509,7 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
    if( reply.error_code() != 0 ) {
       
       // failed to process
-      SG_error("SG_client_request_send(DETACH '%s' to '%s') reply error = %d\n", fs_path, new_path, rc );
+      SG_error("SG_client_request_send(DETACH '%s' to '%s') reply error = %d\n", fs_path, new_path, reply.error_code() );
       return reply.error_code();
    }
    
