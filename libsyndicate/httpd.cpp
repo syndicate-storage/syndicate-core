@@ -1251,6 +1251,7 @@ static int md_HTTP_do_method( char const* method_name, SG_HTTP_method_t method, 
       
       // failed to generate a response 
       SG_error("%s('%s') rc = %d\n", method_name, con_data->url_path, rc );
+      SG_safe_free( resp->resp );
       SG_safe_free( resp );
       
       return rc;
