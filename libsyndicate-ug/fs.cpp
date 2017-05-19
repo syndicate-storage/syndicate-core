@@ -956,7 +956,7 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
    if( reply.error_code() != 0 ) {
       
       // failed to process
-      SG_error("SG_client_request_send(DETACH '%s') reply error = %d\n", fs_path, rc );
+      SG_error("SG_client_request_send(DETACH '%s') reply error = %d\n", fs_path, reply.error_code() );
       return reply.error_code();
    }
    
