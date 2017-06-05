@@ -51,15 +51,18 @@ def get_bucket( bucket_name, secrets ):
 
    bucket = None
    try:
-      bucket = conn.create_bucket(bucket_name)
+       bucket = conn.get_bucket(bucket_name)
    except Exception, e:
-      log.error("Could not create/fetch bucket " + bucket_name)
-      log.exception(e)
-      
-   else:
-      log.debug("Fetched/created bucket: " + bucket_name)
+       log.error("Could not get bucket {}; will try creating".format(bucket_name))
 
+       try:
+           bucket = conn.create_bucket(bucket_name)
+       except Exception, e:
+           log.error("Could not create/fetch bucket " + bucket_name)
+           log.exception(e)
+    
    return bucket
+
 
 #-------------------------
 def write_chunk( chunk_path, chunk_buf, config, secrets ):
