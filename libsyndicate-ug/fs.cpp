@@ -982,6 +982,7 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
 static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, void* inode_cls ) {
    
    int rc = 0;
+   int retry = 0;
    struct UG_inode* inode = (struct UG_inode*)inode_cls;
    struct SG_gateway* gateway = (struct SG_gateway*)fskit_core_get_user_data( fs );
    char* path = fskit_route_metadata_get_path( route_metadata );
@@ -1004,10 +1005,17 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
    if( type == FSKIT_ENTRY_TYPE_FILE ) {
        
         // route request to coordinator
-        UG_try_or_coordinate( gateway, path, UG_inode_coordinator_id( inode ),
+	rc = 1; // try UG_try_or_coordinate 3 times if an error is encountered
+        while(( rc != 0 ) && ( retry < 3)) {
+            if( retry > 0 ) {
+	        SG_warn("Trying UG_try_or_coordinate( DETACH '%s' ) again, rc = %d (attempt #%d)\n", fskit_route_metadata_get_path( route_metadata ), rc, retry + 1);
+		sleep(5);
+ 	    }
+            UG_try_or_coordinate( gateway, path, UG_inode_coordinator_id( inode ),
                               UG_fs_detach_local( gateway, fskit_route_metadata_get_path( route_metadata ), renamed, inode ),
                               UG_fs_detach_remote( gateway, fskit_route_metadata_get_path( route_metadata ), renamed, inode ), &rc );
-        
+	    retry+=1;
+	}
         if( rc != 0 ) {
             
             SG_error("UG_try_or_coordinate( DETACH '%s' ) rc = %d\n", fskit_route_metadata_get_path( route_metadata ), rc );
@@ -1023,12 +1031,8 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
         }
    }
    
-   if( rc == 0 ) {
-      
-      // success!
-      UG_inode_free( inode );
-      SG_safe_free( inode );
-   }
+   UG_inode_free( inode );
+   SG_safe_free( inode );
    
    return rc;
 }
