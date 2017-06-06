@@ -172,9 +172,8 @@ def secure_erase_key(key_path):
     Return False on error.
     """
     try:
-        st = os.stat(key_path)
-        if st:
-            size = st.st_size
+        if os.path.exists(key_path):
+            size = os.stat(key_path).st_size
         else:
             # file not exist
             return True
