@@ -542,7 +542,7 @@ def do_setup( opts, username, admin_privkey_path, MS_url ):
     """
     Do one-time initial setup:
     * create the config directory
-    * fill in the configdirectory  with object directories.
+    * fill in the config directory with object directories.
     * generate a config file in config directory
     * grab the MS's public key and ask to trust it, if it isn't here already.
     * activate the admin's account on the MS.
