@@ -170,7 +170,12 @@ def secure_erase_key( key_path ):
    Return False on error.
    """
    try:
-      size = os.stat( key_path ).st_size
+      st = os.stat( key_path )
+      if st:
+         size = st.st_size
+      else:
+         # file not exist
+         return True
    except OSError, oe:
       log.error("Failed to stat %s" % key_path)
       return False
@@ -293,4 +298,3 @@ def erase_private_key( config, key_type, object_id ):
    Erase a private for a given object of a given type.
    """
    return erase_key( config, key_type, object_id, public=False )
-
