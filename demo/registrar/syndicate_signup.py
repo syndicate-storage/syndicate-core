@@ -41,6 +41,7 @@ SIGNUP_PAGE = """
     font-variant: normal;
     font-weight: 400;
     line-height: 30px;
+    background-color: #f0f0f0;
 }
 </style>
 <body>
@@ -70,14 +71,15 @@ SIGNUP_FINISH_PAGE_TEMPLATE = """
 <html>
 <head></head>
 <style>
-.code {
+.code {{
     font-family: "Courier New", Courier, "Lucida Sans Typewriter", "Lucida Typewriter", monospace;
     font-size: 12px;
     font-style: normal;
     font-variant: normal;
     font-weight: 400;
     line-height: 30px;
-}
+    background-color: #f0f0f0
+}}
 </style>
 <body>
 <h1>Syndicate Demo Signup</h1>
@@ -148,7 +150,6 @@ class EmailEntry(ndb.Model):
     date = ndb.DateTimeProperty(auto_now_add=True)
     password = ndb.TextProperty()
     user_private_key = ndb.TextProperty()
-    volume_private_key = ndb.TextProperty()
 
     @classmethod
     def list_emails(cls):
@@ -250,7 +251,7 @@ class ProvisionHandler(webapp2.RequestHandler):
         if email_entry is None:
             return send_response(self, 404, 'Email not found')
 
-        if email_entry.user_private_key is not None or email_entry.volume_private_key is not None:
+        if email_entry.user_private_key is not None:
             # already set 
             return send_response(self, 202, 'key already set')
 
@@ -263,17 +264,7 @@ class ProvisionHandler(webapp2.RequestHandler):
         if not re.match(BASE64_REGEX, user_private_key_data):
             return send_response(self, 401, 'Invalid request: user key must be base64-encoded')
 
-        # read volume private key 
-        volume_private_key_data = self.request.POST.get('volume_private_key')
-        if volume_private_key_data is None:
-            return send_response(self, 401, 'Invalid request: no volume key given')
-
-        # must be base64
-        if not re.match(BASE64_REGEX, volume_private_key_data):
-            return send_response(self, 401, 'Invalid request: volume key must be base64-encoded')
-
         email_entry.user_private_key = user_private_key_data
-        email_entry.volume_private_key = volume_private_key_data
         
         # clear password 
         email_entry.password = ""
