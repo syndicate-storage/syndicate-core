@@ -789,15 +789,7 @@ def create_gateway( **kw ):
    gateway_cert_b64 = kw.get('gateway_cert_b64', None)
    if gateway_cert_b64 is None:
       raise Exception("No gateway certificate given")
-   
-   cert_bundle_b64 = kw.get('cert_bundle_b64', None)
-   if cert_bundle_b64 is None:
-      raise Exception("No certificate bundle version vector given")
-   
-   driver_text = None
-   if 'driver_text' in kw.keys():
-      driver_text = kw['driver_text']
-   
+     
    # check well-formed
    try:
       gateway_cert_bin = base64.b64decode( gateway_cert_b64 )
@@ -831,25 +823,38 @@ def create_gateway( **kw ):
    if volume_owner is None:
        raise Exception("BUG: No owner for volume '%s'" % volume.name)
 
-   try:
-      cert_bundle_bin = base64.b64decode( cert_bundle_b64 )
-      cert_bundle = sg_pb2.Manifest()
-      cert_bundle.ParseFromString( cert_bundle_bin )
-   except Exception, e:
-      log.error("Failed to deserialize certificate bundle version vector")
-      raise e
+   # cert bundle is only needed if *not* anonymous
+   cert_bundle_b64 = kw.get('cert_bundle_b64', None)
+   if cert_bundle_b64 is None and gateway_cert.owner_id != GATEWAY_ID_ANON:
+      raise Exception("No certificate bundle version vector given")
    
-   rc = validate_cert_bundle( cert_bundle, volume_owner, volume.volume_id, volume.version, new_gateway_cert=gateway_cert )
-   if not rc:
-      raise Exception("Failed to validate cert bundle version vector")
+   driver_text = None
+   if 'driver_text' in kw.keys():
+      driver_text = kw['driver_text']
+
+   cert_bundle = None
+   cert_bundle_bin = None
+   if cert_bundle_b64 is not None:
+       try:
+          cert_bundle_bin = base64.b64decode( cert_bundle_b64 )
+          cert_bundle = sg_pb2.Manifest()
+          cert_bundle.ParseFromString( cert_bundle_bin )
+       except Exception, e:
+          log.error("Failed to deserialize certificate bundle version vector")
+          raise e
+       
+       rc = validate_cert_bundle( cert_bundle, volume_owner, volume.volume_id, volume.version, new_gateway_cert=gateway_cert )
+       if not rc:
+          raise Exception("Failed to validate cert bundle version vector")
    
    # unpack certificate
    gateway_name = gateway_cert.name 
    volume_id = gateway_cert.volume_id 
    
    # verify volume ID against the cert bundle 
-   if volume_id != cert_bundle.volume_id != volume_id:
-      raise Exception("Cert bundle is not for volume %s" % volume_id)
+   if cert_bundle is not None:
+       if volume_id != cert_bundle.volume_id != volume_id:
+          raise Exception("Cert bundle is not for volume %s" % volume_id)
    
    # verify quota 
    gateway_quota = user.get_gateway_quota()
@@ -892,9 +897,10 @@ def create_gateway( **kw ):
    gateway_key = Gateway.Create( user, volume, gateway_cert, driver_text )
    
    # put cert bundle as well 
-   rc = VolumeCertBundle.Put( volume_id, cert_bundle_bin )
-   if not rc:
-      raise Exception("Invalid volume cert bundle")
+   if cert_bundle is not None:
+       rc = VolumeCertBundle.Put( volume_id, cert_bundle_bin )
+       if not rc:
+          raise Exception("Invalid volume cert bundle")
    
    gw = gateway_key.get()
    
