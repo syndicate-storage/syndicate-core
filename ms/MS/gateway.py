@@ -279,7 +279,7 @@ class Gateway( storagetypes.Object ):
    
    
    def owned_by( self, user ):
-      return user.owner_id == self.owner_id
+      return user.owner_id == self.owner_id or self.owner_id == GATEWAY_ID_ANON
    
 
    def load_pubkey( self, pubkey_str, in_base64=True ):
