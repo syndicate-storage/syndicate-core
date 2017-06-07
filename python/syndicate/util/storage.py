@@ -41,19 +41,19 @@ def read_file(file_path):
     """
     try:
         fd = open(file_path, "r")
-    except:
+    except Exception:
         return None
 
     buf = None
     try:
         buf = fd.read()
-    except:
+    except Exception:
         fd.close()
         return None
 
     try:
         fd.close()
-    except:
+    except Exception:
         return None
 
     return buf
@@ -71,10 +71,10 @@ def write_file(file_path, data):
         fd.write(data)
         fd.close()
         return True
-    except:
+    except Exception:
         try:
             os.unlink(file_path)
-        except:
+        except Exception:
             pass
         return False
 
