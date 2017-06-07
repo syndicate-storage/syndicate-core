@@ -2213,6 +2213,7 @@ class Gateway( StubObject ):
       volume_id = None 
       volume_name = None 
       volume_name_or_id = None
+      anonymous = False
 
       # see if there is already a cert on file 
       existing_gateway_cert = load_gateway_cert( config, lib.name )
@@ -2226,7 +2227,7 @@ class Gateway( StubObject ):
     
       elif existing_gateway_cert is None and method_name == "delete_gateway":
          # no cert on file, but we need to be able to delete.
-         # this will only work if the caller is the administrator.
+         # this will only work if the caller is the administrator, or the owner user.
          log.debug("Looking up gateway '%s'" % gateway_name)
          
          import syndicate.util.client as ms_client
@@ -2244,7 +2245,10 @@ class Gateway( StubObject ):
 
          volume_id = gateway_info['volume_id']
          volume_name_or_id = str(volume_id)
-      
+         
+         if gateway_info['owner_id'] == msconfig.GATEWAY_ID_ANON:
+             # anonymous gateway
+             anonymous = True
 
       # find volume info
       existing_volume_cert = None 
@@ -2298,7 +2302,8 @@ class Gateway( StubObject ):
              "name": lib.name,
              "volume_id": volume_id,
              "owner_id": owner_id,
-             "need_volume_reload": True
+             "need_volume_reload": True,
+             'anonymous': anonymous,
          }
          return args, kw, extras
 
@@ -2323,7 +2328,6 @@ class Gateway( StubObject ):
 
       owner_id = None 
       gateway_id = None
-      anonymous = False
       volume_owner_id = None
 
       volume_cert = None
@@ -2473,20 +2477,29 @@ class Gateway( StubObject ):
               raise Exception("No private key found for user '%s'" % owner_username)
       
       else: 
-         # only volume owner can do this
-         # load volume owner 
-         volume_cert = load_volume_cert( config, volume_name_or_id )
-         if volume_cert is None:
-             raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
+         if owner_username != 'ANONYMOUS':
+             # we know the username 
+             user_privkey = storagelib.load_private_key(config, 'user', owner_username)
+             if user_privkey is None:
+                 raise Exception("No private key found for user %s" % owner_username)
 
-         volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
-         if volume_owner_cert is None:
-             raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
+             owner_id = load_user_id(config, owner_username)
 
-         # the user to sign the gateway cert is going to be the volume owner 
-         user_privkey = storagelib.load_private_key( config, "user", volume_owner_cert.email )
-         if user_privkey is None:
-             raise Exception("No private key found for user %s; requierd for anonymous gateways" % volume_owner_cert.email)
+         else:
+             # only volume owner can do this
+             # load volume owner 
+             volume_cert = load_volume_cert( config, volume_name_or_id )
+             if volume_cert is None:
+                 raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
+
+             volume_owner_cert = load_user_cert( config, volume_cert.owner_id )
+             if volume_owner_cert is None:
+                 raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
+
+             # the user to sign the gateway cert is going to be the volume owner 
+             user_privkey = storagelib.load_private_key( config, "user", volume_owner_cert.email )
+             if user_privkey is None:
+                 raise Exception("No private key found for user %s; requierd for anonymous gateways" % volume_owner_cert.email)
 
       now_sec, _ = clock_gettime()
 
@@ -2554,7 +2567,7 @@ class Gateway( StubObject ):
                   assert getattr(gateway_cert, attrname) == getattr(existing_gateway_cert, attrname), "Cannot change field '%s'" % attrname
 
          
-      elif method_name in ["create_gateway", "delete_gateway"]:
+      elif not anonymous and method_name in ["create_gateway", "delete_gateway"]:
          need_volume_cert_bundle = True
      
       # make cert bundle
@@ -2615,6 +2628,7 @@ class Gateway( StubObject ):
       extras['need_volume_reload'] = need_volume_cert_bundle or anonymous
       extras['volume_owner_id'] = volume_owner_id
       extras['optime'] = time.time()
+      extras['anonymous'] = anonymous
      
       if volume_cert_bundle is not None:
           log.debug("New volume cert bundle for %s\n%s" % (volume_name, volume_cert_bundle))
@@ -2733,9 +2747,10 @@ class Gateway( StubObject ):
                         log.warn( "If they are running, you can reload them manually with the `reload_gateway` directive." )
 
             # these operations must take at least 1 second, so the clock on the MS can advance
-            now = time.time()
-            if now - extras['optime'] < 1.0:
-                time.sleep( now - extras['optime'] )
+            if not extras['anonymous'] and extras.has_key('optime'):
+                now = time.time()
+                if now - extras['optime'] < 1.0:
+                    time.sleep( now - extras['optime'] )
 
 
 object_classes = [SyndicateUser, Volume, Gateway]
