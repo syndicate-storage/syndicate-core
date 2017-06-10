@@ -384,7 +384,6 @@ def store_volume_cert(config, volume_cert, path=None):
     Given a deserialized volume cert, serialize and store it.
     Return True on success
     """
-
     volume_cert_pb = volume_cert.SerializeToString()
     if path is None:
         path = conf.object_file_path(config, "volume", volume_cert.name + ".cert")
@@ -446,7 +445,6 @@ def load_gateway_cert(config, gateway_name_or_id, path=None):
     Return the deserialized cert on success.
     Return None if not found or if corrupt.
     """
-
     gateway_cert_pb = None
     gateway_cert_path = path
 
@@ -949,26 +947,26 @@ def load_gateway_type_aliases(config):
 
 
 def do_volume_reload(config, user_id, volume_id):
-        """
-        Reload a volume's writers and coordinators
-        Return the list of names of gateways we failed to contact
-        """
-        import syndicate.util.reload as reloader
+    """
+    Reload a volume's writers and coordinators
+    Return the list of names of gateways we failed to contact
+    """
+    import syndicate.util.reload as reloader
 
-        log.info("Reloading volume %s" % volume_id)
+    log.info("Reloading volume %s" % volume_id)
 
-        statuses = reloader.broadcast_reload(config, user_id, volume_id)
-        failed = []
-        for gateway_name, rc in statuses.items():
-            if not rc:
-                if rc == False:
-                    failed.append(gateway_name)
-                else:
-                    # didn't even try
-                    log.info("BUG: Did not even try to reload %s" % gateway_name)
-                    failed.append(gateway_name)
+    statuses = reloader.broadcast_reload(config, user_id, volume_id)
+    failed = []
+    for gateway_name, rc in statuses.items():
+        if not rc:
+            if rc == False:
+                failed.append(gateway_name)
+            else:
+                # didn't even try
+                log.info("BUG: Did not even try to reload %s" % gateway_name)
+                failed.append(gateway_name)
 
-        return failed
+    return failed
 
 
 class StubObject(object):
@@ -988,7 +986,6 @@ class StubObject(object):
     @classmethod
     def Sign(cls, *args, **kw):
         raise Exception("Called stub Sign method!  Looks like you have an import error somewhere.")
-
 
     @classmethod
     def parse_or_generate_private_key(cls, private_key, lib):
@@ -1108,13 +1105,13 @@ class StubObject(object):
 
     @classmethod
     def parse_volume_name(cls, volume_name, lib):
-            """
-            Consume volume name
-            """
-            if lib is not None:
-                lib.volume_name = volume_name
+        """
+        Consume volume name
+        """
+        if lib is not None:
+            lib.volume_name = volume_name
 
-            return volume_name, {"volume_name": volume_name}
+        return volume_name, {"volume_name": volume_name}
 
 
     # Map an argument name to a function that parses and validates it.
@@ -1566,28 +1563,28 @@ class Volume(StubObject):
 
     arg_parsers = dict(StubObject.arg_parsers.items() + {
         # required
-        "name":                   (lambda cls, arg, lib: cls.parse_volume_name(arg, lib)),
+        "name": (lambda cls, arg, lib: cls.parse_volume_name(arg, lib)),
 
         # required on create/delete
-        "email":                  (lambda cls, arg, lib: cls.parse_email(arg, lib)),
+        "email": (lambda cls, arg, lib: cls.parse_email(arg, lib)),
 
         # required on create
-        "description":            (lambda cls, arg, lib: cls.parse_volume_description(arg, lib)),
+        "description": (lambda cls, arg, lib: cls.parse_volume_description(arg, lib)),
 
         # required on create
-        "blocksize":              (lambda cls, arg, lib: cls.parse_volume_blocksize(arg, lib)),
+        "blocksize": (lambda cls, arg, lib: cls.parse_volume_blocksize(arg, lib)),
 
         # optional; defaults to False
-        "archive":                (lambda cls, arg, lib: cls.parse_volume_archive(arg, lib)),
+        "archive": (lambda cls, arg, lib: cls.parse_volume_archive(arg, lib)),
 
         # optional; defaults to True
-        "private":                (lambda cls, arg, lib: cls.parse_volume_private(arg, lib)),
+        "private": (lambda cls, arg, lib: cls.parse_volume_private(arg, lib)),
 
         # optional: default to False
-        "allow_anon":             (lambda cls, arg, lib: cls.parse_volume_allow_anon(arg, lib)),
+        "allow_anon": (lambda cls, arg, lib: cls.parse_volume_allow_anon(arg, lib)),
 
         # optional: defaults to infinite
-        "file_quota":             (lambda cls, arg, lib: cls.parse_volume_file_quota(arg, lib))
+        "file_quota": (lambda cls, arg, lib: cls.parse_volume_file_quota(arg, lib))
     }.items())
 
 
@@ -1653,7 +1650,7 @@ class Volume(StubObject):
         Pre-method-call processing for a Volume
 
         When creating, updating, or deleting:
-                generate a volume certificate and a new volume certificate bundle version vector.
+            generate a volume certificate and a new volume certificate bundle version vector.
 
         TODO: this method is a ball of mud.  See if we can clean it up.
         """
@@ -1922,6 +1919,7 @@ class Volume(StubObject):
                 volume_id = extras.get("volume_id", None)
                 if volume_id is None:
                     log.error("Could not determine ID of Volume.  You will need to manually delete its cert bundle version state in your Syndicate volume key directory.")
+
                 else:
                     cert_dir = conf.object_file_path(config, "volume", "")
                     bundle_path = os.path.join(cert_dir, "%s.bundle.version" % volume_id)
