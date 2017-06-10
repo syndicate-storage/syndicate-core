@@ -19,7 +19,7 @@
 import sys
 import os
 import boto
-import logging 
+import logging
 import errno
 
 from boto.s3.key import Key
@@ -30,127 +30,125 @@ handler_stream = logging.StreamHandler()
 handler_stream.setFormatter(formatter)
 log.addHandler(handler_stream)
 
-#-------------------------
-def get_bucket( bucket_name, secrets ):
-
-   aws_id = secrets.get( 'AWS_ACCESS_KEY_ID', None )
-   aws_key = secrets.get( 'AWS_SECRET_ACCESS_KEY', None )
-   
-   assert aws_id is not None, "No AWS ID given"
-   assert aws_key is not None, "No AWS key given"
-   
-   try:
-      conn = boto.connect_s3(aws_id, aws_key)
-   except Exception, e:
-      log.error("Connection to S3 failed")
-      log.exception(e)
-      return None
-      
-   else:
-      log.debug("Connected to S3")
-
-   bucket = None
-   try:
-       bucket = conn.get_bucket(bucket_name)
-   except Exception, e:
-       log.error("Could not get bucket {}; will try creating".format(bucket_name))
-
-       try:
-           bucket = conn.create_bucket(bucket_name)
-       except Exception, e:
-           log.error("Could not create/fetch bucket " + bucket_name)
-           log.exception(e)
-    
-   return bucket
-
 
 #-------------------------
-def write_chunk( chunk_path, chunk_buf, config, secrets ):
-   
-   log.debug("Writing File: " + chunk_path)
+def get_bucket(bucket_name, secrets):
+    aws_id = secrets.get('AWS_ACCESS_KEY_ID', None)
+    aws_key = secrets.get('AWS_SECRET_ACCESS_KEY', None)
 
-   assert config is not None, "No config given"
-   assert secrets is not None, "No AWS API tokens given"
-   assert config.has_key("BUCKET"), "No bucket name given"
-   
-   bucket_name = config['BUCKET']
-   
-   bucket = get_bucket(context, bucket_name)
-   if bucket == None:
-      raise Exception("Failed to get bucket")
+    assert aws_id is not None, "No AWS ID given"
+    assert aws_key is not None, "No AWS key given"
 
-   k = Key(bucket)
-   k.key = chunk_path
+    try:
+        conn = boto.connect_s3(aws_id, aws_key)
+    except Exception, e:
+        log.error("Connection to S3 failed")
+        log.exception(e)
+        return None
 
-   rc = 0
-   try:
-      k.set_contents_from_string( chunk_buf )
-      log.debug("Wrote %s to s3" % chunk_path)
-      
-   except Exception, e:
-      log.error("Failed to write file %s" % chunk_path)
-      log.exception(e)
-      rc = -errno.EREMOTEIO
-   
-   return rc
+    else:
+        log.debug("Connected to S3")
+
+    bucket = None
+    try:
+        bucket = conn.get_bucket(bucket_name)
+    except Exception, e:
+        log.error("Could not get bucket {}; will try creating".format(bucket_name))
+
+        try:
+            bucket = conn.create_bucket(bucket_name)
+        except Exception, e:
+            log.error("Could not create/fetch bucket " + bucket_name)
+            log.exception(e)
+
+    return bucket
+
 
 #-------------------------
-def read_chunk( chunk_path, outfile, config, secrets ):
-   
-   log.debug("Reading File: " + chunk_path)
+def write_chunk(chunk_path, chunk_buf, config, secrets):
+    log.debug("Writing File: " + chunk_path)
 
-   assert config is not None, "No config given"
-   assert secrets is not None, "No AWS API tokens given"
-   assert config.has_key("BUCKET"), "No bucket name given"
-   
-   bucket_name = config['BUCKET']
-   
-   bucket = get_bucket(context, bucket_name)
-   if bucket == None:
-      raise Exception("Failed to get bucket")
+    assert config is not None, "No config given"
+    assert secrets is not None, "No AWS API tokens given"
+    assert config.has_key("BUCKET"), "No bucket name given"
 
-   k = Key(bucket)
-   k.key = chunk_path
+    bucket_name = config['BUCKET']
 
-   rc = 0
-   
-   try:
-      k.get_contents_to_file(outfile)
-      log.debug("Read data from s3")
-      
-   except Exception, e:
-      log.error("Failed to read %s" % chunk_path)
-      log.exception(e)
-      rc = -errno.REMOTEIO
-      
-   return rc
-   
+    bucket = get_bucket(context, bucket_name)
+    if bucket is None:
+        raise Exception("Failed to get bucket")
+
+    k = Key(bucket)
+    k.key = chunk_path
+
+    rc = 0
+    try:
+        k.set_contents_from_string(chunk_buf)
+        log.debug("Wrote %s to s3" % chunk_path)
+
+    except Exception, e:
+        log.error("Failed to write file %s" % chunk_path)
+        log.exception(e)
+        rc = -errno.EREMOTEIO
+
+    return rc
+
+
 #-------------------------
-def delete_chunk(chunk_path, config, secrets ):
-   
-   log.debug("Deleting File: " + chunk_path)
-   
-   assert config is not None, "No config given"
-   assert secrets is not None, "No AWS API tokens given"
-   assert config.has_key("BUCKET"), "No bucket name given"
-   
-   bucket_name = config['BUCKET']
-   
-   bucket = get_bucket(context, bucket_name)
-   if bucket == None:
-      raise Exception("Failed to get bucket")
+def read_chunk(chunk_path, outfile, config, secrets):
+    log.debug("Reading File: " + chunk_path)
 
-   k = Key(bucket)
-   k.key = chunk_path
-   
-   rc = 0
-   try:
-      k.delete()
-      log.debug("Deleted s3 file %s" % (chunk_path) )
-   except Exception, e:
-      log.error("Failed to delete %s" % chunk_path)
-      log.exception(e)
-      rc = -errno.REMOTEIO
+    assert config is not None, "No config given"
+    assert secrets is not None, "No AWS API tokens given"
+    assert config.has_key("BUCKET"), "No bucket name given"
 
-   return rc
+    bucket_name = config['BUCKET']
 
+    bucket = get_bucket(context, bucket_name)
+    if bucket is None:
+        raise Exception("Failed to get bucket")
+
+    k = Key(bucket)
+    k.key = chunk_path
+
+    rc = 0
+
+    try:
+        k.get_contents_to_file(outfile)
+        log.debug("Read data from s3")
+
+    except Exception, e:
+        log.error("Failed to read %s" % chunk_path)
+        log.exception(e)
+        rc = -errno.REMOTEIO
+
+    return rc
+
+
+#-------------------------
+def delete_chunk(chunk_path, config, secrets):
+    log.debug("Deleting File: " + chunk_path)
+
+    assert config is not None, "No config given"
+    assert secrets is not None, "No AWS API tokens given"
+    assert config.has_key("BUCKET"), "No bucket name given"
+
+    bucket_name = config['BUCKET']
+
+    bucket = get_bucket(context, bucket_name)
+    if bucket is None:
+        raise Exception("Failed to get bucket")
+
+    k = Key(bucket)
+    k.key = chunk_path
+
+    rc = 0
+    try:
+        k.delete()
+        log.debug("Deleted s3 file %s" % (chunk_path))
+    except Exception, e:
+        log.error("Failed to delete %s" % chunk_path)
+        log.exception(e)
+        rc = -errno.REMOTEIO
+
+    return rc
