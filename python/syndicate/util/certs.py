@@ -19,11 +19,11 @@
 import os
 import sys
 import subprocess
-import hashlib 
+import hashlib
 import base64
 import shutil
 import binascii
-import json 
+import json
 import time
 import random
 
@@ -42,46 +42,47 @@ import syndicate.ms.msconfig as msconfig
 
 log = conf.get_logger("syndicate-certs")
 
-def syndicate_public_key_name( ms_url ):
+
+def syndicate_public_key_name(ms_url):
     """
     Get the name of a syndicate public key, given
     the MS url it was fetched from.
     """
-    host, port, no_tls = client.parse_url( ms_url )
+    host, port, no_tls = client.parse_url(ms_url)
     return host + ":" + str(port)
+
+
+def syndicate_public_key_fetch(ms_url, downloader_path):
+    """
+    Use a helper program to go and fetch the Syndicate public key.
+    Return the key itself on success.
+    Return None on error
+    """
+
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
+
+    downloader = subprocess.Popen([downloader_path, ms_url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    pubkey_out, pubkey_err = downloader.communicate()
+    downloader.wait()
     
+    if len(pubkey_err.strip()) != 0:
+        log.error("Syndicate public key downloader errors:\n%s\n" % pubkey_err)
 
-def syndicate_public_key_fetch( ms_url, downloader_path ):
-   """
-   Use a helper program to go and fetch the Syndicate public key.
-   Return the key itself on success.
-   Return None on error
-   """
-
-   if not os.path.exists( downloader_path ):
-      log.error("'%s' does not exist" % downloader_path )
-      return None 
-  
-   downloader = subprocess.Popen( [downloader_path, ms_url], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
-   pubkey_out, pubkey_err = downloader.communicate()
-   downloader.wait()
-   
-   if len(pubkey_err.strip()) != 0:
-       log.error("Syndicate public key downloader errors:\n%s\n" % pubkey_err)
-
-   pubkey_pem = pubkey_out.strip()
-   
-   # validate 
-   try:
-      pubkey = CryptoKey.importKey( pubkey_pem )
-   except Exception, e:
-      log.error("Invalid Syndicate public key (from %s)" % ms_url)
-      return None
-   
-   return pubkey
+    pubkey_pem = pubkey_out.strip()
+    
+    # validate
+    try:
+        pubkey = CryptoKey.importKey(pubkey_pem)
+    except Exception:
+        log.error("Invalid Syndicate public key (from %s)" % ms_url)
+        return None
+    
+    return pubkey
 
 
-def get_syndicate_public_key( config ):
+def get_syndicate_public_key(config):
     """
     Load up the syndicate public key.
     If it is not local, then go fetch it.
@@ -90,47 +91,47 @@ def get_syndicate_public_key( config ):
     """
 
     ms_url = config['MS_url']
-    pubkey_name = syndicate_public_key_name( ms_url )
-    pubkey = storage.load_public_key( config, "syndicate", pubkey_name )
+    pubkey_name = syndicate_public_key_name(ms_url)
+    pubkey = storage.load_public_key(config, "syndicate", pubkey_name)
 
     if pubkey is None:
         downloader = config['helpers']['fetch_syndicate_pubkey']
-        pubkey = syndicate_public_key_fetch( ms_url, downloader )
-        
+        pubkey = syndicate_public_key_fetch(ms_url, downloader)
+
         if pubkey is None:
             raise Exception("Failed to obtain syndicate public key")
 
     return pubkey
 
 
-def gateway_cert_fetch( ms_url, gateway_name_or_id, downloader_path ):
+def gateway_cert_fetch(ms_url, gateway_name_or_id, downloader_path):
     """
     Use a helper program to go and fetch a gateway certificate.
     Return the cert on success.
     Return None on error.
     """
-    if not os.path.exists( downloader_path ):
-       log.error("'%s' does not exist" % downloader_path )
-       return None 
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
 
-    downloader = subprocess.Popen( [downloader_path, ms_url, str(gateway_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    downloader = subprocess.Popen([downloader_path, ms_url, str(gateway_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     cert_out, cert_err = downloader.communicate()
     downloader.wait()
-   
+
     if len(cert_err.strip()) != 0:
-       log.error("Gateway cert downloader errors:\n%s" % cert_err)
+        log.error("Gateway cert downloader errors:\n%s" % cert_err)
 
     try:
         gateway_cert = ms_pb2.ms_gateway_cert()
-        gateway_cert.ParseFromString( cert_out )
-    except Exception, e:
+        gateway_cert.ParseFromString(cert_out)
+    except Exception:
         log.error("Invalid gateway certificate for %s (from %s)" % (str(gateway_name_or_id), ms_url))
-        return None 
+        return None
 
     return gateway_cert
 
 
-def get_gateway_cert( config, gateway_name_or_id, check_cache=True ):
+def get_gateway_cert(config, gateway_name_or_id, check_cache=True):
     """
     Load a gateway certificate from disk.
     If it is not local, then go fetch it.
@@ -140,13 +141,12 @@ def get_gateway_cert( config, gateway_name_or_id, check_cache=True ):
 
     gateway_cert = None
     if check_cache:
-        gateway_cert = object_stub.load_gateway_cert( config, gateway_name_or_id )
+        gateway_cert = object_stub.load_gateway_cert(config, gateway_name_or_id)
 
     if gateway_cert is None:
-
         downloader = config['helpers']['fetch_gateway_cert']
         ms_url = config['MS_url']
-        gateway_cert = gateway_cert_fetch( ms_url, gateway_name_or_id, downloader )
+        gateway_cert = gateway_cert_fetch(ms_url, gateway_name_or_id, downloader)
 
         if gateway_cert is None:
             raise Exception("Failed to obtain gateway certificate")
@@ -154,27 +154,27 @@ def get_gateway_cert( config, gateway_name_or_id, check_cache=True ):
     return gateway_cert
 
 
-def volume_cert_fetch( ms_url, volume_name_or_id, downloader_path ):
+def volume_cert_fetch(ms_url, volume_name_or_id, downloader_path):
     """
     Use a helper program to go and fetch a volume certificate.
     Return the cert on success.
     Return None on error.
     """
 
-    if not os.path.exists( downloader_path ):
-        log.error("'%s' does not exist" % downloader_path )
-        return None 
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
 
-    downloader = subprocess.Popen( [downloader_path, ms_url, str(volume_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    downloader = subprocess.Popen([downloader_path, ms_url, str(volume_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     cert_out, cert_err = downloader.communicate()
     downloader.wait()
 
     if len(cert_err.strip()) != 0:
-       log.error("Volume cert downloader errors:\n%s" % cert_err)
+        log.error("Volume cert downloader errors:\n%s" % cert_err)
 
     try:
         volume_cert = ms_pb2.ms_volume_metadata()
-        volume_cert.ParseFromString( cert_out )
+        volume_cert.ParseFromString(cert_out)
 
         if volume_cert.HasField("root"):
             volume_cert.ClearField("root")
@@ -182,12 +182,12 @@ def volume_cert_fetch( ms_url, volume_name_or_id, downloader_path ):
     except Exception, e:
         log.exception(e)
         log.error("Invalid volume certificate for %s (from %s)" % (str(volume_name_or_id), ms_url))
-        return None 
+        return None
 
     return volume_cert
 
 
-def get_volume_cert( config, volume_name_or_id, check_cache=True, download=True ):
+def get_volume_cert(config, volume_name_or_id, check_cache=True, download=True):
     """
     Load a volume cert from local disk.
     If not local, then go fetch it.
@@ -195,16 +195,15 @@ def get_volume_cert( config, volume_name_or_id, check_cache=True, download=True 
     Raise an exception on error.
     """
 
-    volume_cert = None 
+    volume_cert = None
 
     if check_cache:
-        volume_cert = object_stub.load_volume_cert( config, volume_name_or_id )
+        volume_cert = object_stub.load_volume_cert(config, volume_name_or_id)
 
     if volume_cert is None and download:
-
         downloader = config['helpers']['fetch_volume_cert']
         ms_url = config['MS_url']
-        volume_cert = volume_cert_fetch( ms_url, volume_name_or_id, downloader )
+        volume_cert = volume_cert_fetch(ms_url, volume_name_or_id, downloader)
 
         if volume_cert is None:
             raise Exception("Failed to obtain volume certificate")
@@ -212,35 +211,35 @@ def get_volume_cert( config, volume_name_or_id, check_cache=True, download=True 
     return volume_cert
 
 
-def user_cert_fetch( ms_url, user_name_or_id, downloader_path ):
+def user_cert_fetch(ms_url, user_name_or_id, downloader_path):
     """
     Use a helper program to go and fetch a user certificate.
     Return the cert on success.
     Return None on error.
     """
-    
-    if not os.path.exists( downloader_path ):
-        log.error("'%s' does not exist" % downloader_path )
-        return None 
 
-    downloader = subprocess.Popen( [downloader_path, ms_url, str(user_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
+
+    downloader = subprocess.Popen([downloader_path, ms_url, str(user_name_or_id)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     cert_out, cert_err = downloader.communicate()
     downloader.wait()
 
     if len(cert_err.strip()) != 0:
-       log.error("User cert downloader errors:\n%s" % cert_err)
+        log.error("User cert downloader errors:\n%s" % cert_err)
 
     try:
         user_cert = ms_pb2.ms_user_cert()
-        user_cert.ParseFromString( cert_out )
-    except Exception, e:
+        user_cert.ParseFromString(cert_out)
+    except Exception:
         log.error("Invalid user certificate for %s (from %s)" % (str(user_name_or_id), ms_url))
-        return None 
+        return None
 
     return user_cert
 
 
-def get_user_cert( config, user_name_or_id, check_cache=True ):
+def get_user_cert(config, user_name_or_id, check_cache=True):
     """
     Load a user cert from local disk.
     If not local, then go fetch it.
@@ -248,16 +247,15 @@ def get_user_cert( config, user_name_or_id, check_cache=True ):
     Raise an exception on error.
     """
 
-    user_cert = None 
+    user_cert = None
 
     if check_cache:
-        user_cert = object_stub.load_user_cert( config, user_name_or_id )
+        user_cert = object_stub.load_user_cert(config, user_name_or_id)
 
     if user_cert is None:
-
         downloader = config['helpers']['fetch_user_cert']
         ms_url = config['MS_url']
-        user_cert = user_cert_fetch( ms_url, user_name_or_id, downloader )
+        user_cert = user_cert_fetch(ms_url, user_name_or_id, downloader)
 
         if user_cert is None:
             raise Exception("Failed to obtain user certificate")
@@ -265,138 +263,134 @@ def get_user_cert( config, user_name_or_id, check_cache=True ):
     return user_cert
 
 
-def cert_bundle_fetch( ms_url, volume_name_or_id, cert_version, downloader_path ):
+def cert_bundle_fetch(ms_url, volume_name_or_id, cert_version, downloader_path):
     """
     Use a helper program to go and fetch the certificate bundle for the given volume.
     Return the cert bundle on success.
     Return None on error.
     """
 
-    if not os.path.exists( downloader_path ):
-        log.error("'%s' does not exist" % downloader_path )
-        return None 
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
 
-    downloader = subprocess.Popen( [downloader_path, ms_url, str(volume_name_or_id), str(cert_version)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    downloader = subprocess.Popen([downloader_path, ms_url, str(volume_name_or_id), str(cert_version)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     cert_out, cert_err = downloader.communicate()
     downloader.wait()
 
     if len(cert_err.strip()) != 0:
-       log.error("Cert bundle downloader errors:\n%s" % cert_err)
+        log.error("Cert bundle downloader errors:\n%s" % cert_err)
 
     try:
         cert_bundle = sg_pb2.Manifest()
-        cert_bundle.ParseFromString( cert_out )
+        cert_bundle.ParseFromString(cert_out)
     except Exception, e:
         log.exception(e)
         log.error("Invalid cert bundle for %s.%s (from %s)" % (str(volume_name_or_id), str(cert_version), ms_url))
-        return None 
+        return None
 
     return cert_bundle
 
 
-def driver_fetch( ms_url, driver_hash, downloader_path ):
+def driver_fetch(ms_url, driver_hash, downloader_path):
     """
     Use a helper program to go and fetch a gateway's driver.
     Return the serialized driver on success.
     Return None on error.
     """
 
-    if not os.path.exists( downloader_path ):
-        log.error("'%s' does not exist" % downloader_path )
-        return None 
+    if not os.path.exists(downloader_path):
+        log.error("'%s' does not exist" % downloader_path)
+        return None
 
-    downloader = subprocess.Popen( [downloader_path, ms_url, str(driver_hash)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    downloader = subprocess.Popen([downloader_path, ms_url, str(driver_hash)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     driver_out, driver_err = downloader.communicate()
     downloader.wait()
 
     if len(driver_err.strip()) != 0:
-       log.error("Driver downloader errors:\n%s" % driver_err)
+        log.error("Driver downloader errors:\n%s" % driver_err)
 
     try:
         # must be valid JSON
-        driver_json = json.loads( driver_out )
+        driver_json = json.loads(driver_out)
     except Exception, e:
         log.error("Invalid driver %s (from %s)" % (str(driver_hash), ms_url))
-        return None 
+        return None
 
     return driver_out
 
 
-def cert_cache_dir( config, volume_name_or_id, gateway_name_or_id ):
+def cert_cache_dir(config, volume_name_or_id, gateway_name_or_id):
     """
     Calculate the path to the cached certificate state for this gateway.
     """
-   
-    cert_dir = conf.object_file_path( config, "certs", "" )
-    cert_dir = os.path.join( cert_dir, str(volume_name_or_id), str(gateway_name_or_id) )
+
+    cert_dir = conf.object_file_path(config, "certs", "")
+    cert_dir = os.path.join(cert_dir, str(volume_name_or_id), str(gateway_name_or_id))
     return cert_dir
 
 
-def cache_cert_path( config, volume_name_or_id, gateway_name_or_id, cert_name, suffix='.cert' ):
+def cache_cert_path(config, volume_name_or_id, gateway_name_or_id, cert_name, suffix='.cert'):
     """
     Get the cached path to a certificate
     """
-    cert_dir = cert_cache_dir( config, volume_name_or_id, gateway_name_or_id )
-    return os.path.join( cert_dir, ("%s" + suffix) % cert_name )
+    cert_dir = cert_cache_dir(config, volume_name_or_id, gateway_name_or_id)
+    return os.path.join(cert_dir, ("%s" + suffix) % cert_name)
 
 
-def cert_bundle_version_path( config, volume_name_or_id, gateway_name_or_id ):
+def cert_bundle_version_path(config, volume_name_or_id, gateway_name_or_id):
     """
     Calculate the path to the volume certificate bundle
     """
-
-    cert_dir = cert_cache_dir( config, volume_name_or_id, gateway_name_or_id )
-    version_path = os.path.join( cert_dir, "bundle.version" )
+    cert_dir = cert_cache_dir(config, volume_name_or_id, gateway_name_or_id)
+    version_path = os.path.join(cert_dir, "bundle.version")
     return version_path
 
 
-def load_cert_bundle_version( config, volume_name_or_id, gateway_name_or_id ):
+def load_cert_bundle_version(config, volume_name_or_id, gateway_name_or_id):
     """
     Get the cached volume cert bundle version.
     Return the int on success
     Return None on error
     """
-    
-    cert_bundle_path = cert_bundle_version_path( config, volume_name_or_id, gateway_name_or_id )
-    if not os.path.exists( cert_bundle_path ):
+    cert_bundle_path = cert_bundle_version_path(config, volume_name_or_id, gateway_name_or_id)
+    if not os.path.exists(cert_bundle_path):
         log.error("No such file or directory: %s" % cert_bundle_path)
-        return None 
+        return None
 
     try:
-        with open( cert_bundle_path, "r" ) as f:
+        with open(cert_bundle_path, "r") as f:
             txt = f.read()
-            cert_bundle_version = int(txt.strip() )
+            cert_bundle_version = int(txt.strip())
 
         return cert_bundle_version
     
     except Exception, e:
         log.exception(e)
-        log.error("Failed to read '%s'" % cert_bundle_path )
+        log.error("Failed to read '%s'" % cert_bundle_path)
         return None
 
 
-def store_cert_bundle_version( config, volume_name_or_id, gateway_name_or_id, cert_bundle_version ):
+def store_cert_bundle_version(config, volume_name_or_id, gateway_name_or_id, cert_bundle_version):
     """
     Store the cert bundle version.
     Return True on success
     Return False on error
     """
-    
-    cert_bundle_path = cert_bundle_version_path( config, volume_name_or_id, gateway_name_or_id )
+    cert_bundle_path = cert_bundle_version_path(config, volume_name_or_id, gateway_name_or_id)
 
     try:
-        with open( cert_bundle_path, "w" ) as f:
-            f.write( str(cert_bundle_version) )
+        with open(cert_bundle_path, "w") as f:
+            f.write(str(cert_bundle_version))
             f.flush()
 
         return True
+    except Exception:
+        log.error("Failed to store volume cert bundle version for '%s'" % volume_name_or_id)
+        return False
 
-    except:
-       log.error("Failed to store volume cert bundle version for '%s'" % volume_name_or_id )
-       return False
-    
 
-def get_cert_bundle( config, volume_name_or_id, volume_version, cert_bundle_version ):
+def get_cert_bundle(config, volume_name_or_id, volume_version, cert_bundle_version):
     """
     Get the cert bundle for the volume.
     Always download it, but use the given cert bundle version on disk if present.
@@ -407,7 +401,7 @@ def get_cert_bundle( config, volume_name_or_id, volume_version, cert_bundle_vers
     ms_url = config['MS_url']
     downloader_path = config['helpers']['fetch_cert_bundle']
 
-    cert_bundle = cert_bundle_fetch( ms_url, volume_name_or_id, cert_bundle_version, downloader_path )
+    cert_bundle = cert_bundle_fetch(ms_url, volume_name_or_id, cert_bundle_version, downloader_path)
     if cert_bundle is None:
         raise Exception("Failed to fetch cert bundle for '%s' (version %s)" % (volume_name_or_id, str(cert_bundle_version)))
 
@@ -420,7 +414,7 @@ def get_cert_bundle( config, volume_name_or_id, volume_version, cert_bundle_vers
     return cert_bundle
 
 
-def user_cert_validate( config, user_cert ):
+def user_cert_validate(config, user_cert):
     """
     Given an unprotobuf'ed user certificate,
     verify that it is authentic with an external helper.
@@ -428,12 +422,11 @@ def user_cert_validate( config, user_cert ):
     Return False if not.
     Raise an exception on error.
     """
-
     validator = config['helpers']['validate_user_cert']
-    assert os.path.exists( validator ), ("No such file or directory: %s" % validator)
+    assert os.path.exists(validator), ("No such file or directory: %s" % validator)
 
     certpb = user_cert.SerializeToString()
-    validate_proc = subprocess.Popen( [validator], shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+    validate_proc = subprocess.Popen([validator], shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     validate_out, validate_err = validate_proc.communicate(certpb)
     validate_proc.wait()
 
@@ -441,25 +434,23 @@ def user_cert_validate( config, user_cert ):
         # failed
         log.error("Validator rejected user cert for %s" % user_cert.email)
         return False
-
     else:
         return True
 
 
-def verify_user_signature( user_cert, object_cert ):
+def verify_user_signature(user_cert, object_cert):
     """
     Verify that a user signed a particular object.
     The object_cert must have a 'signature' attribute.
     The user_cert must have a 'public_key' attribute.
     """
-    
     sigb64 = object_cert.signature
-    sig = base64.b64decode( sigb64 )
+    sig = base64.b64decode(sigb64)
     object_cert.signature = ""
     data = object_cert.SerializeToString()
 
     try:
-        rc = crypto.verify_data( user_cert.public_key, data, sig )
+        rc = crypto.verify_data(user_cert.public_key, data, sig)
     except ValueError, ve:
         log.error("Signature valuation failed; likely due to the wrong public key")
         rc = False
@@ -468,13 +459,13 @@ def verify_user_signature( user_cert, object_cert ):
     return rc
 
 
-def volume_cert_verify( volume_cert, volume_id, volume_owner_cert ):
+def volume_cert_verify(volume_cert, volume_id, volume_owner_cert):
     """
     Verify that the volume owner (a user) signed the volume cert.
     """
-    if not verify_user_signature( volume_owner_cert, volume_cert ):
+    if not verify_user_signature(volume_owner_cert, volume_cert):
         log.error("Volume signature mismatch")
-        return False 
+        return False
 
     if volume_cert.owner_id != volume_owner_cert.user_id:
         log.error("Volume cert owner mismatch")
@@ -487,32 +478,32 @@ def volume_cert_verify( volume_cert, volume_id, volume_owner_cert ):
     return True
 
 
-def gateway_cert_verify( gateway_cert, gateway_name, user_cert ):
+def gateway_cert_verify(gateway_cert, gateway_name, user_cert):
     """
     Verify that the user signed its gateway cert
     """
-    if not verify_user_signature( user_cert, gateway_cert ):
+    if not verify_user_signature(user_cert, gateway_cert):
         log.error("Gateway signature mismatch")
-        return False 
+        return False
 
     if gateway_cert.owner_id != user_cert.user_id:
         log.error("Gateway owner mismatch")
-        return False 
+        return False
 
     if gateway_cert.name != gateway_name:
         log.error("Gateway name mismatch")
-        return False 
+        return False
 
     return True
 
 
-def cert_bundle_verify( cert_bundle, volume_owner_cert ):
+def cert_bundle_verify(cert_bundle, volume_owner_cert):
     """
     Verify that the cert bundle came from the volume owner
     """
-    if not verify_user_signature( volume_owner_cert, cert_bundle ):
+    if not verify_user_signature(volume_owner_cert, cert_bundle):
         log.error("Cert bundle signature mismatch")
-        return False 
+        return False
 
     if cert_bundle.owner_id != volume_owner_cert.user_id:
         return False
@@ -520,52 +511,50 @@ def cert_bundle_verify( cert_bundle, volume_owner_cert ):
     return True
 
 
-def is_volume_cert_in_bundle( cert_bundle, volume_cert ):
+def is_volume_cert_in_bundle(cert_bundle, volume_cert):
     """
     Is the volume certificate in the cert bundle?
     """
-
-    # hash must correspond to the first block 
+    # hash must correspond to the first block
     if len(cert_bundle.blocks) == 0:
         log.error("Empty cert bundle")
         return False
 
-    cert_hash = crypto.hash_data( volume_cert.SerializeToString() )
+    cert_hash = crypto.hash_data(volume_cert.SerializeToString())
     if cert_bundle.blocks[0].hash != cert_hash:
         log.error("Volume block hash mismatch: %s != %s" % (cert_bundle.blocks[0].hash, cert_hash))
-        return False 
-   
+        return False
+
     if cert_bundle.blocks[0].block_version != volume_cert.volume_version:
         log.error("Volume version mismatch (%s != %s)" % (cert_bundle.blocks[0].block_version, volume_cert.volume_version))
-        return False 
+        return False
 
     if cert_bundle.blocks[0].owner_id != volume_cert.owner_id:
         log.error("Volume owner ID mismatch (%s != %s)" % (cert_bundle.blocks[0].owner_id, volume_cert.owner_id))
         return False
-    
+
     return True
 
 
-def is_gateway_cert_in_bundle( cert_bundle, gateway_cert, check_only_stale=False ):
+def is_gateway_cert_in_bundle(cert_bundle, gateway_cert, check_only_stale=False):
     """
     Is the gateway certificate in the cert bundle?
     """
-    
     for block in cert_bundle.blocks:
 
         if block.block_id != gateway_cert.gateway_id:
             # not for this gateway
-            continue 
+            continue
 
         if block.owner_id != gateway_cert.owner_id:
-            # owner mismatch 
+            # owner mismatch
             log.error("Gateway '%s' owner mismatch: %s != %s" % (gateway_cert.name, str(block.owner_id), str(gateway_cert.owner_id)))
             return False
 
         if gateway_cert.version < block.block_version:
-            # stale 
+            # stale
             log.error("Gateway '%s' is stale (%s < %s)" % (gateway_cert.name, gateway_cert.version, block.block_version))
-            return False 
+            return False
 
         if check_only_stale:
             return True
@@ -573,16 +562,16 @@ def is_gateway_cert_in_bundle( cert_bundle, gateway_cert, check_only_stale=False
         if (gateway_cert.caps | block.caps) != block.caps:
             # caps escalation
             log.error("Gateway '%s' capability escalation: %x != %x" % (gateway_cert.name, block.caps, gateway_cert.caps))
-            return False 
+            return False
 
         # found!
-        return True 
+        return True
 
     log.error("Gateway '%s' (%s) not found" % (gateway_cert.name, gateway_cert.gateway_id))
     return False
 
 
-def gateway_certs_load_cached( config, cert_bundle, exclude=[] ):
+def gateway_certs_load_cached(config, cert_bundle, exclude=[]):
     """
     Load and return the set of valid cached gateway certificates from the cert bundle.
     Don't load the ones in exclude
@@ -593,120 +582,120 @@ def gateway_certs_load_cached( config, cert_bundle, exclude=[] ):
         if block.block_id in exclude:
             continue
 
-        gateway_cert = object_stub.load_gateway_cert( config, block.block_id )
+        gateway_cert = object_stub.load_gateway_cert(config, block.block_id)
         if gateway_cert is None:
             continue
 
-        if is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
-            ret.append( gateway_cert )
+        if is_gateway_cert_in_bundle(cert_bundle, gateway_cert):
+            ret.append(gateway_cert)
 
-    return ret 
+    return ret
 
 
-def user_certs_load_cached( config, user_names_or_ids ):
+def user_certs_load_cached(config, user_names_or_ids):
     """
     Load and return the list of valid cached user certificates from the cert bundle.
     """
     ret = []
     for uid in user_names_or_ids:
-        user_cert = object_stub.load_user_cert( config, uid )
+        user_cert = object_stub.load_user_cert(config, uid)
         if user_cert is None:
             continue
 
-        ret.append( user_cert )
+        ret.append(user_cert)
 
     return ret
 
 
-def list_cert_paths( config, object_type ):
+def list_cert_paths(config, object_type):
     """
     List all certs that we have generated ourselves, for a particular object type
     """
-    cert_dir = conf.object_file_path( config, object_type, "" )
-    listing = os.listdir( cert_dir )
+    cert_dir = conf.object_file_path(config, object_type, "")
+    listing = os.listdir(cert_dir)
     ret = []
 
     for name in listing:
         if name in [".", ".."]:
-            continue 
+            continue
 
         if not name.endswith(".cert"):
-            continue 
+            continue
 
         object_id_str = name[:-5]
         try:
             object_id = int(object_id_str)
-        except:
+        except Exception:
             continue
 
-        ret.append( os.path.join(cert_dir, name ) )
+        ret.append(os.path.join(cert_dir, name))
 
     return ret
 
 
-def list_pkey_paths( config, object_type ):
+def list_pkey_paths(config, object_type):
     """
     List all private keys that we have generated ourselves, for a particular object type
     """
-    pkey_dir = conf.object_file_path( config, object_type, "" )
-    listing = os.listdir( pkey_dir )
+    pkey_dir = conf.object_file_path(config, object_type, "")
+    listing = os.listdir(pkey_dir)
     ret = []
 
     for name in listing:
         if name in [".", ".."]:
-            continue 
+            continue
 
         if not name.endswith(".pkey"):
-            continue 
+            continue
 
-        ret.append( os.path.join(pkey_dir, name))
+        ret.append(os.path.join(pkey_dir, name))
 
     return ret
 
 
-def list_gateway_cert_paths( config ):
+def list_gateway_cert_paths(config):
     """
     List the paths to all locally-generated gateway certs
     """
-    return list_cert_paths( config, "gateway" )
+    return list_cert_paths(config, "gateway")
 
 
-def list_volume_cert_paths( config ):
+def list_volume_cert_paths(config):
     """
     List the paths to all locally-generated volume certs
     """
-    return list_cert_paths( config, "volume" )
+    return list_cert_paths(config, "volume")
 
 
-def list_user_cert_paths( config ):
+def list_user_cert_paths(config):
     """
     List the paths to all locally-generated user certs
     """
-    return list_cert_paths( config, "user" )
+    return list_cert_paths(config, "user")
 
 
-def list_gateway_pkey_paths( config ):
+def list_gateway_pkey_paths(config):
     """
     List the paths to all locally-generated gateway private keys
     """
-    return list_pkey_paths( config, "gateway" )
+    return list_pkey_paths(config, "gateway")
 
 
-def list_volume_pkey_paths( config ):
+def list_volume_pkey_paths(config):
     """
     List the paths to all locally-generated volume private keys
     """
-    return list_pkey_paths( config, "volume" )
+    return list_pkey_paths(config, "volume")
 
 
-def list_user_pkey_paths( config ):
+def list_user_pkey_paths(config):
     """
     List the paths to all locally-generated user private keys
     """
-    return list_pkey_paths( config, "user" )
+    return list_pkey_paths(config, "user")
 
 
-def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
+def get_all_gateway_certs(config, cert_bundle, exclude=[]):
     """
     Get the set of gateway certs for a cert bundle:
     * load up the fresh cached ones from disk
@@ -719,7 +708,6 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
 
     Do not call this method directly.
     """
-
     attempts = 3
     count = 0
     cert_bundle_certs = {}
@@ -727,31 +715,31 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
 
     while count < attempts:
 
-        cached_gateway_certs = gateway_certs_load_cached( config, cert_bundle, exclude=exclude+no_cache )
-        cached_gateways = dict( [ (c.gateway_id, c) for c in cached_gateway_certs ] )
+        cached_gateway_certs = gateway_certs_load_cached(config, cert_bundle, exclude=exclude+no_cache)
+        cached_gateways = dict([ (c.gateway_id, c) for c in cached_gateway_certs ])
 
-        cert_bundle_certs.update( cached_gateways )
+        cert_bundle_certs.update(cached_gateways)
 
         remote_gateway_ids = []
 
         for block in cert_bundle.blocks:
 
             gateway_id = block.block_id
-            gateway_version = block.block_version 
+            gateway_version = block.block_version
 
             if gateway_id in exclude:
-                continue 
+                continue
 
             if gateway_id in cached_gateways.keys():
-                gateway_cert = cached_gateways[ block.block_id ]
+                gateway_cert = cached_gateways[block.block_id]
                 if gateway_cert.version < gateway_version:
                     # cached cert is stale
-                    del cached_gateways[ gateway_id ]
-                    remote_gateway_ids.append( gateway_id )
+                    del cached_gateways[gateway_id]
+                    remote_gateway_ids.append(gateway_id)
 
             else:
-                # not cached 
-                remote_gateway_ids.append( gateway_id )
+                # not cached
+                remote_gateway_ids.append(gateway_id)
 
         # fetch remote
         download_failed = []
@@ -761,25 +749,25 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
             if gateway_id in exclude:
                 continue
 
-            gateway_cert = get_gateway_cert( config, gateway_id, check_cache=False )
+            gateway_cert = get_gateway_cert(config, gateway_id, check_cache=False)
             if gateway_cert is None:
                 log.error("Failed to download gateway cert %s" % gateway_id)
-                download_failed.append( gateway_id )
+                download_failed.append(gateway_id)
 
-            elif not is_gateway_cert_in_bundle( cert_bundle, gateway_cert ):
-                if is_gateway_cert_in_bundle( cert_bundle, gateway_cert, check_only_stale=True ):
+            elif not is_gateway_cert_in_bundle(cert_bundle, gateway_cert):
+                if is_gateway_cert_in_bundle(cert_bundle, gateway_cert, check_only_stale=True):
                     # the case where the downloaded cert is stale
                     # try again
                     log.error("Stale gateway cert: no bundle match for cert for gateway %s" % gateway_id)
-                    missing.append( gateway_id )
+                    missing.append(gateway_id)
             
                 else:
                     # the case where the downloaded cert is invalid
                     log.error("Invalid gateway cert for %s" % gateway_id)
-                    download_failed.append( gateway_id )
-                    missing.append( gateway_id )
+                    download_failed.append(gateway_id)
+                    missing.append(gateway_id)
             else:
-                cert_bundle_certs[ gateway_id ] = gateway_cert
+                cert_bundle_certs[gateway_id] = gateway_cert
 
         if len(missing) == 0 and len(download_failed) == 0:
             # done!
@@ -797,59 +785,59 @@ def get_all_gateway_certs( config, cert_bundle, exclude=[] ):
                 # delay = 2**(count + 1) + random.random() * (2**count)
                 delay = 1.0
                 log.error("Missing: '%s', couldn't download: '%s'.  Trying again in %s seconds" % (",".join([str(g) for g in missing]), ",".join([str(g) for g in download_failed]), delay))
-                time.sleep( delay )
+                time.sleep(delay)
                 continue
 
-    return [ cert_bundle_certs[gateway_id] for gateway_id in cert_bundle_certs.keys() ]
+    return [cert_bundle_certs[gateway_id] for gateway_id in cert_bundle_certs.keys()]
 
 
-def get_all_user_certs( config, user_ids ):
+def get_all_user_certs(config, user_ids):
     """
     Given a list of user IDs
     * load up fresh cached ones from disk
     * fetch any missing ones
-    * verify that they are valid 
+    * verify that they are valid
     Return the list of user certs on success
     Raise an exception on error.
     """
 
-    cached_user_certs = user_certs_load_cached( config, user_ids )
-    cached_users = dict( [(c.user_id, c) for c in cached_user_certs] )
+    cached_user_certs = user_certs_load_cached(config, user_ids)
+    cached_users = dict([(c.user_id, c) for c in cached_user_certs])
 
     remote_user_ids = []
 
     # make sure they're all valid (re-download them otherwise)
     for user_id in user_ids:
-        
+
         if user_id in cached_users.keys():
             user_cert = cached_users[user_id]
-            rc = user_cert_validate( config, user_cert )
+            rc = user_cert_validate(config, user_cert)
             if not rc:
-                # no longer valid 
+                # no longer valid
                 log.warn("Cached cert for user '%s' is no longer valid" % user_cert.email)
-                remote_user_ids.append( user_id )
+                remote_user_ids.append(user_id)
                 del cached_users[user_id]
 
         else:
-            remote_user_ids.append( user_id )
+            remote_user_ids.append(user_id)
 
-    # fetch any non-local certs 
+    # fetch any non-local certs
     for user_id in remote_user_ids:
 
-        user_cert = get_user_cert( config, user_id, check_cache=False )
+        user_cert = get_user_cert(config, user_id, check_cache=False)
         if user_cert is None:
-            raise Exception("Failed to fetch user cert %s" % user_id )
+            raise Exception("Failed to fetch user cert %s" % user_id)
 
-        rc = user_cert_validate( config, user_cert )
+        rc = user_cert_validate(config, user_cert)
         if not rc:
-            raise Exception("Failed to validate cert for %s" % user_id )
+            raise Exception("Failed to validate cert for %s" % user_id)
 
-        cached_users[ user_id ] = user_cert
+        cached_users[user_id] = user_cert
 
-    return [ cached_users[user_id] for user_id in cached_users.keys() ]
+    return [cached_users[user_id] for user_id in cached_users.keys()]
 
 
-def verify_all_gateway_certs( gateway_certs, user_certs, volume_owner_cert ):
+def verify_all_gateway_certs(gateway_certs, user_certs, volume_owner_cert):
     """
     Given a list of all gateway certs and user certs,
     verify that each user signed their respetive
@@ -857,36 +845,36 @@ def verify_all_gateway_certs( gateway_certs, user_certs, volume_owner_cert ):
     """
     user_dict = {}
     for user_cert in user_certs:
-        user_dict[ user_cert.user_id ] = user_cert
+        user_dict[user_cert.user_id] = user_cert
 
     for gateway_cert in gateway_certs:
         # non-anonymous?
         if gateway_cert.owner_id != msconfig.USER_ID_ANON:
-            user_cert = user_dict.get( gateway_cert.owner_id, None )
+            user_cert = user_dict.get(gateway_cert.owner_id, None)
             assert user_cert is not None, "Gateway '%s' has no owner" % (gateway_cert.name)
 
         else:
             user_cert = volume_owner_cert
 
-        rc = verify_user_signature( user_cert, gateway_cert )
+        rc = verify_user_signature(user_cert, gateway_cert)
         assert rc, "Gateway '%s' (%s) not signed by '%s'" % (gateway_cert.name, gateway_cert.owner_id, user_cert.email)
 
     return True
 
 
-def clear_cert_cache( config, volume_name_or_id, gateway_name_or_id ):
+def clear_cert_cache(config, volume_name_or_id, gateway_name_or_id):
     """
     Clear out the cached certs for this gateway.
     """
 
-    cache_dir = cert_cache_dir( config, volume_name_or_id, gateway_name_or_id )
-    if os.path.exists( cache_dir ):
-        shutil.rmtree( cache_dir )
+    cache_dir = cert_cache_dir(config, volume_name_or_id, gateway_name_or_id)
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
 
-    os.makedirs( cache_dir )
+    os.makedirs(cache_dir)
 
 
-def user_is_anonymous( user_name_or_id ):
+def user_is_anonymous(user_name_or_id):
     """
     Determine if the user name or ID corresponds to
     the anonymous user.
@@ -894,7 +882,7 @@ def user_is_anonymous( user_name_or_id ):
 
     try:
         user_name_or_id = int(user_name_or_id)
-    except:
+    except Exception:
         pass
 
     if type(user_name_or_id) in [str, unicode]:
@@ -910,20 +898,19 @@ def user_is_anonymous( user_name_or_id ):
             return False
 
     else:
-        raise "Failed to interpret '%s'" % (str(user_name_or_id))
+        raise Exception("Failed to interpret '%s'" % (str(user_name_or_id)))
 
 
-def store_cert( path, cert, link_path=None ):
+def store_cert(path, cert, link_path=None):
     """
     Store a certificate
     Return True on success.
     Return False on error.
     """
-     
     cert_pb = cert.SerializeToString()
     try:
-        with open( path, "w" ) as f:
-            f.write( cert_pb )
+        with open(path, "w") as f:
+            f.write(cert_pb)
             f.flush()
 
     except Exception, e:
@@ -932,21 +919,21 @@ def store_cert( path, cert, link_path=None ):
         return False
 
     if link_path is not None:
-        if os.path.exists( link_path ):
-            log.error("Link exists: '%s'" % link_path )
-            return False 
+        if os.path.exists(link_path):
+            log.error("Link exists: '%s'" % link_path)
+            return False
 
         try:
-            os.link( path, link_path )
+            os.link(path, link_path)
         except Exception, e:
             log.exception(e)
             log.error("Failed to link '%s' to '%s'" % (path, link_path))
             return False
-            
+
     return True
 
 
-def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id ):
+def certs_reload(config, user_name_or_id, volume_name_or_id, gateway_name_or_id):
     """
     Reload the set of certificates for this volume.
     Succeeds if:
@@ -960,172 +947,171 @@ def certs_reload( config, user_name_or_id, volume_name_or_id, gateway_name_or_id
     Return True on success
     Raise an exception on error
     """
-
-    user_cert = None 
+    user_cert = None
 
     # get user cert, if not anonymous
-    if not user_is_anonymous( user_name_or_id ):
-        user_cert = get_user_cert( config, user_name_or_id )
+    if not user_is_anonymous(user_name_or_id):
+        user_cert = get_user_cert(config, user_name_or_id)
         assert user_cert is not None, "Failed to get user cert for %s" % user_name_or_id
 
-        # validate 
-        rc = user_cert_validate( config, user_cert )
+        # validate
+        rc = user_cert_validate(config, user_cert)
         assert rc, "Failed to validate user cert for %s" % user_name_or_id
 
-    # get cached cert bundle version 
-    volume_cert_bundle_version = load_cert_bundle_version( config, volume_name_or_id, gateway_name_or_id )
+    # get cached cert bundle version
+    volume_cert_bundle_version = load_cert_bundle_version(config, volume_name_or_id, gateway_name_or_id)
     if volume_cert_bundle_version is None:
         log.warning("No cached cert bundle version for volume '%s'" % volume_name_or_id)
         volume_cert_bundle_version = 1
 
-    # get cached volume version 
+    # get cached volume version
     volume_cert_version = 1
-    cached_volume_cert = get_volume_cert( config, volume_name_or_id, download=False )
+    cached_volume_cert = get_volume_cert(config, volume_name_or_id, download=False)
     if cached_volume_cert is not None:
         log.warning("No cached volume cert for volume '%s'" % volume_name_or_id)
         volume_cert_version = cached_volume_cert.volume_version
 
     # get cert bundle
-    cert_bundle = get_cert_bundle( config, volume_name_or_id, volume_cert_version, volume_cert_bundle_version )
+    cert_bundle = get_cert_bundle(config, volume_name_or_id, volume_cert_version, volume_cert_bundle_version)
     assert cert_bundle is not None, "Failed to get cert bundle for %s.%s" % (volume_name_or_id, volume_cert_bundle_version)
-    
-    # get volume owner 
-    volume_owner_cert = get_user_cert( config, cert_bundle.owner_id )
+
+    # get volume owner
+    volume_owner_cert = get_user_cert(config, cert_bundle.owner_id)
     assert volume_owner_cert is not None, "Failed to get volume owner cert for %s" % (volume_name_or_id)
 
-    # verify volume owner 
-    rc = user_cert_validate( config, volume_owner_cert )
+    # verify volume owner
+    rc = user_cert_validate(config, volume_owner_cert)
     assert rc, "Failed to verify volume owner certificate"
 
-    # verify cert bundle 
-    rc = cert_bundle_verify( cert_bundle, volume_owner_cert )
+    # verify cert bundle
+    rc = cert_bundle_verify(cert_bundle, volume_owner_cert)
     assert rc, "Failed to verify cert bundle"
 
     log.debug("Got valid cert bundle for %s (volume_version=%s, cert_bundle_version=%s) from %s" % (volume_name_or_id, cert_bundle.file_version, cert_bundle.mtime_sec, volume_owner_cert.email))
 
     # get the volume cert
-    volume_cert = get_volume_cert( config, volume_name_or_id )
+    volume_cert = get_volume_cert(config, volume_name_or_id)
     if volume_cert is None:
         raise Exception("Failed to fetch volume cert")
 
     if volume_cert.volume_id != cert_bundle.volume_id:
         raise Exception("Volume cert mismatch")
 
-    # verify that it's in the bundle 
-    rc = is_volume_cert_in_bundle( cert_bundle, volume_cert )
-    assert rc, "Volume '%s' not present in cert bundle" % volum_cert.name
+    # verify that it's in the bundle
+    rc = is_volume_cert_in_bundle(cert_bundle, volume_cert)
+    assert rc, "Volume '%s' not present in cert bundle" % volume_cert.name
 
-    # verify the owner signed it 
-    rc = verify_user_signature( volume_owner_cert, volume_cert )
+    # verify the owner signed it
+    rc = verify_user_signature(volume_owner_cert, volume_cert)
     assert rc, "Volume '%s' not signed by owner '%s'" % (volume_cert.name, volume_owner_cert.email)
 
-    # sanity check... 
+    # sanity check...
     assert volume_owner_cert.user_id == volume_cert.owner_id, "Volume cert owner mismatch"
     assert volume_owner_cert.email == volume_cert.owner_email, "Volume cert email mismatch"
 
     log.debug("Got valid volume certificate for %s" % volume_name_or_id)
 
-    # get gateway cert 
-    gateway_cert = get_gateway_cert( config, gateway_name_or_id, check_cache=False )
+    # get gateway cert
+    gateway_cert = get_gateway_cert(config, gateway_name_or_id, check_cache=False)
     assert gateway_cert is not None, "Failed to get gateway certificate"
 
     # verify this user signed it, if not anonymous
     if user_cert is not None:
-        rc = verify_user_signature( user_cert, gateway_cert )
+        rc = verify_user_signature(user_cert, gateway_cert)
         assert rc, "Failed to verify gateway cert for '%s' signed by '%s'" % (gateway_cert.name, user_cert.email)
 
     # otherwise, verify the volume owner did
     else:
-        rc = verify_user_signature( volume_owner_cert, gateway_cert )
+        rc = verify_user_signature(volume_owner_cert, gateway_cert)
         assert rc, "Failed to verify anonymous gateway cert for '%s' signed by '%s'" % (gateway_cert.name, volume_owner_cert.email)
 
     # verify that our gateway cert is present in the cert bundle
-    rc = is_gateway_cert_in_bundle( cert_bundle, gateway_cert )
+    rc = is_gateway_cert_in_bundle(cert_bundle, gateway_cert)
     assert rc, "Gateway '%s' not present in cert bundle" % gateway_cert.name
 
     # get the gateway certs in the bundle, verifying them along the way
-    gateway_certs = get_all_gateway_certs( config, cert_bundle, exclude=[volume_cert.volume_id, gateway_cert.gateway_id] )
+    gateway_certs = get_all_gateway_certs(config, cert_bundle, exclude=[volume_cert.volume_id, gateway_cert.gateway_id])
 
     # get and verify the user certs for each gateway
-    user_certs = get_all_user_certs( config, list( set( filter(lambda owner_id: owner_id != msconfig.USER_ID_ANON, [cert.owner_id for cert in gateway_certs]) ) ) )
+    user_certs = get_all_user_certs(config, list(set(filter(lambda owner_id: owner_id != msconfig.USER_ID_ANON, [cert.owner_id for cert in gateway_certs]))))
 
-    # verify that each user signed their gateway 
-    rc = verify_all_gateway_certs( gateway_certs, user_certs, volume_owner_cert )
+    # verify that each user signed their gateway
+    rc = verify_all_gateway_certs(gateway_certs, user_certs, volume_owner_cert)
     assert rc, "Failed to verify that users own their gateways"
 
-    # clear the cache 
-    clear_cert_cache( config, volume_name_or_id, gateway_name_or_id )
+    # clear the cache
+    clear_cert_cache(config, volume_name_or_id, gateway_name_or_id)
 
     # generate new cache data
     volume_cert_bundle_version = cert_bundle.mtime_sec
-    store_cert_bundle_version( config, volume_name_or_id, gateway_name_or_id, volume_cert_bundle_version )
+    store_cert_bundle_version(config, volume_name_or_id, gateway_name_or_id, volume_cert_bundle_version)
 
     volume_name = volume_cert.name
-    gateway_name = gateway_cert.name 
+    gateway_name = gateway_cert.name
 
     # cache each user, volume, and gateway cert
     # do so by name and by id
     all_user_certs = user_certs
     if volume_owner_cert.user_id not in [c.user_id for c in all_user_certs]:
-        all_user_certs.append( volume_owner_cert )
-    
+        all_user_certs.append(volume_owner_cert)
+
     for cert in all_user_certs:
-        path = cache_cert_path( config, volume_name, gateway_name, "user-%s" % cert.email )
-        link_path = cache_cert_path( config, volume_name, gateway_name, "user-%s" % cert.user_id )
-        
-        rc = store_cert( path, cert, link_path=link_path )
+        path = cache_cert_path(config, volume_name, gateway_name, "user-%s" % cert.email)
+        link_path = cache_cert_path(config, volume_name, gateway_name, "user-%s" % cert.user_id)
+
+        rc = store_cert(path, cert, link_path=link_path)
         assert rc, "Failed to store cert for '%s' to '%s' and '%s'" % (cert.email, path, link_path)
 
     for cert in gateway_certs + [gateway_cert]:
-        path = cache_cert_path( config, volume_name, gateway_name, "gateway-%s" % cert.name )
-        link_path = cache_cert_path( config, volume_name, gateway_name, "gateway-%s" % cert.gateway_id )
+        path = cache_cert_path(config, volume_name, gateway_name, "gateway-%s" % cert.name)
+        link_path = cache_cert_path(config, volume_name, gateway_name, "gateway-%s" % cert.gateway_id)
 
-        rc = store_cert( path, cert, link_path=link_path )
-        assert rc, "Failed to store cert for '%s' to '%s' and '%s'" % (cert.name, path, link_path )
+        rc = store_cert(path, cert, link_path=link_path)
+        assert rc, "Failed to store cert for '%s' to '%s' and '%s'" % (cert.name, path, link_path)
 
-    path = cache_cert_path( config, volume_name, gateway_name, "volume-%s" % volume_cert.name )
-    link_path = cache_cert_path( config, volume_name, gateway_name, "volume-%s" % volume_cert.volume_id )
-    
-    rc = store_cert( path, volume_cert, link_path=link_path )
-    assert rc, "Failed to store cert for '%s' to '%s' and '%s'" % (volume_cert.name, path, link_path )
+    path = cache_cert_path(config, volume_name, gateway_name, "volume-%s" % volume_cert.name)
+    link_path = cache_cert_path(config, volume_name, gateway_name, "volume-%s" % volume_cert.volume_id)
+
+    rc = store_cert(path, volume_cert, link_path=link_path)
+    assert rc, "Failed to store cert for '%s' to '%s' and '%s'" % (volume_cert.name, path, link_path)
 
     # store the bundle as well
-    path = cache_cert_path( config, volume_name, gateway_name, "%s.bundle" % volume_cert.name, suffix='' )
-    with open( path, "w" ) as f:
-        f.write( cert_bundle.SerializeToString() )
+    path = cache_cert_path(config, volume_name, gateway_name, "%s.bundle" % volume_cert.name, suffix='')
+    with open(path, "w") as f:
+        f.write(cert_bundle.SerializeToString())
         f.flush()
 
     return True
 
 
-def driver_reload( config, volume_name, gateway_name ):
+def driver_reload(config, volume_name, gateway_name):
     """
     Download a gateway's driver and cache it locally.
     Looks in the cached cert directory for the gateway cert.
-    This method is meant to be called immediately after 
+    This method is meant to be called immediately after
     a successful call to certs_reload().
 
     Return True on success
-    Raise an exception on failure 
+    Raise an exception on failure
     """
 
-    cached_path = cache_cert_path( config, volume_name, gateway_name, "gateway-%s" % gateway_name )
-    gateway_cert = object_stub.load_gateway_cert( config, gateway_name, path=cached_path )
+    cached_path = cache_cert_path(config, volume_name, gateway_name, "gateway-%s" % gateway_name)
+    gateway_cert = object_stub.load_gateway_cert(config, gateway_name, path=cached_path)
     if gateway_cert is None:
-        raise Exception("No such cert for gateway %s/%s" % (volume_name, gateway_name) )
+        raise Exception("No such cert for gateway %s/%s" % (volume_name, gateway_name))
 
     ms_url = config['MS_url']
     driver_downloader = config['helpers']['fetch_driver']
-    driver_hash = binascii.hexlify( gateway_cert.driver_hash )
-    driver_text = driver_fetch( ms_url, driver_hash, driver_downloader )
+    driver_hash = binascii.hexlify(gateway_cert.driver_hash)
+    driver_text = driver_fetch(ms_url, driver_hash, driver_downloader)
     if driver_text is None:
-        raise Exception("Failed to fetch driver %s from %s" % ( driver_hash, ms_url ) )
+        raise Exception("Failed to fetch driver %s from %s" % (driver_hash, ms_url))
 
-    # save it 
-    cached_path = cache_cert_path( config, volume_name, gateway_name, "driver-%s" % driver_hash, suffix='' )
+    # save it
+    cached_path = cache_cert_path(config, volume_name, gateway_name, "driver-%s" % driver_hash, suffix='')
     try:
         with open(cached_path, "w") as f:
-            f.write( driver_text )
+            f.write(driver_text)
             f.flush()
 
     except Exception, e:

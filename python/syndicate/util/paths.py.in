@@ -15,7 +15,7 @@
    limitations under the License.
 """
 
-# set default paths from the Makefile 
+# set default paths from the Makefile
 fetch_user_cert = "@PREFIX@/lib/syndicate/fetch_user_cert"
 fetch_gateway_cert = "@PREFIX@/lib/syndicate/fetch_gateway_cert"
 fetch_volume_cert = "@PREFIX@/lib/syndicate/fetch_volume_cert"
