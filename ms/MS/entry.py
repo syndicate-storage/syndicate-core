@@ -1193,23 +1193,25 @@ class MSEntry( storagetypes.Object ):
                
                if num_children > parent_ent.capacity / 2:
                   
-                  # try to double the parent capacity 
-                  rc = MSEntry.parent_capacity_try_double( volume_id, parent_id, num_shards, parent_ent.capacity )
+                  # try to double the parent capacity (parent is either over 50% full or we're thrashing)
+                  logging.info("Try to increase capacity of /{}/{} to {}".format(volume_id, parent_id, parent_ent.capacity * 2))
+                  rc = MSEntry.parent_capacity_try_double( volume_id, parent_id, num_shards, parent_ent.capacity * 2 )
                   if rc < 0:
-                     
+                     logging.error("Failed to double capacity of /{}/{} from {} to {} (total insert attempts: {})".format(volume_id, parent_id, parent_ent.capacity, parent_ent.capacity * 2, total_attempt_count))
                      return rc
                   
                   else:
                      parent_capacity = rc
 
-                  logging.debug("doubled capacity of /%s/%s to %s" % (volume_id, parent_id, parent_capacity) )
+                  logging.info("Doubled capacity of /%s/%s to %s" % (volume_id, parent_id, parent_capacity) )
                   
                else:
                   
                   parent_capacity = parent_ent.capacity
                   
                if next_index is None:
-                   
+                  '''
+                  # FIXME: this takes a *lot* of reads
                   # choose a new index
                   free_gaps = MSEntryIndex.FindFreeGaps( volume_id, parent_id, num_children + 1 )
                   
@@ -1218,13 +1220,18 @@ class MSEntry( storagetypes.Object ):
                   
                   else:
                      next_index = random.randint( num_children, parent_capacity - 1 )
+                  '''
+                  # widen with each new attempt
+                  next_index = random.randint(num_children, num_children + total_attempt_count - 1)
+
                
-               # try to allocate a slot 
-               rc, next_dir_index_or_generation = MSEntryIndex.TryInsert( volume_id, parent_id, file_id, next_index, parent_capacity, num_shards )
+               # try to allocate a slot
+               logging.info("/{}/{}: try inserting at {} (num_children={}, attempts={})".format(volume_id, file_id, next_index, num_children, total_attempt_count))
+               rc, next_dir_index_or_generation = MSEntryIndex.TryInsert( volume_id, parent_id, file_id, next_index, parent_capacity, num_shards, num_children, total_attempt_count )
                
                if rc != 0:
                   
-                  logging.debug("Retry inserting /%s/%s (rc = %s)" % (volume_id, file_id, rc) )
+                  logging.error("Retry inserting /%s/%s (rc = %s) (attempts=%s)" % (volume_id, file_id, rc, total_attempt_count) )
                   
                   next_index = next_dir_index_or_generation
                   
@@ -1272,7 +1279,7 @@ class MSEntry( storagetypes.Object ):
          logging.exception(e)
       
       
-      logging.debug("Defer insert /%s/%s" % (volume_id, file_id) )
+      logging.debug("Defer insert /%s/%s (attempts=%s)" % (volume_id, file_id, total_attempt_count) )
       
       # try again--deadline exceeded 
       storagetypes.deferred.defer( MSEntry.IndexPropagate, volume_id, parent_id, file_id, num_shards, int(math.log( parent_capacity + 1, 2 )) + 1, start_time, total_attempt_count, True )
@@ -1280,41 +1287,36 @@ class MSEntry( storagetypes.Object ):
 
 
    @classmethod
-   def parent_capacity_try_double( cls, volume_id, parent_id, num_shards, old_parent_capacity ):
+   def parent_capacity_try_double( cls, volume_id, parent_id, num_shards, new_capacity ):
       """
       Attempt to atomically double the capacity of a directory's index.
       Return the new capacity on success.
       Return -ENOENT if the directory does not exist.
       """
+      parent_cache_key_name = MSEntry.make_key_name( volume_id, parent_id )
+
       def txn():
          # transactionally put the new capacity, but off the critical path 
          parent_base = MSEntry.ReadBase( volume_id, parent_id, use_memcache=False )
          
          if parent_base is None or parent_base.deleted:
             return -errno.ENOENT 
-         
-         if parent_base.capacity != old_parent_capacity:
+        
+         logging.info("Capacity of /{}/{} is currently {}".format(volume_id, parent_id, parent_base.capacity))
+
+         if parent_base.capacity > new_capacity:
+            logging.info("Capacity of /{}/{} is {} (> {})".format(volume_id, parent_id, parent_base.capacity, new_capacity))
             return parent_base.capacity 
-         
-         parent_base.capacity *= 2 
+        
+         logging.info("Set capacity of /{}/{} to {}".format(volume_id, parent_id, new_capacity))
+         parent_base.capacity = new_capacity
          parent_base.put()
          
-         parent_cache_key_name = MSEntry.make_key_name( volume_id, parent_id )
          storagetypes.memcache.delete( parent_cache_key_name )
-         
-         return parent_base.capacity
+         return new_capacity
       
-      new_capacity = storagetypes.transaction( txn )
-      
-      whole_parent = cls.Read( None, parent_id, volume_id=volume_id, num_shards=num_shards )
-      
-      if whole_parent is None:
-         return new_capacity 
-      
-      # update parent write nonce as well, so clients discover it (i.e. only write a new shard)
-      cls.__write_msentry( whole_parent, num_shards )
-      
-      return new_capacity
+      res = storagetypes.transaction( txn )
+      return res
    
    
    @classmethod
@@ -1391,6 +1393,7 @@ class MSEntry( storagetypes.Object ):
 
       parent_cache_key_name = MSEntry.make_key_name( volume_id, parent_id )
       child_cache_key_name = MSEntry.make_key_name( volume_id, child_id )
+      negative_ent_key = child_cache_key_name + "-absent"
 
       try:
          parent_ent = storagetypes.memcache.get( parent_cache_key_name )
@@ -1400,10 +1403,15 @@ class MSEntry( storagetypes.Object ):
          if child_ent is not None:
             return (-errno.EEXIST, None)
          else:
-            child_fut = MSEntry.Read( volume, child_id, futs_only=True )
-            futs.append( child_fut )
-            
+            # negative cache?
+            child_absent = storagetypes.memcache.get(negative_ent_key)
+            if child_absent is None:
+                # checking for existence, so only need base
+                child_fut = MSEntry.ReadBase( volume.volume_id, child_id, async=True )
+                futs.append( child_fut )
+
          if parent_ent is None:
+            # read entire entry so we can cache it
             parent_fut = MSEntry.Read( volume, parent_id, futs_only=True )
             futs.append( parent_fut )
             
@@ -1454,14 +1462,13 @@ class MSEntry( storagetypes.Object ):
          
          return (-errno.EEXIST, None)
       
+      # cache parent on read
+      storagetypes.memcache.set( MSEntry.make_key_name(volume_id, parent_id), parent_ent )
+
       # no namespace collision.  Create the child
-      
-      # cache parent...
-      storagetypes.memcache.add( parent_cache_key_name, parent_ent )
-      
       delete = False 
       index_fut = None 
-      
+
       # need to try/catch timeouts here, so we can queue decrement and rollback on timeout
       try:
          
@@ -1502,19 +1509,25 @@ class MSEntry( storagetypes.Object ):
       
       finally:
          
-         if delete:
-            # roll back on error
-            storagetypes.deferred.defer( MSEntry.undo_create, volume_id, parent_id, volume.num_shards, [nameholder.key, child_ent.key, child_ent.write_shard.key] )
-            
-         else:
-            # increment children count 
-            MSEntry.IndexPropagate( volume_id, parent_id, child_id, volume.num_shards, 5, storagetypes.get_time(), 0, False )
-            
-            
          # invalidate caches
-         storagetypes.memcache.delete_multi( [MSEntry.make_key_name( volume_id, parent_id ) ] )
-         
-      
+         if not delete and ret == 0:
+             parent_ent.num_children += 1
+             storagetypes.memcache.set_multi({
+                 parent_cache_key_name: parent_ent,
+                 child_cache_key_name: child_ent,
+             })
+
+             storagetypes.memcache.delete(negative_ent_key)
+            
+             # increment children count 
+             MSEntry.IndexPropagate( volume_id, parent_id, child_id, volume.num_shards, 5, storagetypes.get_time(), 0, False )
+
+         else:
+             storagetypes.memcache.delete( parent_cache_key_name )
+
+             # roll back on error
+             storagetypes.deferred.defer( MSEntry.undo_create, volume_id, parent_id, volume.num_shards, [nameholder.key, child_ent.key, child_ent.write_shard.key] )
+                
       return (ret, child_ent)
 
 
@@ -2626,10 +2639,12 @@ class MSEntry( storagetypes.Object ):
       ent = storagetypes.memcache.get( ent_cache_key_name )
       if ent is not None:
          if futs_only:
+            logging.warning("/{}/{} is cached".format(volume_id, file_id))
             return MSEntryFutures( base_future=storagetypes.FutureWrapper( ent ), shard_futures=[], num_children_future=MSEntryIndex.GetNumChildren( volume_id, file_id, num_shards, async=True ), num_shards=num_shards )
          else:
+            logging.info("/{}/{} cache HIT".format(volume_id, file_id))
             return ent
-      
+     
       # get the values from the datastore, if they weren't cached 
       futs = {}
       all_futs = []
@@ -2659,7 +2674,14 @@ class MSEntry( storagetypes.Object ):
       ent = ent_fut.get_result()
 
       # cache result
-      storagetypes.memcache.set( ent_cache_key_name, ent )
+      if ent is not None:
+          logging.info("/{}/{}: store to memcache".format(volume_id, file_id))
+          storagetypes.memcache.set( ent_cache_key_name, ent )
+
+      else:
+          # cache negative result 
+          negative_ent_key = ent_cache_key_name + "-absent"
+          storagetypes.memcache.set(negative_ent_key, "1")
       
       return ent
 
