@@ -767,7 +767,7 @@ class Gateway( storagetypes.Object ):
       if gateway:
          g_id = gateway.g_id 
       else:
-         raise Exception("No such Gateway '%s'" % g_name_or_id )
+         return True
       
       key_name = Gateway.make_key_name( g_id=g_id )
       
