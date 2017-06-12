@@ -15,12 +15,11 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
- 
-import sys
-import os
+
 import boto
 import logging
 import errno
+import syndicate.util.gateway as gateway
 
 from boto.s3.key import Key
 
@@ -38,7 +37,7 @@ def get_bucket(bucket_name, secrets):
 
     assert aws_id is not None, "No AWS ID given"
     assert aws_key is not None, "No AWS key given"
-
+   
     try:
         conn = boto.connect_s3(aws_id, aws_key)
     except Exception, e:
@@ -65,7 +64,8 @@ def get_bucket(bucket_name, secrets):
 
 
 #-------------------------
-def write_chunk(chunk_path, chunk_buf, config, secrets):
+def write_chunk(chunk_request, chunk_buf, config, secrets):
+    chunk_path = gateway.request_to_storage_path(chunk_request)
     log.debug("Writing File: " + chunk_path)
 
     assert config is not None, "No config given"
@@ -83,7 +83,7 @@ def write_chunk(chunk_path, chunk_buf, config, secrets):
 
     rc = 0
     try:
-        k.set_contents_from_string(chunk_buf)
+        k.set_contents_from_string( chunk_buf )
         log.debug("Wrote %s to s3" % chunk_path)
 
     except Exception, e:
@@ -95,7 +95,8 @@ def write_chunk(chunk_path, chunk_buf, config, secrets):
 
 
 #-------------------------
-def read_chunk(chunk_path, outfile, config, secrets):
+def read_chunk(chunk_request, outfile, config, secrets):
+    chunk_path = gateway.request_to_storage_path(chunk_request)
     log.debug("Reading File: " + chunk_path)
 
     assert config is not None, "No config given"
@@ -120,13 +121,14 @@ def read_chunk(chunk_path, outfile, config, secrets):
     except Exception, e:
         log.error("Failed to read %s" % chunk_path)
         log.exception(e)
-        rc = -errno.REMOTEIO
+        rc = -errno.EREMOTEIO
 
     return rc
 
 
 #-------------------------
-def delete_chunk(chunk_path, config, secrets):
+def delete_chunk(chunk_request, config, secrets):
+    chunk_path = gateway.request_to_storage_path(chunk_request)
     log.debug("Deleting File: " + chunk_path)
 
     assert config is not None, "No config given"
@@ -149,6 +151,6 @@ def delete_chunk(chunk_path, config, secrets):
     except Exception, e:
         log.error("Failed to delete %s" % chunk_path)
         log.exception(e)
-        rc = -errno.REMOTEIO
+        rc = -errno.EREMOTEIO
 
     return rc
