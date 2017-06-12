@@ -24,7 +24,7 @@ import errno
 
 from boto.s3.key import Key
 
-log = logging.get_logger()
+log = logging.getLogger()
 formatter = logging.Formatter('[%(levelname)s] [%(module)s:%(lineno)d] %(message)s')
 handler_stream = logging.StreamHandler()
 handler_stream.setFormatter(formatter)
