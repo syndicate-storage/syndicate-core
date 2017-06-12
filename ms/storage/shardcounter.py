@@ -21,6 +21,7 @@ import random
 from google.appengine.api import memcache
 from google.appengine.ext import ndb
 
+import logging
 import backends as backend
 
 
@@ -59,11 +60,13 @@ def _get_count_async(name, key_gen, use_memcache=True):
     
     # only cache if it exists at all 
     do_cache = False
-    
+    cached = False
+
     total = None 
     
     if use_memcache:
       total = memcache.get(name)
+      cached = True
       
     if total is None:
         total = 0
@@ -76,7 +79,8 @@ def _get_count_async(name, key_gen, use_memcache=True):
                 
         if do_cache and use_memcache:
             memcache.set(name, total)
-            
+           
+    logging.info("Value of {} is {} (cached: {})".format(name, total, cached))
     raise ndb.Return( total )
 
 
@@ -225,6 +229,8 @@ def _change_async(name, num_shards, value, do_transaction=True, use_memcache=Tru
         
     """
     
+    logging.info("Shard: change {} by {}".format(name, value))
+
     @ndb.tasklet
     def txn():
       
@@ -244,10 +250,10 @@ def _change_async(name, num_shards, value, do_transaction=True, use_memcache=Tru
             memcache.incr( name, delta=value )
          elif value < 0:
             memcache.decr( name, delta=-value )
-      
+
       else:
          memcache.delete( name )
-         
+      
       raise ndb.Return( True )
    
     if do_transaction:

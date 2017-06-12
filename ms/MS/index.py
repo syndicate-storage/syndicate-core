@@ -128,7 +128,7 @@ class MSEntryIndex( storagetypes.Object ):
    
    @classmethod
    @storagetypes.concurrent
-   def __update_or_alloc_async( cls, volume_id, parent_id, file_id, dir_index, generation, alloced ):
+   def __update_or_alloc_async( cls, volume_id, parent_id, file_id, dir_index, generation, alloced, total_attempts ):
       """
       Update or allocate the index node pair and/or set the directory index node's allocation status, asynchronously.
       If the directory index node does not exist, it and its entry index node will be created and the allocation status set accordingly.
@@ -172,14 +172,14 @@ class MSEntryIndex( storagetypes.Object ):
                result = True 
                
             else:
-               logging.error("__update_index_node_async(/%s/%s file_id=%s dir_index=%s alloced=%s) rc = %s" % (volume_id, parent_id, file_id, dir_index, alloced, rc ))
+               logging.error("__update_index_node_async(/%s/%s file_id=%s dir_index=%s alloced=%s) (attempts=%s) rc = %s" % (volume_id, parent_id, file_id, dir_index, alloced, total_attempts, rc ))
                result = False
          
          else:
             
             if alloced and idx.file_id != file_id:
                # collision on insertion
-               logging.error("Directory /%s/%s: collision inserting /%s/%s at %s (occupied by /%s/%s)" % (volume_id, parent_id, volume_id, file_id, dir_index, volume_id, idx.file_id))
+               logging.error("Directory /%s/%s: collision inserting /%s/%s at %s (occupied by /%s/%s) (attempts=%s)" % (volume_id, parent_id, volume_id, file_id, dir_index, volume_id, idx.file_id, total_attempts))
                result = False
                
             else:
@@ -190,14 +190,14 @@ class MSEntryIndex( storagetypes.Object ):
    
    
    @classmethod 
-   def __alloc( cls, volume_id, parent_id, file_id, dir_index, generation, async=False ):
+   def __alloc( cls, volume_id, parent_id, file_id, dir_index, generation, total_attempt_count, async=False ):
       """
       Get or create an allocated index node, for the given directory index.
       Return True if we succeeded.
       Return False if the node already exists for this dir_index value, or the file ID is wrong.
       """
       
-      result_fut = cls.__update_or_alloc_async( volume_id, parent_id, file_id, dir_index, generation, True )
+      result_fut = cls.__update_or_alloc_async( volume_id, parent_id, file_id, dir_index, generation, True, total_attempt_count )
       
       if not async:
          storagetypes.wait_futures( [result_fut] )
@@ -214,7 +214,7 @@ class MSEntryIndex( storagetypes.Object ):
       Return True if we succeeded.
       Return False if the node already exists for this dir_index value, or if it's already freed (or the file ID is wrong)
       """
-      result_fut = cls.__update_or_alloc_async( volume_id, parent_id, file_id, dir_index, -1, False )
+      result_fut = cls.__update_or_alloc_async( volume_id, parent_id, file_id, dir_index, -1, False, 0 )
       
       if not async:
          storagetypes.wait_futures( [result_fut] )
@@ -233,11 +233,11 @@ class MSEntryIndex( storagetypes.Object ):
       counter_name = cls.__parent_child_counter_name( volume_id, parent_id )
       
       if async:
-         fut = shardcounter.increment_async( counter_name, num_shards, do_transaction=do_transaction, use_memcache=False )
+         fut = shardcounter.increment_async( counter_name, num_shards, do_transaction=do_transaction, use_memcache=True )
          return fut
       
       else:
-         shardcounter.increment( counter_name, num_shards, do_transaction=do_transaction, use_memcache=False )
+         shardcounter.increment( counter_name, num_shards, do_transaction=do_transaction, use_memcache=True )
          return 0
       
       
@@ -250,11 +250,11 @@ class MSEntryIndex( storagetypes.Object ):
       counter_name = cls.__parent_child_counter_name( volume_id, parent_id )
       
       if async:
-         fut = shardcounter.decrement_async( counter_name, num_shards, do_transaction=do_transaction, use_memcache=False )
+         fut = shardcounter.decrement_async( counter_name, num_shards, do_transaction=do_transaction, use_memcache=True )
          return fut
       
       else:
-         shardcounter.decrement( counter_name, num_shards, do_transaction=do_transaction, use_memcache=False )
+         shardcounter.decrement( counter_name, num_shards, do_transaction=do_transaction, use_memcache=True )
          return 0
          
    @classmethod 
@@ -340,7 +340,13 @@ class MSEntryIndex( storagetypes.Object ):
                                                    "MSEntryDirEntIndex.alloced =="  : True,
                                                    "MSEntryDirEntIndex.dir_index <": dir_index_cutoff}, async=async, limit=limit )
       
-      gaps = list( set(range(0, dir_index_cutoff)) - set([idx.dir_index for idx in to_compactify]) )
+      alloced = set([idx.dir_index for idx in to_compactify])
+      gaps = []
+      for i in xrange(0, dir_index_cutoff):
+          if i not in alloced:
+              gaps.append(i)
+
+      # gaps = list( set(range(0, dir_index_cutoff)) - set([idx.dir_index for idx in to_compactify]) )
       
       return gaps
    
@@ -481,7 +487,7 @@ class MSEntryIndex( storagetypes.Object ):
          new_dir_idx.dir_index = free_dir_index
          new_entry_dir_idx.dir_index = free_dir_index 
          
-         logging.info( "swap index slot of /%s/%s: slot %s --> slot %s (overwrites %s)" % (volume_id, alloced_file_id, alloced_dir_index, free_dir_index, free_file_id) )
+         logging.warning( "swap index slot of /%s/%s: slot %s --> slot %s (overwrites %s)" % (volume_id, alloced_file_id, alloced_dir_index, free_dir_index, free_file_id) )
          
          yield new_dir_idx.put_async(), new_entry_dir_idx.put_async(), alloced_idx.key.delete_async()
          
@@ -752,6 +758,12 @@ class MSEntryIndex( storagetypes.Object ):
       Return negative on error.
       """
       
+      # get the number of children again--maybe the set expanded up to include us, even if we failed
+      parent_num_children = cls.GetNumChildren( volume_id, parent_id, num_shards )
+      if parent_num_children == new_dir_index:
+          logging.info("Directory /{}/{}: Inserted {} at the end, so nothing to do".format(volume_id, parent_id, new_file_id))
+          return (0, new_dir_index)
+
       # find gaps to swap into that are in range [0, new_dir_index].
       # see if we can get new_dir_index to be beneath the number of children.
       free_gaps = cls.FindFreeGaps( volume_id, parent_id, new_dir_index )
@@ -759,7 +771,6 @@ class MSEntryIndex( storagetypes.Object ):
       if len(free_gaps) == 0:
          logging.info("Directory /%s/%s: no free gaps, so keep /%s/%s at %s" % (volume_id, parent_id, volume_id, new_file_id, new_dir_index))
          return (0, new_dir_index)
-         
       
       # move us there
       free_gap = free_gaps[ random.randint( 0, len(free_gaps) - 1 ) ]
@@ -773,8 +784,6 @@ class MSEntryIndex( storagetypes.Object ):
       # attempt the swap 
       rc = cls.__compactify_swap( volume_id, parent_id, new_file_id, new_dir_index, None, free_gap )
       
-      # get the number of children again--maybe the set expanded up to include us, even if we failed
-      parent_num_children = cls.GetNumChildren( volume_id, parent_id, num_shards )
       
       if rc is None:
          
@@ -860,7 +869,7 @@ class MSEntryIndex( storagetypes.Object ):
    
    
    @classmethod 
-   def TryInsert( cls, volume_id, parent_id, file_id, new_dir_index, parent_capacity, num_shards, async=False ):
+   def TryInsert( cls, volume_id, parent_id, file_id, new_dir_index, parent_capacity, num_shards, num_children, total_attempt_count, async=False ):
       """
       Try to insert a given file ID into its parent's index, atomically.
       Otherwise, it selects a slot at random that is likely to be free
@@ -875,26 +884,31 @@ class MSEntryIndex( storagetypes.Object ):
       @storagetypes.concurrent
       def try_insert( new_dir_index ):
          
-         rc = yield cls.__alloc( volume_id, parent_id, file_id, new_dir_index, generation, async=True )
+         rc = yield cls.__alloc( volume_id, parent_id, file_id, new_dir_index, generation, total_attempt_count, async=True )
          
          if rc:
             
-            # compactify--see if we can shift it closer
-            rc, final_dir_index = cls.__compactify_on_insert( volume_id, parent_id, file_id, new_dir_index, num_shards )
+            if new_dir_index >= num_children:
+                # compactify--see if we can shift it closer
+                rc, final_dir_index = cls.__compactify_on_insert( volume_id, parent_id, file_id, new_dir_index, num_shards )
             
-            if rc == 0:
-               storagetypes.concurrent_return( (0, generation) )
+                if rc == 0:
+                   storagetypes.concurrent_return( (0, generation) )
             
-            elif rc == -errno.EAGAIN:
-               # try again 
-               storagetypes.concurrent_return( (-errno.EAGAIN, final_dir_index) )
+                elif rc == -errno.EAGAIN:
+                   # try again 
+                   storagetypes.concurrent_return( (-errno.EAGAIN, final_dir_index) )
             
+                else:
+                   storagetypes.concurrent_return( (rc, None) )
+
             else:
-               storagetypes.concurrent_return( (rc, None) )
+                logging.info("Directory /{}/{}: inserted {} correctly the first time".format(volume_id, parent_id, file_id))
+                storagetypes.concurrent_return( (0, generation) )
          
          else:
             
-            logging.info("Directory /%s/%s: Failed to insert /%s/%s (capacity %s) at %s; will need to retry" % (volume_id, parent_id, volume_id, file_id, parent_capacity, new_dir_index) )
+            logging.info("Directory /%s/%s: Failed to insert /%s/%s (capacity %s) at %s; will need to retry (attempts=%s)" % (volume_id, parent_id, volume_id, file_id, parent_capacity, new_dir_index, total_attempt_count) )
             
             # probably collided.  Try again, and have the caller pick a different index
             storagetypes.concurrent_return( (-errno.EAGAIN, None) )
@@ -987,10 +1001,10 @@ class MSEntryIndex( storagetypes.Object ):
       num_children_counter = cls.__parent_child_counter_name( volume_id, parent_id )
       
       if async:
-         return shardcounter.get_count_async( num_children_counter, num_shards, use_memcache=False )
+         return shardcounter.get_count_async( num_children_counter, num_shards, use_memcache=True )
       
       else:
-         num_children = shardcounter.get_count( num_children_counter, num_shards, use_memcache=False )
+         num_children = shardcounter.get_count( num_children_counter, num_shards, use_memcache=True )
          return num_children
    
    
@@ -1009,7 +1023,7 @@ class MSEntryIndex( storagetypes.Object ):
       Get the number of children in a directory
       """
       
-      return cls.__num_children_inc( volume_id, parent_id, num_shards, async=async )
+      return cls.__num_children_dec( volume_id, parent_id, num_shards, async=async )
    
    @classmethod 
    def Read( cls, volume_id, parent_id, dir_index, async=False ):
