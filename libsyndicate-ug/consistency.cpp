@@ -2112,11 +2112,13 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
 
       // nope--full download
       method = "ms_client_listdir";
+      SG_debug("ms_client_listdir(%" PRIX64 ", %" PRId64 ", %" PRId64 ")\n", file_id, num_children, capacity);
       rc = ms_client_listdir( ms, file_id, num_children, capacity, &results );
    }
    else {
 
       method = "ms_client_diffdir";
+      SG_debug("ms_client_diffdir(%" PRIX64 ", %" PRId64 ", %" PRId64 ")\n", file_id, num_children, least_unknown_generation + 1);
       rc = ms_client_diffdir( ms, file_id, num_children, least_unknown_generation + 1, &results );
    }
 
