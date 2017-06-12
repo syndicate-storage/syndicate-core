@@ -74,7 +74,7 @@ def write_chunk(chunk_request, chunk_buf, config, secrets):
 
     bucket_name = config['BUCKET']
 
-    bucket = get_bucket(context, bucket_name)
+    bucket = get_bucket(bucket_name, secrets)
     if bucket is None:
         raise Exception("Failed to get bucket")
 
@@ -105,7 +105,7 @@ def read_chunk(chunk_request, outfile, config, secrets):
 
     bucket_name = config['BUCKET']
 
-    bucket = get_bucket(context, bucket_name)
+    bucket = get_bucket(bucket_name, secrets)
     if bucket is None:
         raise Exception("Failed to get bucket")
 
@@ -137,7 +137,7 @@ def delete_chunk(chunk_request, config, secrets):
 
     bucket_name = config['BUCKET']
 
-    bucket = get_bucket(context, bucket_name)
+    bucket = get_bucket(bucket_name, secrets)
     if bucket is None:
         raise Exception("Failed to get bucket")
 
