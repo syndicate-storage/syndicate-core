@@ -54,6 +54,7 @@ static void ms_client_get_dir_download_state_free( struct ms_client_get_dir_down
 // otherwise, use the batch (page) number
 // return 0 on success 
 // return -ENOMEM on OOM 
+// return -EINVAL on invalid arguments
 // return negative on failure to initialize or start the download
 static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t parent_id, int64_t least_unknown_generation, int64_t batch_id, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
    
@@ -70,10 +71,16 @@ static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t 
       // least unknown generation
       url = ms_client_file_listdir_url( client->url, volume_id, ms_client_volume_version( client ), ms_client_cert_version( client ), parent_id, -1, least_unknown_generation );
    }
-   else {
+   else if(batch_id >= 0) {
       
       // page id
       url = ms_client_file_listdir_url( client->url, volume_id, ms_client_volume_version( client ), ms_client_cert_version( client ), parent_id, batch_id, -1 );
+   }
+   else {
+
+      // bug 
+      SG_error("BUG: least_unknown_generation = %" PRId64 ", page_id = %" PRId64 "\n", least_unknown_generation, batch_id);
+      return -EINVAL;
    }
 
    if( url == NULL ) {
@@ -81,6 +88,8 @@ static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t 
       return -ENOMEM;
    }
    
+   SG_debug("Fetch directory /%" PRIu64 "/%" PRIX64 " with %s\n", volume_id, parent_id, url);
+
    // set up download state 
    dlstate = SG_CALLOC( struct ms_client_get_dir_download_state, 1 );
    if( dlstate == NULL ) {
@@ -205,6 +214,8 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
       curl_easy_cleanup( curl );
    }
 
+   *batch_id = dlstate->batch_id;
+
    ms_client_get_dir_download_state_free( dlstate );
    dlstate = NULL;
    
@@ -296,6 +307,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
    int num_downloads_finished = 0;
    CURL* curl = NULL;
    bool aborted = false;
+   bool have_downloads = true;
 
    int i = 0;
    bool diffdir = false; 
@@ -403,6 +415,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       }
       
       num_downloads_finished = 0;
+      have_downloads = true;
 
       // process all completed downloads 
       while( true ) {
@@ -416,13 +429,14 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
               
                SG_debug("Finished %d downloads (rc = %d)\n", num_downloads_finished, rc); 
                rc = 0;
+               have_downloads = false;
                break;
             }
             
             SG_error("md_download_loop_finish rc = %d\n", rc );
             break;
          }
-         
+
          // process it 
          rc = ms_client_get_dir_metadata_end( client, parent_id, dlctx, &children, &batch_id, &num_children_fetched, &max_generation_fetched );
          if( rc != 0 ) {
@@ -433,6 +447,8 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          
          num_downloads_finished ++;
          num_children_downloaded += num_children_fetched;
+
+         SG_debug("Download %p for batch %" PRId64 " fetched %zu children (max generation %" PRId64 ")\n", dlctx, batch_id, num_children_fetched, max_generation_fetched);
 
          if( max_generation_fetched > 0 ) {
              // got at least one child
@@ -453,10 +469,10 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          SG_debug("Fetched %" PRIu64 " (%" PRIu64 " downloaded total)\n", num_children_fetched, num_children_downloaded );
          
          // do we need to switch over to DIFFDIR?
-         if( batch_queue.size() == 0 && num_children > 0 && num_children_downloaded < (unsigned)num_children ) {
+         if( !have_downloads && batch_queue.size() == 0 && num_children > 0 && num_children_downloaded < (unsigned)num_children ) {
             
             // yup
-            SG_debug("Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 "\n", num_children_downloaded, num_children, max_known_generation + 1 );
+            SG_debug("Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 ". Switch to DIFFIDR protocol.\n", num_children_downloaded, num_children, max_known_generation + 1 );
             least_unknown_generation = max_known_generation + 1;
             batch_queue.push( least_unknown_generation );
             diffdir = true;
