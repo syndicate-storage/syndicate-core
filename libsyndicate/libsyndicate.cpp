@@ -2358,6 +2358,7 @@ static int ms_entry_verify_ms_signature( struct ms_client* ms, ms::ms_entry* mse
 }
 
 // verify an ms_entry: the coordinator must have signed it
+// no-op for directories
 // return 0 if the given gateway is known to us, and matches the signature and user
 // return -EAGAIN if the gateway is not on file
 // return -EPERM if the gateway signature is invalid, or the gateway is not owned by the same user
@@ -2367,6 +2368,11 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
    int rc = 0;
    struct ms_gateway_cert* cert = NULL;
    EVP_PKEY* pubkey = NULL;
+
+   // if this is a directory, then the message has already been authenticated 
+   if( msent->type() == MD_ENTRY_DIR ) {
+      return 0;
+   }
 
    // preserve but clear fields set by the MS
    uint64_t num_children = msent->num_children();
