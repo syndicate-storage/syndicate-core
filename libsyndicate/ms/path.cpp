@@ -217,6 +217,7 @@ int ms_client_listing_read_entries( struct ms_client* client, struct md_download
    if( listing.status == MS_LISTING_NONE ) {
       
       // no such file or directory 
+      SG_error("listing of %p: status indicates MS_LISTING_NONE\n", dlctx);
       ms_client_free_listing( &listing );
       *listing_error = MS_LISTING_NONE;
       
@@ -227,6 +228,7 @@ int ms_client_listing_read_entries( struct ms_client* client, struct md_download
    else if( listing.status == MS_LISTING_NOCHANGE ) {
       
       // nothing to do 
+      SG_debug("listing of %p: status indicates MS_LISTING_NOCHANGE\n", dlctx);
       ms_client_free_listing( &listing );
       
       *ents = NULL;
@@ -240,6 +242,7 @@ int ms_client_listing_read_entries( struct ms_client* client, struct md_download
    // have data?
    else if( listing.status == MS_LISTING_NEW ) {
       
+      SG_debug("listing of %p: status indicates MS_LISTING_NEW, with %zu entries\n", dlctx, listing.entries->size());
       if( listing.entries->size() > 0 ) {
          // success!
          struct md_entry* tmp = SG_CALLOC( struct md_entry, listing.entries->size() );
