@@ -149,7 +149,7 @@ class EmailEntry(ndb.Model):
     email_addr = ndb.StringProperty()
     date = ndb.DateTimeProperty(auto_now_add=True)
     password = ndb.TextProperty()
-    user_private_key = ndb.TextProperty()
+    demo_payload = ndb.TextProperty()
 
     @classmethod
     def list_emails(cls):
@@ -251,20 +251,22 @@ class ProvisionHandler(webapp2.RequestHandler):
         if email_entry is None:
             return send_response(self, 404, 'Email not found')
 
-        if email_entry.user_private_key is not None:
+        if email_entry.demo_payload is not None:
             # already set 
             return send_response(self, 202, 'key already set')
 
-        # read user private key
-        user_private_key_data = self.request.POST.get('user_private_key')
-        if user_private_key_data is None:
-            return send_response(self, 401, 'Invalid request: no user key given')
+        # read demo payload 
+        demo_payload = self.request.POST.get('demo_payload')
+        if demo_payload is None:
+            return send_response(self, 401, 'Invalid request: no payload given')
+    
+        # must be JSON
+        try:
+            json.loads(demo_payload)
+        except:
+            return send_response(self, 401, 'Invalid request: not JSON')
 
-        # must be base64
-        if not re.match(BASE64_REGEX, user_private_key_data):
-            return send_response(self, 401, 'Invalid request: user key must be base64-encoded')
-
-        email_entry.user_private_key = user_private_key_data
+        email_entry.demo_payload = demo_payload
         
         # clear password 
         email_entry.password = ""
@@ -287,20 +289,7 @@ class ProvisionHandler(webapp2.RequestHandler):
         if email_entry is None:
             return send_response(self, 401, 'Invalid request')
 
-        user_private_key_data = email_entry.user_private_key
-        if user_private_key_data is None:
-            return send_response(self, 500, 'No user private key found')
-
-        volume_private_key_data = email_entry.volume_private_key
-        if volume_private_key_data is None:
-            return send_response(self, 500, 'No volume private key found')
-
-        private_key_data = json.dumps({
-            'user_private_key': user_private_key_data,
-            'volume_private_key': volume_private_key_data,
-        })
-
-        return send_response(self, 200, private_key_data, content_type='application/json')
+        return send_response(self, 200, email_entry.demo_payload, content_type='application/json')
 
 
 class GreetingsHandler(webapp2.RequestHandler):
