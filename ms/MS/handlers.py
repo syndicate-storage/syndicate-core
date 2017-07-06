@@ -449,6 +449,7 @@ class MSFileHandler(webapp2.RequestHandler):
    def post(self, volume_id_str, volume_version_str, cert_version_str ):
 
       file_post_start = storagetypes.get_time()
+      file_post_pre = file_post_start
       
       volume_id = None
       try:
@@ -472,7 +473,7 @@ class MSFileHandler(webapp2.RequestHandler):
       if status != 200:
          response_user_error( self, status )
          return 
-      
+     
       allowed = file_update_auth( gateway )
       if not allowed:
          logging.error("Failed to authenticate")
@@ -522,6 +523,10 @@ class MSFileHandler(webapp2.RequestHandler):
       
       timing = {}
       
+      file_post_begin = storagetypes.get_time() - file_post_pre
+
+      file_post_operations_pre = storagetypes.get_time()
+
       # carry out the operation(s), and count them
       num_processed = 0
       types = {}
@@ -553,10 +558,13 @@ class MSFileHandler(webapp2.RequestHandler):
             reply.error = -errno.EREMOTEIO
             break
       
+      file_post_operations_total = storagetypes.get_time() - file_post_operations_pre
+      file_post_post = storagetypes.get_time()
+
       logging.info("Processed %s requests (%s)" % (num_processed, types))
       
       # generate the response
-      reply_str = file_update_complete_response( volume, reply )
+      reply_str = file_complete_response( volume, reply )
       
       # turn our timing data into headers
       timing_headers = benchmark_headers( timing )
@@ -565,6 +573,12 @@ class MSFileHandler(webapp2.RequestHandler):
       for h, v in timing_headers.items():
          logging.info( "%s: %s" % (h, v) )
          
+      file_post_end = storagetypes.get_time() - file_post_post
+
+      timing_headers['X-Total-Preprocess-Time'] = str(file_post_begin)
+      timing_headers['X-Total-Operation-Time'] = str(file_post_operations_total)
+      timing_headers['X-Total-Postprocess-Time'] = str(file_post_end)
+
       response_end( self, status, reply_str, "application/octet-stream", timing_headers )
       
       return
