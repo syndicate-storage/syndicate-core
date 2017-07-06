@@ -97,13 +97,15 @@ def response_load_volume_and_gateway( request_handler, volume_id, gateway_id=Non
       logging.error("No volume, gateway, or cert bundle")
       response_user_error( request_handler, 404 )
       return (None, None, None, 404, None)
-   
+  
+   '''
    Volume.SetCache( volume.volume_id, volume )
    VolumeCertBundle.SetCache( volume.volume_id, cert_bundle )
    
    if gateway is not None:
       Gateway.SetCache( gateway.g_id, gateway )
-      
+   '''
+
    # sanity checks
    if (volume.need_gateway_auth()) and (gateway is None or gateway_type is None or signature_b64 is None):
       # required authentication, but we don't have an Authentication header
@@ -193,7 +195,8 @@ def response_begin( request_handler, volume_id ):
    """
    
    timing = {}
-   
+  
+   now = storagetypes.get_time()
    volume, gateway, volume_cert_bundle, status, read_time = response_load_volume_and_gateway( request_handler, volume_id )
    
    # transfer over cert bundle to volume
@@ -201,7 +204,8 @@ def response_begin( request_handler, volume_id ):
       cert_bundle = VolumeCertBundle.Load( volume_cert_bundle )
       volume.cert_bundle = cert_bundle
    
-   timing['request_start'] = read_time 
+   timing['request_start'] = now
+   timing['response_preprocess_time'] = read_time
    
    return (volume, gateway, status, timing)
    
@@ -220,8 +224,10 @@ def response_end( request_handler, status, data, content_type=None, timing=None 
    if timing != None:
       request_total = storagetypes.get_time() - timing['request_start']
       timing['X-Total-Time'] = str(request_total)
+      timing['X-Response-Preprocess-Time'] = str(timing['response_preprocess_time'])
       
       del timing['request_start']
+      del timing['response_preprocess_time']
       
       for (time_header, time) in timing.items():
          request_handler.response.headers[time_header] = time
