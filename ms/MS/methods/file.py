@@ -63,12 +63,13 @@ def file_update_init_response( volume ):
    
    
 # ----------------------------------
-def file_update_complete_response( volume, reply ):
+def file_complete_response( volume, reply ):
    """
    Sign a protobuf ms_reply structure, using Syndicate's private key
    """
    import common.api as api
    
+   '''
    # sign each directory entry in the reply with the Syndicate key,
    # so the MS attests to its index information
    for ent_pb in reply.listing.entries:
@@ -82,8 +83,13 @@ def file_update_complete_response( volume, reply ):
            sigb64 = base64.b64encode( sig )
            
            ent_pb.ms_signature = sigb64
+   '''
    
-   
+   # blank the signature on directories; just sign the whole message
+   for ent_pb in reply.listing.entries:
+       if ent_pb.type == MSENTRY_TYPE_DIR:
+           ent_pb.ms_signature = ""
+
    # sign the entire reply
    reply.signature = ""
    reply_str = reply.SerializeToString()
@@ -209,7 +215,7 @@ def _getattr( owner_id, volume, file_id, file_version, write_nonce ):
       reply.listing.status = ms_pb2.ms_listing.NONE
       
    # sign and deliver
-   return (error, file_update_complete_response( volume, reply ))
+   return (error, file_complete_response( volume, reply ))
 
 
 # ----------------------------------
@@ -267,7 +273,7 @@ def _getchild( owner_id, volume, parent_id, name ):
       reply.listing.status = ms_pb2.ms_listing.NONE
       
    # sign and deliver
-   return (error, file_update_complete_response( volume, reply ))
+   return (error, file_complete_response( volume, reply ))
 
 
 # ----------------------------------
@@ -297,7 +303,7 @@ def _listdir( owner_id, volume, file_id, page_id=None, least_unknown_generation=
       reply.listing.status = ms_pb2.ms_listing.NONE
    
    # sign and deliver
-   return (error, file_update_complete_response( volume, reply ))
+   return (error, file_complete_response( volume, reply ))
    
 
 # ----------------------------------
@@ -734,7 +740,7 @@ def file_xattr_fetchxattrs_response( volume, rc, xattr_names_and_values, xattr_n
           
       reply.xattr_nonce = xattr_nonce
       
-   return file_update_complete_response( volume, reply )
+   return file_complete_response( volume, reply )
 
 
 # ----------------------------------
@@ -903,7 +909,7 @@ def file_vacuum_log_response( volume, rc, log_record ):
       reply.vacuum_ticket.affected_blocks.extend( log_record.affected_blocks )
       reply.vacuum_ticket.signature = log_record.signature
    
-   return file_update_complete_response( volume, reply )
+   return file_complete_response( volume, reply )
 
 
 # ----------------------------------
