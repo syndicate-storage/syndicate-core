@@ -180,7 +180,7 @@ def refresh_emails():
     # find expired
     for email in EMAILS.keys():
         if EMAILS[email]['date'] + LIFETIME < now:
-            expired.append(email['email'])
+            expired.append(email)
 
     log.debug("Got {} new emails, {} expired emails".format(len(new), len(expired)))
 
@@ -208,9 +208,9 @@ def make_provision_plan( new_users, expired_users ):
         'username': user_name
     } for user_name in new_users]
 
-    provision_delete_users = [{
-        'username': user_name
-    } for user_name in expired_users]
+    provision_delete_users = [
+        user_name
+    for user_name in expired_users]
 
     provision_create_volumes = [{
         'name': sanitize_name('demo.volume-{}'.format(user_name)),
@@ -221,21 +221,20 @@ def make_provision_plan( new_users, expired_users ):
         'archive': False
     } for user_name in new_users]
 
-    provision_delete_volumes = [{
-        'name': sanitize_name('demo.volume-{}'.format(user_name))
-    } for user_name in expired_users]
+    provision_delete_volumes = [
+        sanitize_name('demo.volume-{}'.format(user_name))
+    for user_name in expired_users]
 
     provision_create_ug_gateways = [{
-        'name': sanitize_name('demo.gateway-{}'.format(user_name)),
         'volume': sanitize_name('demo.volume-{}'.format(user_name)),
         'owner': user_name,
         'type': 'UG',
         'host': 'localhost',
         'port': UG_PORT,
+        'mode': 'user-filesystem'
     } for user_name in new_users]
 
     provision_create_rg_gateways = [{
-        'name': sanitize_name('demo.gateway-{}'.format(user_name)),
         'volume': sanitize_name('demo.volume-{}'.format(user_name)),
         'owner': user_name,
         'type': 'RG',
@@ -283,7 +282,7 @@ def run_provision_plan(provision_plan):
     config_path = syndicate_config['config_path']
 
     provision_plan_txt = json.dumps(provision_plan)
-    p = subprocess.Popen(["syndicate-amd-server", "-c", config_path, "provision"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+    p = subprocess.Popen(["syndicate-amd-server", "--debug", "-c", config_path, "provision"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
     out, err = p.communicate(provision_plan_txt)
     p.wait()
 
@@ -305,18 +304,57 @@ def upload_keys(new_emails, user_infos):
     Return False if at least one fails
     """
     syndicate_config = conf.get_config_from_argv(sys.argv)
-    pkeys = {}
+    user_bundles = {}
 
+    # make initial user bundles
     for user_name in new_emails:
         user_pkey = storage.load_private_key( syndicate_config, "user", user_name )
         if user_pkey is None:
             log.error("Automount daemon failed to produce key for {}".format(user_name))
             return False
 
-        pkeys[user_name] = {
+        user_cert = object_stub.load_user_cert(syndicate_config, user_name)
+        if user_cert is None:
+            log.error("Automount daemon failed to produce cert for {}".format(user_name))
+            return False
+       
+        ug_name = provisioning.make_gateway_name('demo', 'UG', sanitize_name('volume-{}'.format(user_name)), 'localhost')
+        rg_name = provisioning.make_gateway_name('demo', 'RG', sanitize_name('volume-{}'.format(user_name)), 'localhost')
+
+        ug_pkey = storage.load_private_key( syndicate_config, "gateway", ug_name)
+        if ug_pkey is None:
+            log.error("Automount daemon failed to produce key for {}".format(ug_name))
+            return False
+
+        rg_pkey = storage.load_private_key( syndicate_config, "gateway", rg_name)
+        if rg_pkey is None:
+            log.error("Automount daemon failed to produce key for {}".format(rg_name))
+            return False
+
+        ug_cert = object_stub.load_gateway_cert(syndicate_config, ug_name)
+        if ug_cert is None:
+            log.error("Automount daemon failed to produce cert for {}".format(ug_name))
+            return False
+
+        rg_cert = object_stub.load_gateway_cert(syndicate_config, rg_name)
+        if rg_cert is None:
+            log.error("Automount daemon failed to produce cert for {}".format(rg_name))
+            return False
+
+        # gateway keys for the same volume must be the same, initially
+        if ug_pkey.exportKey() != rg_pkey.exportKey():
+            log.error("Automount daemon did not produce the same initial key for {} and {}".format(ug_name, rg_name))
+            return False
+
+        user_bundles[user_name] = {
             'user_pkey': user_pkey.exportKey(),
+            'user_cert': base64.b64encode(user_cert.SerializeToString()),
+            'ug_cert': base64.b64encode(ug_cert.SerializeToString()),
+            'rg_cert': base64.b64encode(rg_cert.SerializeToString()),
+            'gateway_pkey': ug_pkey.exportKey()
         }
 
+    # encrypt private keys
     for user_info in user_infos:
         user_name = user_info['email']
         user_password = user_info['password']
@@ -326,25 +364,28 @@ def upload_keys(new_emails, user_infos):
         if len(user_password) == 0:
             # skip this user 
             log.debug("Skipping already-processed user {}".format(user_name))
-            del pkeys[user_name]
+            del user_bundles[user_name]
             continue
 
         user_password = base64.urlsafe_b64encode(base64.b64decode(user_password))
+        
+        for keyname in ['user_pkey', 'gateway_pkey']:
+            f = Fernet(user_password)
+            user_bundles[user_name][keyname] = f.encrypt(user_bundles[user_name][keyname])
+            user_bundles[user_name][keyname] = base64.b64encode( base64.urlsafe_b64decode(user_bundles[user_name][keyname]) )
 
-        f = Fernet(user_password)
-        pkeys[user_name]['user_pkey'] = f.encrypt(pkeys[user_name]['user_pkey'])
+    log.debug("Upload key bundles for {} users".format(len(user_bundles.keys())))
 
-        # base64-encode (raw)
-        pkeys[user_name]['user_pkey'] = base64.b64encode( base64.urlsafe_b64decode(pkeys[user_name]['user_pkey']) )
-
-    log.debug("Upload key bundles for {} users".format(len(pkeys.keys())))
-
-    for user_name in pkeys.keys():
+    for user_name in user_bundles.keys():
         # send encrypted keys 
         try:
             log.debug("Upload keys for {}".format(user_name))
-            req = requests.post(SIGNUP_URL + '/provision/{}'.format(urllib.quote(user_name)), headers=make_auth_headers(), 
-                    data={'user_private_key': pkeys[user_name]['user_pkey']})
+            
+            data = {
+                'demo_payload': json.dumps(user_bundles[user_name])
+            }
+
+            req = requests.post(SIGNUP_URL + '/provision/{}'.format(urllib.quote(user_name)), headers=make_auth_headers(), data=data)
 
             if req.status_code != 200:
                 if req.status_code != 202:
@@ -370,7 +411,7 @@ def clear_expired( user_emails ):
     for email in user_emails:
         try:
             log.debug("Delete expired email {}".format(email))
-            req = requests.delete(SIGNUP_EMAIL + '/register?email={}'.format(urllib.quote(email)), headers=make_auth_headers())
+            req = requests.delete(SIGNUP_URL + '/register?email={}'.format(urllib.quote(email)), headers=make_auth_headers())
             if req.status_code != 200:
                 log.error("Failed to expire email {}".format(email))
                 return False
@@ -434,6 +475,11 @@ def step():
     if not res:
         log.error("Failed to clear {} expired email(s)".format(len(expired_emails)))
         return False
+
+    # remember which ones expired 
+    for expired_email in expired_emails:
+        if EMAILS.has_key(expired_email):
+            del EMAILS[expired_email]
 
     # remember which users we successfully activated
     for new_email in new_emails:
