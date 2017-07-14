@@ -13,6 +13,16 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+/**
+ * @file opts.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Provide support for command-line options
+ *
+ * Parse, execute, and print common command-line options available to syndicate-core
+ *
+ */
 
 #include "libsyndicate/private/opts.h"
 #include "libsyndicate/opts.h"
@@ -461,7 +471,42 @@ int md_opts_parse( struct md_opts* opts, int argc, char** argv, int* out_optind,
    return rc;
 }
 
-// print common usage
+/**
+ * @brief md_common_usage()
+ *  Print the common command-line options available.
+ *
+```
+   -u, --username USERNAME
+            Syndicate account username.
+            Pass 'ANONYMOUS' for anonymous access.
+ 
+   -v, --volume VOLUME_NAME
+            Name of the Volume you are going to access
+ 
+   -g, --gateway GATEWAY_NAME
+            Name of this gateway
+ 
+   -m, --MS MS_URL
+            URL to your Metadata Service.
+            Loaded from the Syndicate config file if not given.
+ 
+   -c, --config-file CONFIG_FILE_PATH
+            Path to the config file to use.
+            Default is '~/.syndicate/syndicate.conf'
+ 
+   -f, --foreground
+            Run in the foreground.
+            Don't detach from the controlling TTY, and don't fork.
+            Print all logging information to stdout.
+ 
+   -d, --debug-level DEBUG_LEVEL
+            Debugging level.
+            Pass 0 (the default) for no debugging output.
+            Pass 1 for info messages.
+            Pass 2 for info and debugging messages.
+            Pass 3 for info, debugging, and locking messages.
+```
+ */
 void md_common_usage() {
    fprintf(stderr, "\
 Syndicate required arguments:\n\
@@ -493,3 +538,46 @@ Syndicate optional arguments:\n\
 \n", SG_GATEWAY_ANONYMOUS_USER, SG_DEFAULT_CONFIG_PATH );
 }
 
+/**
+ * @brief md_print_copywrite()
+ *  Copyright information
+ *
+```
+    Copyright 2015 The Trustees of Princeton University
+```
+ */
+void md_print_copywrite() {
+   printf("Copyright 2015 The Trustees of Princeton University\n\n");
+}
+
+/**
+ * @brief md_print_license()
+ *  Licensing information
+ *
+```
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+```
+ */
+void md_print_license() {
+   printf("Licensed under the Apache License, Version 2.0 (the \"License\");\n\
+   you may not use this file except in compliance with the License.\n\
+   You may obtain a copy of the License at\n\
+\n\
+       http://www.apache.org/licenses/LICENSE-2.0\n\
+\n\
+   Unless required by applicable law or agreed to in writing, software\n\
+   distributed under the License is distributed on an \"AS IS\" BASIS,\n\
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n\
+   See the License for the specific language governing permissions and\n\
+   limitations under the License.\n\n");
+}
