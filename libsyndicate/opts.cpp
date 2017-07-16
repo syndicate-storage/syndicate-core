@@ -475,7 +475,6 @@ int md_opts_parse( struct md_opts* opts, int argc, char** argv, int* out_optind,
  * @brief md_common_usage()
  *  Print the common command-line options available.
  *
-```
    -u, --username USERNAME
             Syndicate account username.
             Pass 'ANONYMOUS' for anonymous access.
@@ -505,7 +504,6 @@ int md_opts_parse( struct md_opts* opts, int argc, char** argv, int* out_optind,
             Pass 1 for info messages.
             Pass 2 for info and debugging messages.
             Pass 3 for info, debugging, and locking messages.
-```
  */
 void md_common_usage() {
    fprintf(stderr, "\
@@ -542,9 +540,7 @@ Syndicate optional arguments:\n\
  * @brief md_print_copywrite()
  *  Copyright information
  *
-```
     Copyright 2015 The Trustees of Princeton University
-```
  */
 void md_print_copywrite() {
    printf("Copyright 2015 The Trustees of Princeton University\n\n");
@@ -554,7 +550,6 @@ void md_print_copywrite() {
  * @brief md_print_license()
  *  Licensing information
  *
-```
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -566,7 +561,6 @@ void md_print_copywrite() {
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
  */
 void md_print_license() {
    printf("Licensed under the Apache License, Version 2.0 (the \"License\");\n\
