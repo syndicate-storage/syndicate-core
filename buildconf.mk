@@ -6,6 +6,7 @@ BUILD_BINDIR := $(BUILD)/bin
 BUILD_LIBDIR := $(BUILD)/lib
 BUILD_LIBEXEC_DIR := $(BUILD)/lib/syndicate
 BUILD_INCLUDEDIR := $(BUILD)/include/
+DOXYGEN_FILE ?= ./Doxyfile.cfg
 
 # install environment
 DESTDIR        ?=
