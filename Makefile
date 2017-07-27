@@ -45,6 +45,6 @@ clean:
 docs:
 	git submodule init
 	git submodule update
-	mkdir -p docs/sources
-	if [ ! -d docs/sources/syndicate-core ]; then cp -r syndicate-core docs/sources; fi
+	mkdir -p docs/sources/syndicate-core
+	if [ ! -d docs/sources/syndicate-core/ms ]; then cp -r `find . -maxdepth 1 ! -name "docs" | grep /` docs/sources/syndicate-core; fi
 	cd docs && make docs
