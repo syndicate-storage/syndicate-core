@@ -360,11 +360,15 @@ def export_object_files( config, object_type, object_name_or_id, dest_path ):
     pkey_path = conf.object_base_file_path( config, object_type, object_name + ".pkey" )
     name_cert_path = conf.object_base_file_path( config, object_type, object_name + ".cert" )
     id_cert_path = conf.object_base_file_path( config, object_type, str(object_id) + ".cert" )
+    volume_cert_bundle_path = None
+
+    if object_type == 'volume':
+        volume_cert_bundle_path = conf.object_base_file_path( config, object_type, str(object_id) + '.bundle.version' )
 
     extant_paths = []
     tar_args = []
-    for path in [pkey_path, name_cert_path, id_cert_path]:
-        if os.path.exists( os.path.join(config['config_dir'], path) ):
+    for path in [pkey_path, name_cert_path, id_cert_path, volume_cert_bundle_path]:
+        if path is not None and os.path.exists( os.path.join(config['config_dir'], path) ):
             extant_paths.append(path)
 
     cmd = ("cd \"%s\" && tar cf \"%s.tar\" " % (config['config_dir'], dest_path)) + (" ".join( ["\"%s\"" % p for p in extant_paths] )) + \
