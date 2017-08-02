@@ -39,4 +39,12 @@ clean:
 	$(MAKE) -C libsyndicate-ug clean
 	$(MAKE) -C ms clean
 	$(MAKE) -C python clean
+	if [ -f docs/Makefile ]; then cd docs && make clean; fi
 
+.PHONY: docs
+docs:
+	git submodule init
+	git submodule update
+	mkdir -p docs/sources/syndicate-core
+	if [ ! -d docs/sources/syndicate-core/ms ]; then cp -r `find . -maxdepth 1 ! -name "docs" | grep /` docs/sources/syndicate-core; fi
+	cd docs && make docs
