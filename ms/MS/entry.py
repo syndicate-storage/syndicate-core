@@ -2496,6 +2496,7 @@ class MSEntry( storagetypes.Object ):
       
       # get the directory 
       dirent = MSEntry.Read( volume, file_id )
+      num_children = dirent.num_children
       children = []
    
       # must exist
@@ -2530,30 +2531,34 @@ class MSEntry( storagetypes.Object ):
          
       elif page_id is not None:
          
-         # want a page 
-         logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE) )
-         dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE )
-            
-         # resolve an index node into the MSEntry, and cache both 
-         @storagetypes.concurrent 
-         def walk_index( dir_index ):
-            
-            if dir_index is None:
-               storagetypes.concurrent_return( None )
-            
-            dir_index_node = yield MSEntryIndex.Read( dirent.volume_id, dirent.file_id, dir_index, async=True )
-            
-            if dir_index_node is None:
-               storagetypes.concurrent_return( None )
-            
-            msentry = yield MSEntry.__read_msentry_from_index_async( dir_index_node, volume.num_shards )
-            storagetypes.concurrent_return( msentry )
-         
-         children_futs = [ walk_index(i) for i in dir_indexes ]
-         storagetypes.wait_futures( children_futs )
-         
-         children = [ c.get_result() for c in children_futs ]
-      
+         if num_children < page_id * RESOLVE_MAX_PAGE_SIZE:
+             # off the end of the index
+             children = []
+
+         else:
+             # want a page 
+             logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE)) )
+             dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE ) )
+                
+             # resolve an index node into the MSEntry, and cache both 
+             @storagetypes.concurrent 
+             def walk_index( dir_index ):
+                
+                if dir_index is None:
+                   storagetypes.concurrent_return( None )
+                
+                dir_index_node = yield MSEntryIndex.Read( dirent.volume_id, dirent.file_id, dir_index, async=True )
+                
+                if dir_index_node is None:
+                   storagetypes.concurrent_return( None )
+                
+                msentry = yield MSEntry.__read_msentry_from_index_async( dir_index_node, volume.num_shards )
+                storagetypes.concurrent_return( msentry )
+             
+             children_futs = [ walk_index(i) for i in dir_indexes ]
+             storagetypes.wait_futures( children_futs )
+             
+             children = [ c.get_result() for c in children_futs ] 
       
       children = filter( lambda x: x is not None, children )
       
