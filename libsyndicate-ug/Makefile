@@ -19,12 +19,13 @@ LIBSYNDICATE_UG_SONAME := libsyndicate-ug.so.$(VERSION_MAJOR)
 LIBSYNDICATE_UG_SO := $(BUILD_LIBDIR)/$(LIBSYNDICATE_UG_SONAME)
 LIBSYNDICATE_UG_LIB := $(BUILD_LIBDIR)/$(LIBSYNDICATE_UG_SONAME).$(VERSION_MINOR).$(VERSION_PATCH)
 LIBSYNDICATE_UG_HEADERS := $(patsubst %.h,$(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h,$(HEADERS))
+LIBSYNDICATE_UG_LIBEXEC := $(BUILD_LIBEXEC_DIR)/ug-driver
 
 LIBSYNDICATE_UG_FILES := $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_SO) $(LIBSYNDICATE_UG_LIB)
-LIBSYNDICATE_UG_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG)/%,$(LIBDIR)/%,$(LIBSYNDICATE_UG_FILES))
+LIBSYNDICATE_UG_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG)/%,$(LIBDIR)/%,$(LIBSYNDICATE_UG_FILES)) $(LIBEXECDIR)/ug-driver
 LIBSYNDICATE_UG_HEADERS_INSTALL := $(patsubst $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h,$(INCLUDEDIR)/libsyndicate-ug/%.h,$(LIBSYNDICATE_UG_HEADERS))
 
-all: $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_HEADERS)
+all: $(LIBSYNDICATE_UG) $(LIBSYNDICATE_UG_HEADERS) $(LIBSYNDICATE_UG_LIBEXEC)
 
 $(LIBSYNDICATE_UG_LIB): $(OBJ)
 	@mkdir -p "$(shell dirname "$@")"
@@ -53,6 +54,10 @@ $(BUILD_LIBSYNDICATE_UG)/$(OBJDIR)/%.o : %.cpp
 	@mkdir -p "$(shell dirname "$@")"
 	$(CPP) -o "$@" $(INC) -c "$<" $(DEFS)
 
+$(BUILD_LIBEXEC_DIR)/%: libexec/%
+	@mkdir -p "$(shell dirname "$@")"
+	cp -a "$<" "$@"
+
 .PHONY: install 
 install: $(LIBSYNDICATE_UG_INSTALL) $(LIBSYNDICATE_UG_HEADERS_INSTALL)
 
@@ -61,9 +66,13 @@ $(LIBDIR)/%: $(BUILD_LIBSYNDICATE_UG)/%
 	@rm -f "$@"
 	cp -a "$<" "$@"
 
-$(INCLUDEDIR)/libsyndicate-ug/%.h: $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h
+$(INCLUDEDIR)/libsyndicate-ug/%.h : $(BUILD_LIBSYNDICATE_UG_INCLUDEDIR)/%.h
 	@mkdir -p "$(shell dirname "$@")"
 	cat "$<" > "$@"
+
+$(LIBEXECDIR)/% : $(BUILD_LIBEXEC_DIR)/%
+	@mkdir -p "$(shell dirname "$@")"
+	cp -a "$<" "$@"
 
 .PHONY: clean
 clean:
