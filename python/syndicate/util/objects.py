@@ -781,6 +781,7 @@ def make_volume_cert_bundle(config, volume_owner, volume_name, volume_id=None, n
         return None
 
     if volume_id is None:
+        assert volume_name
         volume_id = load_volume_id(config, volume_name)
         if volume_id is None:
             log.error("Failed to load ID for volume '%s'" % volume_name)
@@ -906,6 +907,44 @@ def make_volume_cert_bundle(config, volume_owner, volume_name, volume_id=None, n
 
     return cert_manifest
     return cert_manifest.SerializeToString()
+
+
+def make_volume_cert_bundle_version( config, volume_name_or_id, volume_cert=None, volume_owner_cert=None, new_gateway_cert=None ):
+    """
+    Create the volume cert bundle from local state.
+    * optionally do so with a new gateway cert, i.e. to process adding/updating a gateway.
+    Return the cert bundle version vector on success
+    Raise on error
+    """
+    assert volume_name or volume_id
+    volume_name_or_id = None
+    
+    if volume_name:
+        volume_name_or_id = volume_name
+    else:
+        volume_name_or_id = volume_id
+        
+    # load volume owner
+    if volume_cert is None:
+        volume_cert = load_volume_cert(config, volume_name_or_id)
+        if volume_cert is None:
+            raise MissingCertException("No volume certificate on file for '%s'" % volume_name_or_id)
+
+    if volume_owner_cert is None:
+        volume_owner_cert = load_user_cert(config, volume_cert.owner_id)
+        if volume_owner_cert is None:
+            raise MissingCertException("No volume owner certificate on file for user '%s'" % volume_cert.owner_id)
+
+    volume_id = volume_cert.volume_id
+
+    # generate a certificate bundle.
+    volume_cert_bundle = make_volume_cert_bundle(config, volume_owner_cert.email, None, volume_id=volume_id, new_gateway_cert=new_gateway_cert)
+    if volume_cert_bundle is None:
+        raise Exception("Failed to generate volume cert bundle for Volume '%s' (Gateway '%s')" % (volume_name_or_id, gateway_name))
+
+    # put cert bundle version, so we can load it later on volume-wide reload
+    volume_cert_versions = get_volume_cert_bundle_version_vector(volume_cert_bundle)
+    return volume_cert_versions
 
 
 def load_gateway_type_aliases(config):
@@ -2509,6 +2548,7 @@ class Gateway(StubObject):
 
         # make cert bundle
         if need_volume_cert_bundle:
+
             # load volume owner
             if volume_cert is None:
                 volume_cert = load_volume_cert(config, volume_name_or_id)

@@ -32,7 +32,7 @@ import syndicate.util.gateway as gateway
 
 import threading
 
-path_queue = None   # will store a queue of ("put"|"delete", path)
+path_queue = None   # will store a queue of ("put"|"delete", path, descend)
 
 def search_datasets( dataset_dir ):
     """
@@ -89,7 +89,7 @@ def driver_init( driver_config, driver_secrets ):
     path_list = search_datasets( dataset_dir )
 
     # add all these
-    path_queue = [("put", p) for p in path_list]
+    path_queue = [("put", p, False) for p in path_list]
     return True
 
 
@@ -124,9 +124,10 @@ def next_dataset( driver_config, driver_secrets ):
 
         next_path = None
         next_cmd = None
+        descend = False
 
         if len(path_queue) > 0:
-            next_cmd, next_path = path_queue[0]
+            next_cmd, next_path, descend = path_queue[0]
             path_queue.pop(0)
 
         if next_path is None:
@@ -161,7 +162,7 @@ def next_dataset( driver_config, driver_secrets ):
                 sb = os.stat(file_path)
                 if sb.st_mtime >= dirsb.st_mtime:
                     gateway.log_debug("Put '%s' as well" % file_path)
-                    path_queue.append( ("put", '/' + next_path.strip("/") + '/' + name) )
+                    path_queue.append( ("put", '/' + next_path.strip("/") + '/' + name, False) )
 
         next_path = '/' + next_path.strip("/")     # do this here since os.path.join won't work with absolute paths
         cmd = None
@@ -298,6 +299,7 @@ def refresh( request, driver_config, driver_secrets ):
         gateway.log_error("Still present: '%s'" % fullpath )
         next_cmd = "update"
 
-    path_queue.append( (next_cmd, next_path) )
+    # search this if it's a directory, but don't search children per se
+    path_queue.append( (next_cmd, next_path, True) )
     return 0
 
