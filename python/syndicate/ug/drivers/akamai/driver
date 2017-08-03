@@ -1,0 +1,24 @@
+#!/usr/bin/env python2
+
+import urlparse
+
+def cdn_url(url, config, secrets):
+    """
+    make the URL accessible via the Akamai CDN prefix
+    """
+    prefix = config.get("CDN_PREFIX", None)
+    assert prefix, "Missing CDN_PREFIX"
+
+    prefix_parts = urlparse.urlparse(prefix)
+    prefix_scheme = None
+    prefix_host = None
+    if len(prefix_parts.scheme) > 0:
+        prefix_scheme = prefix_parts.scheme
+        prefix_host = prefix_parts.netloc
+    else:
+        prefix_scheme = 'http'
+        prefix_host = prefix_parts.path
+
+    url_parts = urlparse.urlparse(url)
+    return '{}://{}/{}{}'.format(prefix_scheme, prefix_host, url_parts.netloc, urlparts.path)
+
