@@ -185,7 +185,11 @@ class MSEntryIndex( storagetypes.Object ):
             else:
                # created/set correctly
                result = True
-      
+     
+      if result:
+          page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_id, dir_index / RESOLVE_PAGE_MAX_SIZE)
+          storagetypes.memcache.delete(page_cache_name)
+
       storagetypes.concurrent_return( result )
    
    
@@ -522,7 +526,11 @@ class MSEntryIndex( storagetypes.Object ):
          
        
       rc_fut = swap( free_file_id )
-      storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name, free_entry_idx_key_name] )
+
+      alloced_cached_page_name = MSEntryIndex.page_cache_name(volume_id, parent_id, alloced_dir_index / RESOLVE_MAX_PAGE_SIZE )
+      free_cached_page_name = MSEntryIndex.page_cache_name(volume_id, parent_id, free_dir_index / RESOLVE_MAX_PAGE_SIZE )
+
+      storagetypes.memcache.delete_multi( [alloced_idx_key_name, alloced_entry_idx_key_name, free_idx_key_name, free_entry_idx_key_name, alloced_cached_page_name, free_cached_page_name] )
 
       if async:
          return rc_fut
@@ -561,7 +569,8 @@ class MSEntryIndex( storagetypes.Object ):
       
       yield ent_key.delete_async(), storagetypes.transaction_async( delete_index_if_unallocated )
       
-      storagetypes.memcache.delete_multi( [idx_key_name, ent_key_name] )
+      cached_page_name = MSEntryIndex.page_cache_name(volume_id, parent_id, dead_dir_index / RESOLVE_MAX_PAGE_SIZE)
+      storagetypes.memcache.delete_multi( [idx_key_name, ent_key_name, cached_page_name] )
       
    
    @classmethod 
@@ -1131,3 +1140,6 @@ class MSEntryIndex( storagetypes.Object ):
          
       return qry
 
+   @classmethod
+   def page_cache_name( cls, volume_id, file_id, page_id ):
+       return 'listdir-{}-{}-{}'.format(volume_id, file_id, page_id)

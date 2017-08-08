@@ -1647,13 +1647,17 @@ class MSEntry( storagetypes.Object ):
       # get the ent
       # try from cache first
       cache_ent_key = MSEntry.make_key_name( volume_id, file_id )
+      futs = []
 
       ent = storagetypes.memcache.get( cache_ent_key )
       if ent == None:
          # not in the cache.  Get from the datastore
          ent_fut = MSEntry.__read_msentry( volume_id, file_id, volume.num_shards, use_memcache=False )
+         storagetypes.wait_futures([ent_fut])
          ent = ent_fut.get_result()
 
+         futs.append(futs)
+    
       if ent == None or ent.deleted:
          return (-errno.ENOENT, None)
 
@@ -1691,9 +1695,17 @@ class MSEntry( storagetypes.Object ):
      
       # write the update
       ent_fut = MSEntry.__write_msentry( ent, volume.num_shards, async=True, **write_attrs )
+      ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, file_id, async=True)
+
+      futs = [ent_fut, ent_idx_fut]
+      storagetypes.wait_futures( futs )
       
-      storagetypes.wait_futures( [ent_fut] )
-      
+      ent_idx = ent_idx_fut.get_result()
+
+      # invalidate cached directory page
+      page_cache_name = MSEntryIndex.page_cache_name(volume_id, ent_idx.parent_id, ent_idx.dir_index)
+      storagetypes.delete(page_cache_name)
+
       ent = ent_fut.get_result()
       return (0, ent)
 
@@ -1771,8 +1783,19 @@ class MSEntry( storagetypes.Object ):
          
          return (0, ent)
       
-      
       rc, ent = storagetypes.transaction( lambda: chcoord_txn( file_id, current_coordinator_id, volume, gateway, **write_attrs ), xg=True )
+      if rc == 0:
+         ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, file_id, async=True)
+
+         futs = [ent_idx_fut]
+         storagetypes.wait_futures( futs )
+      
+         ent_idx = ent_idx_fut.get_result()
+
+         # invalidate cached directory page
+         page_cache_name = MSEntryIndex.page_cache_name(volume_id, ent_idx.parent_id, ent_idx.dir_index)
+         storagetypes.delete(page_cache_name)
+
       return (rc, ent)
       
    
@@ -2137,11 +2160,25 @@ class MSEntry( storagetypes.Object ):
           old_nameholder_key = storagetypes.make_key( MSEntryNameHolder, MSEntryNameHolder.make_key_name( volume_id, src_parent_id, overwritten_name ) )
           storagetypes.deferred.defer( MSEntry.delete_all, [old_nameholder_key] )
       
+      # uncache directory pages
+      src_ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, src_file_id, async=True)
+      dest_ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, dest_file_id, async=True)
+
+      futs.append(src_ent_idx_fut)
+      futs.append(dest_ent_idx_fut)
+
       # wait for the operation to complete
       storagetypes.wait_futures( futs )
       
+      src_ent_idx = src_ent_idx_fut.get_result()
+      dest_ent_idx = dest_ent_idx_fut.get_result()
+
+      # invalidate cached directory page
+      src_page_cache_name = MSEntryIndex.page_cache_name(volume_id, src_ent_idx.parent_id, src_ent_idx.dir_index)
+      dest_page_cache_name = MSEntryIndex.page_cache_name(volume_id, dest_ent_idx.parent_id, dest_ent_idx.dir_index)
+
       # clean up cache
-      storagetypes.memcache.delete_multi( cache_delete )
+      storagetypes.memcache.delete_multi( cache_delete + [src_page_cache_name, dest_page_cache_name] )
      
       return (rc, dest)
       
@@ -2333,7 +2370,18 @@ class MSEntry( storagetypes.Object ):
          ret = MSEntry.__delete_finish( volume, parent_ent, ent )
       else:
          ret = rc
-         
+        
+      if ret == 0:
+          # purge pages
+          ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, file_id, async=True)
+          futs = [ent_idx_fut]
+
+          storagetypes.wait_futures(futs)
+
+          ent_idx = ent_idx_fut.get_result()
+          page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_ent.file_id, ent_idx.dir_index)
+          storagetypes.memcache.delete(page_cache_name)
+
       return ret
 
 
@@ -2473,7 +2521,7 @@ class MSEntry( storagetypes.Object ):
          
       storagetypes.concurrent_return( msentry )
       
-   
+
    @classmethod
    def ListDir( cls, volume, file_id, page_id=None, least_unknown_generation=None ):
       """
@@ -2527,41 +2575,51 @@ class MSEntry( storagetypes.Object ):
             storagetypes.concurrent_return( msentry )
             
          children = index_query.map( walk_index, limit=RESOLVE_MAX_PAGE_SIZE )
-         
+         children = filter( lambda x: x is not None, children )
          
       elif page_id is not None:
          
-         if num_children < page_id * RESOLVE_MAX_PAGE_SIZE:
-             # off the end of the index
-             children = []
+         page_key_name = MSEntryIndex.page_cache_name(volume.volume_id, file_id, page_id)
+         children = storagetypes.memcache.get(page_key_name)
+         
+         if children is None:
+             # load children
+             if num_children < page_id * RESOLVE_MAX_PAGE_SIZE:
+                 # off the end of the index
+                 children = []
 
+             else:
+                 # want a page 
+                 logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE)) )
+                 dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE ) )
+                    
+                 # resolve an index node into the MSEntry, and cache both 
+                 @storagetypes.concurrent 
+                 def walk_index( dir_index ):
+                    
+                    if dir_index is None:
+                       storagetypes.concurrent_return( None )
+                    
+                    dir_index_node = yield MSEntryIndex.Read( dirent.volume_id, dirent.file_id, dir_index, async=True )
+                    
+                    if dir_index_node is None:
+                       storagetypes.concurrent_return( None )
+                    
+                    msentry = yield MSEntry.__read_msentry_from_index_async( dir_index_node, volume.num_shards )
+                    storagetypes.concurrent_return( msentry )
+                 
+                 children_futs = [ walk_index(i) for i in dir_indexes ]
+                 storagetypes.wait_futures( children_futs )
+                 
+                 children = [ c.get_result() for c in children_futs ] 
+
+             children = filter( lambda x: x is not None, children )
+
+             # cache the page
+             storagetypes.memcache.set(page_key_name, children) 
          else:
-             # want a page 
-             logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE)) )
-             dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE ) )
-                
-             # resolve an index node into the MSEntry, and cache both 
-             @storagetypes.concurrent 
-             def walk_index( dir_index ):
-                
-                if dir_index is None:
-                   storagetypes.concurrent_return( None )
-                
-                dir_index_node = yield MSEntryIndex.Read( dirent.volume_id, dirent.file_id, dir_index, async=True )
-                
-                if dir_index_node is None:
-                   storagetypes.concurrent_return( None )
-                
-                msentry = yield MSEntry.__read_msentry_from_index_async( dir_index_node, volume.num_shards )
-                storagetypes.concurrent_return( msentry )
-             
-             children_futs = [ walk_index(i) for i in dir_indexes ]
-             storagetypes.wait_futures( children_futs )
-             
-             children = [ c.get_result() for c in children_futs ] 
-      
-      children = filter( lambda x: x is not None, children )
-      
+             logging.info("/%s/%s page=%s CACHE HIT" % (dirent.volume_id, dirent.file_id, page_id))
+
       logging.info("/%s/%s page=%s l.u.g.=%s: num_children=%s capacity=%s" % (dirent.volume_id, dirent.file_id, page_id, least_unknown_generation, len(children), dirent.capacity) )
       
       return (0, children)
