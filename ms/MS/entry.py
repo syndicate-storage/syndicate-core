@@ -2306,7 +2306,11 @@ class MSEntry( storagetypes.Object ):
         
       # compactify the parent's directory index
       MSEntryIndex.Delete( volume_id, parent_id, ent_idx.file_id, ent_idx.dir_index, volume.num_shards, compactify_continuation=MSEntry.__compactify_continuation_uncache )
-      
+     
+      # uncache page
+      page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_ent.file_id, ent_idx.dir_index)
+      storagetypes.memcache.delete(page_cache_name)
+
       storagetypes.concurrent_return( 0 )
       
       
@@ -2371,17 +2375,6 @@ class MSEntry( storagetypes.Object ):
       else:
          ret = rc
         
-      if ret == 0:
-          # purge pages
-          ent_idx_fut = MSEntryIndex.ReadIndex(volume_id, file_id, async=True)
-          futs = [ent_idx_fut]
-
-          storagetypes.wait_futures(futs)
-
-          ent_idx = ent_idx_fut.get_result()
-          page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_ent.file_id, ent_idx.dir_index)
-          storagetypes.memcache.delete(page_cache_name)
-
       return ret
 
 

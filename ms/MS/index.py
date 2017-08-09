@@ -26,6 +26,7 @@ import logging
 import random
 import os
 
+import random
 import types
 import errno
 import time
@@ -187,7 +188,7 @@ class MSEntryIndex( storagetypes.Object ):
                result = True
      
       if result:
-          page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_id, dir_index / RESOLVE_PAGE_MAX_SIZE)
+          page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_id, dir_index / RESOLVE_MAX_PAGE_SIZE)
           storagetypes.memcache.delete(page_cache_name)
 
       storagetypes.concurrent_return( result )
@@ -417,7 +418,6 @@ class MSEntryIndex( storagetypes.Object ):
                      return -errno.ESTALE
                   
                else:
-                  
                   logging.info("/%s/%s: file id of /%s/%s at %s is %s\n" % (volume_id, parent_id, volume_id, parent_id, free_dir_index, free_idx.file_id) )
                   
       
@@ -643,13 +643,14 @@ class MSEntryIndex( storagetypes.Object ):
       """
       
       old_max_cutoff = None
-      refresh_attempts = 5  # in case there are no children to swap
+      max_attempts = 5
+      refresh_attempts = max_attempts  # in case there are no children to swap
       
       while refresh_attempts >= 0:
          
          # refresh the index max cutoff--it may have changed
          # the cutoff is the new number of children, after this entry has been deleted
-         parent_max_cutoff = cls.GetNumChildren( volume_id, parent_id, num_shards ) - 1
+         parent_max_cutoff = cls.GetNumChildren( volume_id, parent_id, num_shards ) # - 1
          if parent_max_cutoff is None:
             
             # directory doesn't exist anymore...nothing to compactify 
@@ -720,7 +721,7 @@ class MSEntryIndex( storagetypes.Object ):
             # TODO: can loop forever?
             logging.info("__compactify_child_delete( /%s/%s index=%s threshold=%s ) rc = %s" % (volume_id, parent_id, free_dir_index, parent_max_cutoff, replaced_dir_index))
             refresh_attempts -= 1
-            time.sleep(1)   # see if the datacenter will catch up
+            time.sleep(max_attempts * random.random() + max_attempts)   # see if the datacenter will catch up
             continue 
          
          else:
@@ -947,7 +948,8 @@ class MSEntryIndex( storagetypes.Object ):
          if not rc:
             logging.error("Failed to free index node /%s/%s (%s,%s)" % (volume_id, parent_id, file_id, dir_index))
             storagetypes.concurrent_return( -errno.EAGAIN )
-         
+        
+         logging.info("Index Delete /{}/{}/{} at {}, retry={}".format(volume_id, parent_id, file_id, dir_index, retry))
          cls.__compactify_on_delete( volume_id, parent_id, file_id, dir_index, num_shards, retry=retry, compactify_continuation=compactify_continuation )
          
          storagetypes.concurrent_return( 0 )
@@ -1100,7 +1102,7 @@ class MSEntryIndex( storagetypes.Object ):
                if idx is not None and idx.alloced:
                   MSEntryIndex.SetCache( idx )
                
-               if not idx.alloced:
+               if idx is not None and not idx.alloced:
                   storagetypes.concurrent_return( None )
                
                storagetypes.concurrent_return( idx )
