@@ -1704,7 +1704,7 @@ class MSEntry( storagetypes.Object ):
 
       # invalidate cached directory page
       page_cache_name = MSEntryIndex.page_cache_name(volume_id, ent_idx.parent_id, ent_idx.dir_index)
-      storagetypes.delete(page_cache_name)
+      storagetypes.memcache.delete(page_cache_name)
 
       ent = ent_fut.get_result()
       return (0, ent)
@@ -2174,11 +2174,17 @@ class MSEntry( storagetypes.Object ):
       dest_ent_idx = dest_ent_idx_fut.get_result()
 
       # invalidate cached directory page
-      src_page_cache_name = MSEntryIndex.page_cache_name(volume_id, src_ent_idx.parent_id, src_ent_idx.dir_index)
-      dest_page_cache_name = MSEntryIndex.page_cache_name(volume_id, dest_ent_idx.parent_id, dest_ent_idx.dir_index)
+      src_page_cache_name = None
+      dest_page_cache_name = None
+
+      if src_ent_idx:
+          src_page_cache_name = MSEntryIndex.page_cache_name(volume_id, src_ent_idx.parent_id, src_ent_idx.dir_index)
+
+      if dest_ent_idx:
+          dest_page_cache_name = MSEntryIndex.page_cache_name(volume_id, dest_ent_idx.parent_id, dest_ent_idx.dir_index)
 
       # clean up cache
-      storagetypes.memcache.delete_multi( cache_delete + [src_page_cache_name, dest_page_cache_name] )
+      storagetypes.memcache.delete_multi( filter(lambda x: x is not None, cache_delete + [src_page_cache_name, dest_page_cache_name]) )
      
       return (rc, dest)
       

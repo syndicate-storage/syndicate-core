@@ -26,7 +26,6 @@ import logging
 import random
 import os
 
-import random
 import types
 import errno
 import time

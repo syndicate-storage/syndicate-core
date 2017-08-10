@@ -506,9 +506,9 @@ def file_update( reply, gateway, volume, update, async=False ):
    except Exception, e:
       
       logging.error("file_update(async=%s) raised an exception" % async)
-      
+      logging.exception(e)
+
       if async:
-         logging.exception(e)
          
          # stop trying 
          raise storagetypes.deferred.PermanentTaskFailure()
