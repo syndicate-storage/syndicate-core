@@ -1254,6 +1254,12 @@ class MSEntry( storagetypes.Object ):
                   
                   logging.debug("\n=== Inserted /%s/%s into /%s/%s (attempts=%s) (deferred=%s) (time=%s)\n" % (volume_id, file_id, volume_id, parent_id, total_attempt_count, was_deferred, storagetypes.get_time() - start_time) )
                   
+                  # invalidate cached directory page
+                  page_cache_name = MSEntryIndex.page_cache_name(volume_id, parent_id, next_index)
+                  ent_cache_key_name = MSEntry.make_key_name(volume_id, parent_id)
+                  negative_ent_key = ent_cache_key_name + "-absent"
+
+                  storagetypes.memcache.delete_multi([page_cache_name, negative_ent_key])
                   return 0
          
             except storagetypes.TransactionFailedError, tfe:
