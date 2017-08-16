@@ -21,6 +21,7 @@
 char const MD_HTTP_NOMSG[128] = "\n";
 char const MD_HTTP_200_MSG[128] = "OK\n";
 char const MD_HTTP_302_MSG[128] = "Redirect\n";
+char const MD_HTTP_304_MSG[128] = "Not Modified\n";
 char const MD_HTTP_400_MSG[128] = "Bad Request\n";
 char const MD_HTTP_401_MSG[128] = "Invalid authorization credentials\n";
 char const MD_HTTP_403_MSG[128] = "Credentials required\n";
@@ -48,6 +49,11 @@ static char const* md_HTTP_response_builtin_text( int status ) {
       
       case 200: {
          page = MD_HTTP_200_MSG;
+         break;
+      }
+
+      case 304: {
+         page = MD_HTTP_304_MSG;
          break;
       }
       
