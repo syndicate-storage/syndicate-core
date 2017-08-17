@@ -1504,8 +1504,8 @@ class MSEntry( storagetypes.Object ):
             fut = MSEntryIndex.NumChildrenInc( volume_id, parent_id, volume.num_shards, async=True )
             futs.append( fut )
          
-            # wait for operations to finish...
-            storagetypes.wait_futures( futs )
+         # wait for operations to finish...
+         storagetypes.wait_futures( futs )
          
       except storagetypes.RequestDeadlineExceededError:
          
