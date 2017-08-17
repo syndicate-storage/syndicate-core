@@ -555,6 +555,14 @@ int SG_server_HTTP_HEAD_handler( struct md_HTTP_connection_data* con_data, struc
    
    int rc = 0;
    
+   // if there's an if-modified-since header, then we always acknowledge with 304.
+   // this is because manifests and chunks are immutable
+   char const* if_modified_since = md_HTTP_header_lookup(con_data->headers, "If-Modified-Since");
+   if( if_modified_since != NULL ) {
+      rc = md_HTTP_create_response_builtin( resp, 304 );
+      return rc;
+   }
+
    // parse the request
    rc = SG_request_data_parse( &reqdat, con_data->url_path );
    if( rc != 0 ) {
@@ -1046,17 +1054,17 @@ int SG_server_HTTP_GET_handler( struct md_HTTP_connection_data* con_data, struct
     
    int rc = 0;
 
-   // ping request?
-   if( strcmp(con_data->url_path, "/PING") == 0 ) {
-      rc = md_HTTP_create_response_builtin( resp, 200 );
-      return rc;
-   }
-
    // if there's an if-modified-since header, then we always acknowledge with 304.
    // this is because manifests and chunks are immutable
    char const* if_modified_since = md_HTTP_header_lookup(con_data->headers, "If-Modified-Since");
    if( if_modified_since != NULL ) {
       rc = md_HTTP_create_response_builtin( resp, 304 );
+      return rc;
+   }
+
+   // ping request?
+   if( strcmp(con_data->url_path, "/PING") == 0 ) {
+      rc = md_HTTP_create_response_builtin( resp, 200 );
       return rc;
    }
 
