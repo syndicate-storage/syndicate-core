@@ -402,7 +402,6 @@ static int SG_server_redirect_request( struct SG_gateway* gateway, struct md_HTT
       if( rc != 0 ) {
          
          // failed to generate header 
-         
          SG_safe_free( url );
          SG_request_data_free( &entity_info );
          
@@ -841,15 +840,6 @@ int SG_server_HTTP_GET_block( struct SG_gateway* gateway, struct SG_request_data
       SG_error("SG_gateway_cached_block_put_raw_async rc = %d\n", rc );
       return md_HTTP_create_response_builtin( resp, 500 );
    }
-  
-   // CDNs can cache (put a bogus but old date)
-   rc = md_HTTP_header_add( resp, "Last-Modified", "Sat, 01 Jul 2017 00:00:00 GMT" );
-   if( rc != 0 ) {
-      
-      SG_chunk_free( &block );
-      SG_error("md_HTTP_header_add rc = %d\n", rc );
-      return md_HTTP_create_response_builtin( resp, 500 );
-   }
       
    return md_HTTP_create_response_ram_nocopy( resp, "application/octet-stream", 200, block_dup.data, block_dup.len );
 }
@@ -887,7 +877,7 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
    EVP_PKEY* gateway_private_key = SG_gateway_private_key( gateway );
 
    SG_IO_hints io_hints;
-   
+  
    // sanity check 
    if( gateway->impl_get_manifest == NULL ) {
       
@@ -1024,17 +1014,7 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
       SG_error("SG_gateway_cached_manifest_put_raw_async rc = %d\n", rc );
       return md_HTTP_create_response_builtin( resp, 500 );
    }
-    
-   // CDNs can cache (put a bogus but old date)
-   rc = md_HTTP_header_add( resp, "Last-Modified", "Sat, 01 Jul 2017 00:00:00 GMT" );
-   if( rc != 0 ) {
-      
-      SG_chunk_free( &serialized_manifest );
-      SG_chunk_free( &serialized_manifest_resp );
-      SG_error("md_HTTP_header_add rc = %d\n", rc );
-      return md_HTTP_create_response_builtin( resp, 500 );
-   }
-
+  
    // reply with the signed, serialized manifest!
    return md_HTTP_create_response_ram_nocopy( resp, "application/octet-stream", 200, serialized_manifest_resp.data, serialized_manifest_resp.len );
 }

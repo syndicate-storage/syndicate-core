@@ -171,6 +171,14 @@ static int md_HTTP_default_send_response( struct MHD_Connection* connection, int
       return MHD_NO;
    }
 
+   // CDNs can cache (put a bogus but old date)
+   rc = MHD_add_response_header( response, "Last-Modified", "Sat, 01 Jul 2017 00:00:00 GMT" );
+   if( rc != MHD_YES ) {
+      
+      MHD_destroy_response( response );
+      return MHD_NO;
+   }
+
    rc = MHD_queue_response( connection, status_code, response );
    if( rc != MHD_YES ) {
       
@@ -329,6 +337,16 @@ static int md_HTTP_send_response( struct MHD_Connection* connection, struct md_H
    if( rc != MHD_YES ) {
       
       // OOM 
+      MHD_destroy_response( resp->resp );
+      md_HTTP_response_free( resp );
+      SG_safe_free( resp );
+      return MHD_NO;
+   }
+
+   // CDNs can cache (put a bogus but old date)
+   rc = MHD_add_response_header( resp->resp, "Last-Modified", "Sat, 01 Jul 2017 00:00:00 GMT" );
+   if( rc != MHD_YES ) {
+      
       MHD_destroy_response( resp->resp );
       md_HTTP_response_free( resp );
       SG_safe_free( resp );
