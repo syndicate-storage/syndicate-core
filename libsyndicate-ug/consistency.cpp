@@ -1863,6 +1863,8 @@ int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* f
 static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_path_dir, struct fskit_entry* dent, struct md_entry* ents, size_t num_ents, struct timespec* keep_cutoff ) {
 
    int rc = 0;
+   int type = 0;
+
    char* fs_path = NULL;
    size_t max_name_len = 0;
 
@@ -1870,6 +1872,11 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
    struct fskit_core* fs = UG_state_fs( ug );
    struct fskit_dir_entry** existing = NULL;
    uint64_t num_existing = 0;
+
+   int64_t ctime_sec = 0;
+   int32_t ctime_nsec = 0;
+
+   struct timespec ctime;
 
    // set up the fs_path buffer
    for( size_t i = 0; i < num_ents; i++ ) {
@@ -1902,54 +1909,65 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
 
       struct fskit_entry* fent = fskit_dir_find_by_name( dent, ent->name );
 
-      int64_t ctime_sec = 0;
-      int32_t ctime_nsec = 0;
-
-      struct timespec ctime;
-
       if( fent != NULL ) {
 
          fskit_fullpath( fs_path_dir, ent->name, fs_path );
 
          fskit_entry_wlock( fent );
+         
+         // is this entry still active?
+         type = fskit_entry_get_type(fent);
+         if( type == FSKIT_ENTRY_TYPE_DEAD || fskit_entry_get_deletion_in_progress(fent) ) {
+             SG_debug("Child '%s' is dead already\n", ent->name);
+             
+             rc = fskit_entry_try_garbage_collect(fs, fs_path, dent, fent);
+             if( rc == 0 ) {
+                // not destroyed yet
+                fskit_entry_unlock(fent);
+             }
 
-         // do we replace?
-         // when was this entry created?
-         fskit_entry_get_ctime( fent, &ctime_sec, &ctime_nsec );
-
-         ctime.tv_sec = ctime_sec;
-         ctime.tv_nsec = ctime_nsec;
-
-         if( md_timespec_diff_ms( &ctime, keep_cutoff ) < 0 ) {
-
-            SG_debug("Reload child '%s' with new listing\n", ent->name);
-
-            // fent was created before the reload, and is in conflict.  reload
-            rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, ent->name, ent );
-            if( rc < 0 ) {
-
-               SG_error("UG_consistency_inode_reload('%s') rc = %d\n", fs_path, rc );
-
-               // try to soldier on...
-               rc = 0;
-
-               fskit_entry_unlock( fent );
-            }
-            else if( rc == 0 ) {
-
-               // reloaded, but not replaced
-               fskit_entry_unlock( fent );
-            }
+             fent = NULL;
          }
+         
+         if( fent != NULL ) {
+            // do we replace?
+            // when was this entry created?
+            fskit_entry_get_ctime( fent, &ctime_sec, &ctime_nsec );
 
-         else {
+            ctime.tv_sec = ctime_sec;
+            ctime.tv_nsec = ctime_nsec;
 
-            // preserve this entry
-            SG_debug("Preserve child '%s' with existing listing\n", ent->name);
-            fskit_entry_unlock( fent );
+            if( md_timespec_diff_ms( &ctime, keep_cutoff ) < 0 ) {
+
+               SG_debug("Reload child '%s' with new listing\n", ent->name);
+
+               // fent was created before the reload, and is in conflict.  reload
+               rc = UG_consistency_inode_reload( gateway, fs_path, dent, fent, ent->name, ent );
+               if( rc < 0 ) {
+
+                  SG_error("UG_consistency_inode_reload('%s') rc = %d\n", fs_path, rc );
+
+                  // try to soldier on...
+                  rc = 0;
+
+                  fskit_entry_unlock( fent );
+               }
+               else if( rc == 0 ) {
+
+                  // reloaded, but not replaced
+                  fskit_entry_unlock( fent );
+               }
+            }
+
+            else {
+
+               // preserve this entry
+               SG_debug("Preserve child '%s' with existing listing\n", ent->name);
+               fskit_entry_unlock( fent );
+            }
          }
       }
-      else {
+      if( fent == NULL ) {
 
          // insert this entry
          fent = fskit_entry_new();
@@ -1982,7 +2000,7 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
       }
    }
 
-   // find the children that are no longer present, and remove them
+   // find the children that are no longer present, and older than the remove time, and remove them
    existing = fskit_listdir_locked(fs, dent, &num_existing, &rc);
    if( existing == NULL ) {
       SG_error("fskit_listdir_locked('%s') rc = %d\n", fs_path_dir, rc);
@@ -1999,13 +2017,13 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
       // absent now?
       if( ent_listing_names.find(string(dirent->name)) == ent_listing_names.end() ) {
         
-         SG_debug("Entry '%s' is no longer present.  Removing...\n", dirent->name);
-
          struct fskit_entry* child = fskit_dir_find_by_name(dent, dirent->name);
          if( child == NULL ) {
             SG_debug("Already absent: '%s'\n", dirent->name);
             continue;
          }
+
+         SG_debug("Entry '%s' is no longer present.  Removing...\n", dirent->name);
 
          char* fp = fskit_fullpath(fs_path_dir, dirent->name, NULL);
          if( fp == NULL ) {
