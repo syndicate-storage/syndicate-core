@@ -2596,7 +2596,7 @@ class MSEntry( storagetypes.Object ):
              else:
                  # want a page 
                  logging.info("Query page, entries %s - %s" % (page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1) * RESOLVE_MAX_PAGE_SIZE)) )
-                 dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE ) )
+                 dir_indexes = range( page_id * RESOLVE_MAX_PAGE_SIZE, min(num_children, (page_id + 1)* RESOLVE_MAX_PAGE_SIZE ) + 1 )
                     
                  # resolve an index node into the MSEntry, and cache both 
                  @storagetypes.concurrent 
