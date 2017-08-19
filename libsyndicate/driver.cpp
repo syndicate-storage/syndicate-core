@@ -318,6 +318,7 @@ static int SG_parse_json_b64_string( struct json_object* toplevel_obj, char cons
 // A "secrets" field is an base64-encoded *encrypted* string that decrypts to a JSON object that maps string keys to string values.
 //    The ciphertext gets verified with the given public key, and decrypted with the given private key.  It gets parsed to an SG_driver_secrets_t.
 // A "driver" field is a base64-encoded binary string that encodes some gateway-specific functionality.
+// NOTE: no secrets will be parsed if the keys are null (e.g. if this is an anonymous gateway)
 // return 0 on success, and populate *driver
 // return -ENOMEM on OOM
 static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, size_t driver_full_len, EVP_PKEY* pubkey, EVP_PKEY* privkey ) {
@@ -361,9 +362,9 @@ static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, s
       }
    }
    
-   // get the driver secrets JSON 
+   // get the driver secrets JSON, if we have a public key. 
    secrets_b64 = SG_load_json_string_by_key( toplevel_obj, "secrets", &secrets_b64_len );
-   if( secrets_b64 != NULL || secrets_b64_len != 0 ) {
+   if( pubkey != NULL && privkey != NULL && (secrets_b64 != NULL || secrets_b64_len != 0) ) {
       
       // load it 
       rc = SG_parse_driver_secrets( pubkey, privkey, &driver_secrets, secrets_b64, secrets_b64_len );
