@@ -20,5 +20,5 @@ def cdn_url(url, config, secrets):
         prefix_host = prefix_parts.path
 
     url_parts = urlparse.urlparse(url)
-    return '{}://{}/{}{}'.format(prefix_scheme, prefix_host, url_parts.netloc, urlparts.path)
+    return '{}://{}/{}{}'.format(prefix_scheme, prefix_host, url_parts.netloc, url_parts.path)
 
