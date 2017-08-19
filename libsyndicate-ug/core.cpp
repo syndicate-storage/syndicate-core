@@ -20,8 +20,8 @@
 #include "fs.h"
 #include "vacuumer.h"
 
-#define UG_DRIVER_NUM_ROLES  5
-#define UG_DRIVER_NUM_INSTANCES 5
+#define UG_DRIVER_NUM_ROLES  3
+#define UG_DRIVER_NUM_INSTANCES 3
 char const* UG_DRIVER_ROLES[ UG_DRIVER_NUM_ROLES ] = {
    "cdn_url",
    "serialize",
