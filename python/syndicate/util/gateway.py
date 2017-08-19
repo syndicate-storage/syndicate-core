@@ -698,14 +698,16 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
         do_fail(2)
 
     # secrets_str should be a JSON dict
-    try:
-        SECRETS = json.loads(secrets_str)
-    except Exception, e:
-        log_error("Failed to load secrets")
-        log_error(traceback.format_exc())
+    # secrets_str can be an empty string
+    if secrets_str:
+        try:
+            SECRETS = json.loads(secrets_str)
+        except Exception, e:
+            log_error("Failed to load secrets")
+            log_error(traceback.format_exc())
 
-        # tell the parent that we failed
-        do_fail(2)
+            # tell the parent that we failed
+            do_fail(2)
 
     # driver should be a set of methods
     driver_mod = imp.new_module("driver_mod")
