@@ -23,11 +23,9 @@
 #define UG_DRIVER_NUM_ROLES  5
 #define UG_DRIVER_NUM_INSTANCES 5
 char const* UG_DRIVER_ROLES[ UG_DRIVER_NUM_ROLES ] = {
-   "cdn",
+   "cdn_url",
    "serialize",
-   "deserialize",
-   "get_chunk",
-   "put_chunk"
+   "deserialize"
 };
 
 // global UG state
