@@ -1405,15 +1405,15 @@ int SG_proc_start( struct SG_proc* proc, char const* exec_path, char const* exec
       proc->exec_env = exec_env_dup;
       proc->fout = fout;
 
-      if( config == NULL ) {
+      if( config == NULL || config->len == 0 ) {
          config = &empty_json;
       }
 
-      if( secrets == NULL ) {
+      if( secrets == NULL || secrets->len == 0 ) {
          secrets = &empty_json;
       }
 
-      if( driver == NULL ) {
+      if( driver == NULL || driver->len == 0 ) {
          driver = &empty_json;
       }
 

@@ -690,7 +690,7 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
     try:
         CONFIG = json.loads(config_str)
     except Exception, e:
-        log_error("Failed to load config")
+        log_error("Failed to load config '{}'".format(config_str))
         log_error("'%s'" % config_str)
         log_error(traceback.format_exc())
 
@@ -701,7 +701,7 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
     try:
         SECRETS = json.loads(secrets_str)
     except Exception, e:
-        log_error("Failed to load secrets")
+        log_error("Failed to load secrets '{}'".format(config_str))
         log_error(traceback.format_exc())
 
         # tell the parent that we failed
