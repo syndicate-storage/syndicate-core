@@ -1011,7 +1011,7 @@ def update_gateway( g_name_or_id, **kw ):
            caps = block.caps
            break
    
-   if not present:
+   if not present and gateway_cert.owner_id != USER_ID_ANON:
        raise Exception("Gateway '%s' is not in cert bundle for Volume '%s'" % (gateway.name, volume.name))
    
    # caps can decrease, but not increase (unless we're the volume owner)
