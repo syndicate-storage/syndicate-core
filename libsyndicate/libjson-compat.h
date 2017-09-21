@@ -14,7 +14,15 @@
    limitations under the License.
 */
 
-// include the right libjson headers
+/**
+ * @file libsyndicate/libjson-compat.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Include the proper libjson headers
+ *
+ * Under Debian include json-c/json.h, otherwise include json/json.h 
+ */
 
 #ifdef _DISTRO_DEBIAN 
 #include <json-c/json.h>

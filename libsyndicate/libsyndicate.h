@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/libsyndicate.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for libsyndicate
+ *
+ * @see libsyndicate/libsyndicate.cpp
+ */
+
 #ifndef _LIBSYNDICATE_H_
 #define _LIBSYNDICATE_H_
 
@@ -73,41 +83,45 @@ using namespace std;
 #define SG_DEFAULT_CONFIG_DIR   "~/.syndicate"
 #define SG_DEFAULT_CONFIG_PATH  "~/.syndicate/syndicate.conf"
 
-// metadata entry (represents a file or a directory)
+/**
+ * @brief Metadata entry
+ *
+ * Represents a file or a directory
+ */
 struct md_entry {
-   int type;            // file or directory?
-   char* name;          // name of this entry
-   uint64_t file_id;    // id of this file
-   int64_t ctime_sec;   // creation time (seconds)
-   int32_t ctime_nsec;  // creation time (nanoseconds)
-   int64_t mtime_sec;   // last-modified time (seconds)
-   int32_t mtime_nsec;  // last-modified time (nanoseconds)
-   int64_t manifest_mtime_sec;  // manifest last-mod time (actual last-write time, regardless of utime) (seconds)
-   int32_t manifest_mtime_nsec; // manifest last-mod time (actual last-write time, regardless of utime) (nanoseconds)
-   int64_t write_nonce; // last-write nonce
-   int64_t xattr_nonce; // xattr write nonce
-   int64_t version;     // file version
-   int32_t max_read_freshness;      // how long is this entry fresh until it needs revalidation?
-   int32_t max_write_freshness;     // how long can we delay publishing this entry?
-   uint64_t owner;         // ID of the User that owns this File
-   uint64_t coordinator;  // ID of the Gateway that coordinatates writes on this File
-   uint64_t volume;        // ID of the Volume
-   mode_t mode;         // file permission bits
-   off_t size;          // size of the file
-   int32_t error;       // error information with this md_entry
-   int64_t generation;  // n, as in, the nth item to ever be created in the parent directory
-   int64_t num_children; // number of children this entry has (if it's a directory)
-   int64_t capacity;    // maximum index number a child can have (i.e. used by listdir())
+   int type;                    ///< File or directory?
+   char* name;                  ///< Name of this entry
+   uint64_t file_id;            ///< ID of this file
+   int64_t ctime_sec;           ///< Creation time (seconds)
+   int32_t ctime_nsec;          ///< Creation time (nanoseconds)
+   int64_t mtime_sec;           ///< Last-modified time (seconds)
+   int32_t mtime_nsec;          ///< Last-modified time (nanoseconds)
+   int64_t manifest_mtime_sec;  ///< Manifest last-mod time (actual last-write time, regardless of utime) (seconds)
+   int32_t manifest_mtime_nsec; ///< Manifest last-mod time (actual last-write time, regardless of utime) (nanoseconds)
+   int64_t write_nonce;         ///< Last-write nonce
+   int64_t xattr_nonce;         ///< Xattr write nonce
+   int64_t version;             ///< File version
+   int32_t max_read_freshness;  ///< How long is this entry fresh until it needs revalidation?
+   int32_t max_write_freshness; ///< How long can we delay publishing this entry?
+   uint64_t owner;              ///< ID of the User that owns this File
+   uint64_t coordinator;        ///< ID of the Gateway that coordinatates writes on this File
+   uint64_t volume;             ///< ID of the Volume
+   mode_t mode;                 ///< File permission bits
+   off_t size;                  ///< Size of the file
+   int32_t error;               ///< Error information with this md_entry
+   int64_t generation;          ///< N, as in, the nth item to ever be created in the parent directory
+   int64_t num_children;        ///< Number of children this entry has (if it's a directory)
+   int64_t capacity;            ///< Maximum index number a child can have (i.e. used by listdir())
 
-   unsigned char* ent_sig;      // signature over this entry from the coordinator, as well as any ancillary data below
-   size_t ent_sig_len;
+   unsigned char* ent_sig;      ///< Signature over this entry from the coordinator, as well as any ancillary data below
+   size_t ent_sig_len;          ///< Size of signature ent_sig
 
    // ancillary data: not always filled in
 
-   uint64_t parent_id;  // id of this file's parent directory
+   uint64_t parent_id;          ///< ID of this file's parent directory
 
    // putxattr, removexattr only (and only from the coordinator)
-   unsigned char* xattr_hash;   // hash over (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value))
+   unsigned char* xattr_hash;   ///< Hash over (volume ID, file ID, xattr_nonce, sorted(xattr name, xattr value))
 };
 
 #define MD_ENTRY_INITIALIZED( ent ) ((ent).type != 0 && (ent).name != NULL)
@@ -128,84 +142,86 @@ struct md_entry {
    } while( 0 );
 
 
-// server configuration
+/**
+ * @brief Server configuration
+ */
 struct md_syndicate_conf {
 
    // paths
-   char* config_file_path;                            // *absolute* path to the config file.
-   char* volumes_path;                                // path to the directory containing volume keys and certs
-   char* gateways_path;                               // path to the directory containing gateway keys and certs
-   char* users_path;                                  // path to the directory containing user keys and certs
-   char* drivers_path;                                // path to the directory containing drivers
-   char* syndicate_path;                              // path to the directory containing Syndicate public keys
-   char* logs_path;                                   // path to the logfile directory to store gateway logs
-   char* data_root;                                   // root of the path where we store local file blocks.  $data_root/staging is a special directory for holding dirty blocks yet to be replicated.
-   char* certs_root;                                  // path to the *root* directory containing cached certs from other users, volumes, and gateways.
-   char* certs_path;                                  // path to the *gateway-specific* directory containing cached certs.  Derived from certs_root; set at runtime.
-   char* ipc_root;                                    // path to any temporary driver state (IPC objects like UNIX domain sockets or named pipes)
+   char* config_file_path;                            ///< *Absolute* path to the config file.
+   char* volumes_path;                                ///< Path to the directory containing volume keys and certs
+   char* gateways_path;                               ///< Path to the directory containing gateway keys and certs
+   char* users_path;                                  ///< Path to the directory containing user keys and certs
+   char* drivers_path;                                ///< Path to the directory containing drivers
+   char* syndicate_path;                              ///< Path to the directory containing Syndicate public keys
+   char* logs_path;                                   ///< Path to the logfile directory to store gateway logs
+   char* data_root;                                   ///< Root of the path where we store local file blocks.  $data_root/staging is a special directory for holding dirty blocks yet to be replicated.
+   char* certs_root;                                  ///< Path to the *root* directory containing cached certs from other users, volumes, and gateways.
+   char* certs_path;                                  ///< Path to the *gateway-specific* directory containing cached certs.  Derived from certs_root; set at runtime.
+   char* ipc_root;                                    ///< Path to any temporary driver state (IPC objects like UNIX domain sockets or named pipes)
 
    // command-line options
-   char* volume_name;                                 // name of the volume we're connected to
-   char* gateway_name;                                // name of this gateway
-   char* ms_username;                                 // MS username for this user
+   char* volume_name;                                 ///< Name of the volume we're connected to
+   char* gateway_name;                                ///< Name of this gateway
+   char* ms_username;                                 ///< MS username for this user
 
    // gateway fields
-   int32_t default_read_freshness;                    // default number of milliseconds a file can age before needing refresh for reads
-   int32_t default_write_freshness;                   // default number of milliseconds a file can age before needing refresh for writes
-   bool gather_stats;                                 // gather statistics or not?
-   int max_read_retry;                                // maximum number of times to retry a read (i.e. fetching a block or manifest) before considering it failed
-   int max_write_retry;                               // maximum number of times to retry a write (i.e. replicating a block or manifest) before considering it failed
-   int max_metadata_read_retry;                       // maximum number of times to retry a metadata read before considering it failed
-   int max_metadata_write_retry;                      // maximum number of times to retry a metadata write before considering it failed
-   int connect_timeout;                               // number of seconds to wait to connect for data
-   int transfer_timeout;                              // how long a manifest/block transfer is allowed to take (in seconds)
-   bool verify_peer;                                  // whether or not to verify the gateway server's SSL certificate with peers (if using HTTPS to talk to them)
-   uint64_t cache_size_limit;                         // soft limit on the size in bytes of the cache
-   char* metadata_url;                                // MS url
-   uint64_t config_reload_freq;                       // how often do we check for a new configuration from the MS?
+   int32_t default_read_freshness;                    ///< Default number of milliseconds a file can age before needing refresh for reads
+   int32_t default_write_freshness;                   ///< Default number of milliseconds a file can age before needing refresh for writes
+   bool gather_stats;                                 ///< Gather statistics or not?
+   int max_read_retry;                                ///< Maximum number of times to retry a read (i.e. fetching a block or manifest) before considering it failed
+   int max_write_retry;                               ///< Maximum number of times to retry a write (i.e. replicating a block or manifest) before considering it failed
+   int max_metadata_read_retry;                       ///< Maximum number of times to retry a metadata read before considering it failed
+   int max_metadata_write_retry;                      ///< Maximum number of times to retry a metadata write before considering it failed
+   int connect_timeout;                               ///< Number of seconds to wait to connect for data
+   int transfer_timeout;                              ///< How long a manifest/block transfer is allowed to take (in seconds)
+   bool verify_peer;                                  ///< Whether or not to verify the gateway server's SSL certificate with peers (if using HTTPS to talk to them)
+   uint64_t cache_size_limit;                         ///< Soft limit on the size in bytes of the cache
+   char* metadata_url;                                ///< MS url
+   uint64_t config_reload_freq;                       ///< How often do we check for a new configuration from the MS?
 
    // cert and key processors
-   char* certs_reload_helper;                         // command to go reload and revalidate all certificates
-   char* driver_reload_helper;                        // command to go reload and revalidate the driver
-   char** helper_env;                                 // environment variables to pass
-   size_t num_helper_envs;
-   size_t max_helper_envs;
+   char* certs_reload_helper;                         ///< Command to go reload and revalidate all certificates
+   char* driver_reload_helper;                        ///< Command to go reload and revalidate the driver
+   char** helper_env;                                 ///< Environment variables to pass
+   size_t num_helper_envs;                            ///< Number of environment variables
+   size_t max_helper_envs;                            ///< Maximum number of environment variables
 
    // debug
-   int debug_lock;                                    // print verbose information on locks
+   int debug_lock;                                    ///< Print verbose information on locks
 
    // security fields (loaded at runtime).
    // private keys are all mlock'ed
-   char* gateway_key;                                 // gateway private key (PEM format)
-   size_t gateway_key_len;
+   char* gateway_key;                                 ///< Gateway private key (PEM format)
+   size_t gateway_key_len;                            ///< Size of gateway private key
 
    // set at runtime
-   mode_t usermask;                                   // umask of the user running this program
-   char* hostname;                                    // what's our hostname?
-   int portnum;                                       // Syndicate-side port number
-   uint64_t owner;                                    // what is our user ID in Syndicate?  Files created in this UG will assume this UID as their owner
-   uint64_t gateway;                                  // what is our gateway ID?
-   uint64_t volume;                                   // what is our volume ID?
-   uint64_t gateway_type;                             // type of gateway
-   int64_t cert_bundle_version;                       // the version of the cert bundle (obtained during initialization and kept in sync through config reloads)
-   int64_t gateway_version;                           // the version of this gateway's cert (obtained during initialization and kept in sync through config reloads)
-   int64_t volume_version;                            // the version of the volume (obtained during initialization and kept in sync through config reloads)
-   uint64_t blocksize;                                // the size in blocks for this volume.  Loaded at runtime.
-   char* content_url;                                 // what is the URL under which local data can be accessed publicly?.  Must end in /
+   mode_t usermask;                                   ///< Umask of the user running this program
+   char* hostname;                                    ///< What's our hostname?
+   int portnum;                                       ///< Syndicate-side port number
+   uint64_t owner;                                    ///< What is our user ID in Syndicate?  Files created in this UG will assume this UID as their owner
+   uint64_t gateway;                                  ///< What is our gateway ID?
+   uint64_t volume;                                   ///< What is our volume ID?
+   uint64_t gateway_type;                             ///< Type of gateway
+   int64_t cert_bundle_version;                       ///< The version of the cert bundle (obtained during initialization and kept in sync through config reloads)
+   int64_t gateway_version;                           ///< The version of this gateway's cert (obtained during initialization and kept in sync through config reloads)
+   int64_t volume_version;                            ///< The version of the volume (obtained during initialization and kept in sync through config reloads)
+   uint64_t blocksize;                                ///< The size in blocks for this volume.  Loaded at runtime.
+   char* content_url;                                 ///< What is the URL under which local data can be accessed publicly?.  Must end in /
 
-   char* driver_exec_path;                            // what is the path to the driver to execute?
-   char** driver_roles;                               // what are the different role(s) this gateway's driver takes on?
-   size_t num_driver_roles;
+   char* driver_exec_path;                            ///< What is the path to the driver to execute?
+   char** driver_roles;                               ///< What are the different role(s) this gateway's driver takes on?
+   size_t num_driver_roles;                           ///< Number of different roles for this driver
 
-   char* user_pubkey_pem;                             // Syndicate User public key (PEM format) (if the private key is given, this will be generated from it)
-   size_t user_pubkey_pem_len;
-   EVP_PKEY* user_pubkey;
-   char* volume_pubkey_pem;                           // volume metadata public key (PEM format).  Corresponds to the volume owner's public key
-   size_t volume_pubkey_pem_len;
-   EVP_PKEY* volume_pubkey;
+   char* user_pubkey_pem;                             ///< Syndicate User public key (PEM format) (if the private key is given, this will be generated from it)
+   size_t user_pubkey_pem_len;                        ///< Size of user public key
+   EVP_PKEY* user_pubkey;                             ///< Structure containing user public key and used by OpenSSL functions
+   char* volume_pubkey_pem;                           ///< Volume metadata public key (PEM format).  Corresponds to the volume owner's public key
+   size_t volume_pubkey_pem_len;                      ///< Volume metadata public key size
+   EVP_PKEY* volume_pubkey;                           ///< Structure containing volume public key and used by OpenSSL functions
 
    // misc
-   bool is_client;                                    // if true, then the gateway is anonymous and cannot send messages
+   bool is_client;                                    ///< If true, then the gateway is anonymous and cannot send messages
 };
 
 // #define SG_USER_ANON               (uint64_t)0xFFFFFFFFFFFFFFFFLL
@@ -440,10 +456,9 @@ template <class T> int md_parse( T* protobuf, char const* bits, size_t bits_len 
 
 
 // limits
-#define SG_MAX_CERT_LEN                  10*1024           // 10kb--max certificate size
-#define SG_MAX_MANIFEST_LEN              10*1024*1024L      // 10MB--max manifest size
-#define SG_MAX_DRIVER_LEN                10*1024*1024L      // 10MB--max driver size
-#define SG_MAX_XATTR_LEN                 10*1024*1024L     // 10MB--max xattr size
-#define SG_MAX_BLOCK_LEN_MULTIPLIER      5                 // i.e. a serialized block can't be more than $SG_MAX_BLOCK_LEN_MULTIPLIER times the size of a block
-                                                           // (there are some serious problems with the design of a driver that requires this, IMHO).
+#define SG_MAX_CERT_LEN                  10*1024           ///< 10kb--max certificate size
+#define SG_MAX_MANIFEST_LEN              10*1024*1024L     ///< 10MB--max manifest size
+#define SG_MAX_DRIVER_LEN                10*1024*1024L     ///< 10MB--max driver size
+#define SG_MAX_XATTR_LEN                 10*1024*1024L     ///< 10MB--max xattr size
+#define SG_MAX_BLOCK_LEN_MULTIPLIER      5                 ///< i.e. a serialized block can't be more than $SG_MAX_BLOCK_LEN_MULTIPLIER times the size of a block (there are some serious problems with the design of a driver that requires this, IMHO).
 #endif

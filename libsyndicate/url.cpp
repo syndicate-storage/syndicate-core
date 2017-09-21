@@ -14,11 +14,24 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/url.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Support URL functionality
+ *
+ * @see libsyndicate/url.h
+ */
+
 #include "libsyndicate/url.h"
 #include "libsyndicate/ms/ms-client.h"
 
-// split a uint64 into four uint16s.
-// assume i is litte-endian; otherwise convert it
+/**
+ * @brief Split a uint64 into four uint16s
+ *
+ * @note Assume i is litte-endian; otherwise convert it
+ */
 static void md_url_split_uint64( uint64_t i, uint16_t* o ) {
    if( htonl( 1234 ) == 1234 ) {
       // i is big endian...
@@ -30,8 +43,10 @@ static void md_url_split_uint64( uint64_t i, uint16_t* o ) {
    o[3] = (i & (uint64_t)0x000000000000FFFFLL);
 }
 
-// convert a file ID to a file path, using each byte as a directory name.
-// return NULL on OOM
+/**
+ * @brief Convert a file ID to a file path, using each byte as a directory name.
+ * @retval NULL Out of Memory
+ */
 static char* md_url_path_from_file_id( uint64_t file_id ) {
    uint16_t file_id_parts[4];
    md_url_split_uint64( file_id, file_id_parts );
@@ -45,11 +60,14 @@ static char* md_url_path_from_file_id( uint64_t file_id ) {
    return ret;
 }
 
-// generate a block url, based on whether or not it is locally coordinated
-// if local is true, then prefix should be the path on disk
-// if local is false, then prefix should be the content url
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a block url, based on whether or not it is locally coordinated
+ *
+ * If local is true, then prefix should be the path on disk
+ * If local is false, then prefix should be the content url
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 static char* md_url_block_url( char const* prefix, uint64_t volume_id, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, bool local, bool staging ) {
 
    int base_len = 25 + 1 + 25 + 1 + strlen(fs_path) + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1;
@@ -91,9 +109,11 @@ static char* md_url_block_url( char const* prefix, uint64_t volume_id, uint64_t 
 }
 
 
-// generate a locally-resolvable URL to a cached block 
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to a cached block 
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_block_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    
    // file:// URL to a locally-hosted block in a locally-coordinated file
@@ -108,9 +128,11 @@ char* md_url_local_block_data_url( char const* data_root, uint64_t volume_id, ui
 }
 
 
-// generate a locally-resolvable URL to a write-staging block 
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to a write-staging block 
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_block_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    
    // file:// URL to a locally-hosted block in a locally-coordinated file
@@ -125,18 +147,24 @@ char* md_url_local_block_staging_url( char const* data_root, uint64_t volume_id,
 }
 
 
-// generate a publicly-resolvable URL to a block in this UG
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a publicly-resolvable URL to a block in this UG
+ *
+ * Call md_url_block_url
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_public_block_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    // http:// URL to a locally-hosted block in a locally-coordinated file
    return md_url_block_url( base_url, volume_id, 0, fs_path, file_id, file_version, block_id, block_version, false, false );
 }
 
-// generate a publicly-routable block URL, based on what gateway hosts it.
-// return 0 on success
-// return -EAGAN if the gateway is currently unknown
-// return -ENOMEM on OOM 
+/**
+ * @brief Generate a publicly-routable block URL, based on what gateway hosts it.
+ * @retval 0 Success
+ * @retval -EAGAN The gateway is currently unknown
+ * @retval -ENOMEM Out of Memory
+ */ 
 int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t gateway_id, uint64_t file_id, int64_t version, uint64_t block_id, int64_t block_version, char** url ) {
    
    uint64_t gateway_type = ms_client_get_gateway_type( ms, gateway_id );
@@ -168,10 +196,12 @@ int md_url_make_block_url( struct ms_client* ms, char const* fs_path, uint64_t g
 }
 
 
-// generate a locally-resolvable URL to cached file data on this gateway
-// data_root must end in /
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to cached file data on this gateway
+ * @note data_root must end in /
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
    
    int base_len = 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 25 + 1 + 1;
@@ -194,10 +224,12 @@ char* md_url_local_file_data_url( char const* data_root, uint64_t volume_id, uin
 }
 
 
-// generate a locally-resolvable URL to staging file data on this gateway
-// data_root must end in /
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to staging file data on this gateway
+ * @note data_root must end in /
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version ) {
    
    int base_len = 25 + 1 + 25 + 1 + 25 + 1 + 10 + 1 + 25 + 1 + 25 + 1 + 1;
@@ -220,10 +252,12 @@ char* md_url_local_file_staging_url( char const* data_root, uint64_t volume_id, 
 }
 
 
-// generate a locally-resolvable URL to the gateway's cached data root
-// data_root must end in /
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to the gateway's cached data root
+ * @note data_root must end in /
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
 
    char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 100 );
@@ -236,10 +270,12 @@ char* md_url_local_gateway_data_root_url( char const* data_root, uint64_t volume
 }
 
 
-// generate a locally-resolvable URL to the gateway's staging data root
-// data_root must end in /
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Generate a locally-resolvable URL to the gateway's staging data root
+ * @note data_root must end in /
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t volume_id, uint64_t gateway_id ) {
 
    char* ret = SG_CALLOC( char, strlen(SG_LOCAL_PROTO) + strlen(data_root) + 110 );
@@ -252,9 +288,11 @@ char* md_url_local_gateway_staging_root_url( char const* data_root, uint64_t vol
 }
 
 
-// manifest URL generator
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief Manifest URL generator
+ * @retval URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_url_public_manifest_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t version, struct timespec* ts ) {
    
    char* ret = SG_CALLOC( char, strlen(SG_DATA_PREFIX) + 1 + strlen(base_url) + 1 + strlen(fs_path) + 1 + 107 );
@@ -267,10 +305,15 @@ char* md_url_public_manifest_url( char const* base_url, uint64_t volume_id, char
 }
 
 
-// generate a URL to an manifest, given its coordinator.  Automatically determine what kind of gateway hosts it.
-// return 0 on success, and set *url to point to a malloc'ed null-terminated string with the url
-// return -EAGAIN if the gatewya is not known to us
-// return -ENOMEM if we could not generate a URL 
+/**
+ * @brief Generate a URL to an manifest, given its coordinator
+ *
+ * Automatically determine what kind of gateway hosts it.
+ * @param url Point to a malloc'ed null-terminated string with the url
+ * @retval 0 Success
+ * @retval -EAGAIN The gateway is not known to us
+ * @retval -ENOMEM Could not generate a URL
+ */
 int md_url_make_manifest_url( struct ms_client* ms, char const* fs_path, uint64_t gateway_id, uint64_t file_id, int64_t file_version, struct timespec* ts, char** url ) {
    
    // what kind of gateway?
@@ -302,10 +345,13 @@ int md_url_make_manifest_url( struct ms_client* ms, char const* fs_path, uint64_
 }
 
 
-// generate a URL to a gateway's API server 
-// return 0 on success, and set *url to a malloc'ed URL to the gateway 
-// return -EAGAIN if there is no known gateway
-// return -ENOMEM if OOM
+/**
+ * @brief Generate a URL to a gateway's API server
+ * @param[out] *url URL to the gateway
+ * @retval 0 Success
+ * @retval -EAGAIN There is no known gateway
+ * @retval -ENOMEM Out of Memory
+ */
 int md_url_make_gateway_url( struct ms_client* ms, uint64_t gateway_id, char** url ) {
    
    // what kind of gateway?
@@ -327,10 +373,13 @@ int md_url_make_gateway_url( struct ms_client* ms, uint64_t gateway_id, char** u
 }
 
 
-// generate a getxattr URL to another gateway
-// base_url/GETXATTR/volume_id/fs_path.file_id.file_version/xattr_name.xattr_nonce
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief Generate a getxattr URL to another gateway
+ *
+ * base_url/GETXATTR/volume_id/fs_path.file_id.file_version/xattr_name.xattr_nonce
+ * @retval URL Success 
+ * @retval NULL Out of Memory
+ */
 char* md_url_public_getxattr_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, char const* xattr_name, int64_t xattr_nonce ) {
    
    size_t len = strlen(base_url) + 1 + strlen(SG_GETXATTR_PREFIX) + 1 + 50 + 1 + strlen(fs_path) + 1 + 50 + 1 + 50 + 1 + strlen(xattr_name) + 1 + 50 + 1;
@@ -345,10 +394,13 @@ char* md_url_public_getxattr_url( char const* base_url, uint64_t volume_id, char
 }
 
 
-// generate a listxattr URL to another gateway
-// base_url/LISTXATTR/volume_id/fs_path.file_id.file_version/xattr_nonce 
-// return the URL on success 
-// return NULL on OOM 
+/**
+ * @brief Generate a listxattr URL to another gateway
+ *
+ * base_url/LISTXATTR/volume_id/fs_path.file_id.file_version/xattr_nonce 
+ * @retval URL Success 
+ * @retval NULL Out of Memory
+ */
 char* md_url_public_listxattr_url( char const* base_url, uint64_t volume_id, char const* fs_path, uint64_t file_id, int64_t file_version, int64_t xattr_nonce ) {
    
    size_t len = strlen(base_url) + 1 + strlen(SG_LISTXATTR_PREFIX) + 1 + 50 + 1 + strlen(fs_path) + 1 + 50 + 1 + 50 + 1 + 50 + 1;
@@ -362,10 +414,13 @@ char* md_url_public_listxattr_url( char const* base_url, uint64_t volume_id, cha
    return url;
 }
 
-// generate a getxattr URL to a given gateway 
-// return 0 on success, and set the *url 
-// return -ENOMEM on OOM 
-// return -EAGAIN if the gateway is not known to us
+/**
+ * @brief Generate a getxattr URL to a given gateway 
+ * @param[out] *url URL to the gateway
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The gateway is not known to us
+ */
 int md_url_make_getxattr_url( struct ms_client* ms, char const* fs_path, uint64_t gateway_id, uint64_t file_id, int64_t file_version, char const* xattr_name, int64_t xattr_nonce, char** url ) {
    
    // what kind of gateway?
@@ -397,10 +452,13 @@ int md_url_make_getxattr_url( struct ms_client* ms, char const* fs_path, uint64_
 }
 
 
-// generate a listxattr URL to a given gateway 
-// return 0 on success, and set the *url 
-// return -ENOMEM on OOM 
-// return -EAGAIN if the gateway is not known to us
+/**
+ * @brief Generate a listxattr URL to a given gateway
+ * @param[out] *url URL to the gateway
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The gateway is not known to us
+ */
 int md_url_make_listxattr_url( struct ms_client* ms, char const* fs_path, uint64_t gateway_id, uint64_t file_id, int64_t file_version, int64_t xattr_nonce, char** url ) {
    
    // what kind of gateway?

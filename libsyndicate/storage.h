@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file storage.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Syndicate storage header file
+ *
+ * @see libsyndicate/storage.cpp
+ */
+
 #ifndef _LIBSYNDICATE_STORAGE_H_
 #define _LIBSYNDICATE_STORAGE_H_
 

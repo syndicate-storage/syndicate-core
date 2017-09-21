@@ -13,8 +13,9 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+
 /**
- * @file opts.cpp
+ * @file libsyndicate/opts.cpp
  * @author Jude Nelson
  * @date Mar 9 2016
  *
@@ -22,17 +23,19 @@
  *
  * Parse, execute, and print common command-line options available to syndicate-core
  *
+ * @see libsyndicate/opts.h
+ * @see libsyndicate/private/opts.h
  */
 
 #include "libsyndicate/private/opts.h"
 #include "libsyndicate/opts.h"
 
-// new opt struct 
+// New opt struct 
 struct md_opts* md_opts_new( int count ) {
    return SG_CALLOC( struct md_opts, count );
 }
 
-// fill opts with defaults
+// Fill opts with defaults
 int md_opts_default( struct md_opts* opts ) {
    memset( opts, 0, sizeof(struct md_opts) );
    
@@ -44,70 +47,72 @@ int md_opts_default( struct md_opts* opts ) {
    return 0;
 }
 
-// get the client flag 
+// Get the client flag 
 bool md_opts_get_client( struct md_opts* opts ) {
    return opts->client;
 }
 
-// get the ignore-driver disposition 
+// Get the ignore-driver disposition 
 bool md_opts_get_ignore_driver( struct md_opts* opts ) {
    return opts->ignore_driver;
 }
 
+// Get the gateway type
 uint64_t md_opts_get_gateway_type( struct md_opts* opts ) {
    return opts->gateway_type;
 }
 
+// Get the config file
 char const* md_opts_get_config_file( struct md_opts* opts ) {
    return opts->config_file;
 }
 
-// set the "client" override 
+// Set the "client" override 
 void md_opts_set_client( struct md_opts* opts, bool client ) {
    opts->client = client;
 }
 
-// set the "ignore_driver" override 
+// Set the "ignore_driver" override 
 void md_opts_set_ignore_driver( struct md_opts* opts, bool ignore_driver ) {
    opts->ignore_driver = ignore_driver;
 }
 
-// set the "gateway_type" field 
+// Set the "gateway_type" field 
 void md_opts_set_gateway_type( struct md_opts* opts, uint64_t type ) {
    opts->gateway_type = type;
 }
 
-// set path to config file 
+// Set path to config file 
 void md_opts_set_config_file( struct md_opts* opts, char* config_filepath ) {
    opts->config_file = config_filepath;
 }
 
-// set username 
+// Set username 
 void md_opts_set_username( struct md_opts* opts, char* username ) {
    opts->username = username;
 }
 
-// set volume name 
+// Set volume name 
 void md_opts_set_volume_name( struct md_opts* opts, char* volume_name ) {
    opts->volume_name = volume_name;
 }
 
-// set gateway name 
+// Set gateway name 
 void md_opts_set_gateway_name( struct md_opts* opts, char* gateway_name ) {
    opts->gateway_name = gateway_name;
 }
 
-// set MS url 
+// Set MS url 
 void md_opts_set_ms_url( struct md_opts* opts, char* ms_url ) {
    opts->ms_url = ms_url;
 }
 
-// toggle running in the foreground 
+// Toggle running in the foreground 
 void md_opts_set_foreground( struct md_opts* opts, bool foreground ) {
    opts->foreground = foreground;
 }
 
-// set driver options 
+// Set driver options 
 void md_opts_set_driver_config( struct md_opts* opts, char const* driver_exec_str, char const** driver_roles, int num_instances, size_t num_driver_roles ) {
    opts->driver_exec_str = driver_exec_str;
    opts->driver_roles = driver_roles;
@@ -155,9 +160,11 @@ int md_opts_free( struct md_opts* opts ) {
    return 0;
 }
 
-// load an optarg into an mlock'ed buffer.
-// return 0 on success
-// return negative on error (see mlock_calloc)
+/**
+ * @brief Load an optarg into an mlock'ed buffer
+ * @retval 0 Success
+ * @retval <0 Error (see mlock_calloc)
+ */
 int md_load_mlock_buf( struct mlock_buf* buf, char* str ) {
    size_t len = strlen(str);
    int rc = mlock_calloc( buf, len + 1 );
@@ -174,12 +181,15 @@ int md_load_mlock_buf( struct mlock_buf* buf, char* str ) {
    return 0;
 }
 
-// parse opts from argv.
-// optionally supply the optind after parsing (if it's not NULL)
-// return 0 on success
-// return -EINVAL if there are duplicate short opt definitions
-// return -ENOMEM if out of memory
-// return 1 if the caller wanted help
+/**
+ * @brief Parse opts from argv
+ *
+ * Optionally supply the optind after parsing (if it's not NULL)
+ * @retval 0 Success
+ * @retval -EINVAL There are duplicate short opt definitions
+ * @retval -ENOMEM Out of Memory
+ * @retval 1 The caller wanted help
+ */
 int md_opts_parse_impl( struct md_opts* opts, int argc, char** argv, int* out_optind, char const* special_opts, int (*special_opt_handler)(int, char*) ) {
    
    static struct option syndicate_options[] = {
@@ -472,9 +482,7 @@ int md_opts_parse( struct md_opts* opts, int argc, char** argv, int* out_optind,
 }
 
 /**
- * @brief md_common_usage()
- *  Print the common command-line options available.
- *
+ * @details
    -u, --username USERNAME
             Syndicate account username.
             Pass 'ANONYMOUS' for anonymous access.

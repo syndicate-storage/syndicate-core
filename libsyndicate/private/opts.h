@@ -14,9 +14,20 @@
    limitations under the License.
 */
 
-// libsyndicate-private header for options.
-// Kept private to prevent direct access to this structure
-// by files and programs that aren't part of libsyndicate.so.
+/**
+ * @file libsyndicate/private/opts.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Private header file for command-line options
+ *
+ * Kept private to prevent direct access to this structure
+ * by files and programs that aren't part of libsyndicate.so.
+ *
+ * Parse, execute, and print common command-line options available to syndicate-core
+ *
+ * @see libsyndicate/opts.cpp
+ */
 
 #ifndef _SYNDICATE_OPTS_PRIVATE_H_
 #define _SYNDICATE_OPTS_PRIVATE_H_
@@ -28,25 +39,25 @@
 #define _XOPEN_SOURCE 
 #endif 
 
-// command-line options
+/// command-line options
 struct md_opts {
-   char* config_file;
-   char* username;
-   char* volume_name;
-   char* ms_url;
-   char* gateway_name;
-   int debug_level;
-   bool foreground;
+   char* config_file;           ///< The configuration file
+   char* username;              ///< Username
+   char* volume_name;           ///< Volume name
+   char* ms_url;                ///< The MS url
+   char* gateway_name;          ///< The gateway name
+   int debug_level;             ///< Debug level
+   bool foreground;             ///< Flag, running if foreground or background
    
    // not set by the parser 
-   bool client;
-   bool ignore_driver;  // if true, no attempt to load the driver will be made
-   uint64_t gateway_type;
+   bool client;                 ///< Flag, is or is not client (not set by parser)
+   bool ignore_driver;          ///< If true, no attempt to load the driver will be made (not set by parser)
+   uint64_t gateway_type;       ///< The gateway type (not set by parser)
 
-   char const* driver_exec_str;
-   char const** driver_roles;
-   int num_instances;
-   size_t num_driver_roles;
+   char const* driver_exec_str; ///< Driver executable
+   char const** driver_roles;   ///< Driver roles
+   int num_instances;           ///< Number of driver instances
+   size_t num_driver_roles;     ///< Number of driver roles
 };
 
 #endif

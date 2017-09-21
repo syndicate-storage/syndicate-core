@@ -14,6 +14,14 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/ms-client.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Include specific MS header files
+ */
+
 #ifndef _MS_CLIENT_H_
 #define _MS_CLIENT_H_
 

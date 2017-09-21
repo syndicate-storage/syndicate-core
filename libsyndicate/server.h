@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file server.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Server header
+ *
+ * @see libsyndicate/server.cpp
+ */
+
 #ifndef _LIBSYNDICATE_SERVER_H_
 #define _LIBSYNDICATE_SERVER_H_
 
@@ -24,28 +34,28 @@
 #define SG_SERVER_POST_FIELD_CONTROL_PLANE      "control-plane"
 #define SG_SERVER_POST_FIELD_DATA_PLANE         "data-plane"
 
-#define SG_SERVER_IO_READ                       1       // I/O completion will take a name and return a record 
-#define SG_SERVER_IO_WRITE                      2       // I/O completion will take a record and return a status code
+#define SG_SERVER_IO_READ                       1       ///< I/O completion will take a name and return a record 
+#define SG_SERVER_IO_WRITE                      2       ///< I/O completion will take a record and return a status code
 
-// server connection state
+/// Server connection state
 struct SG_server_connection {
    
-   struct SG_gateway* gateway;
+   struct SG_gateway* gateway;                  ///< Syndicate gateway
 };
 
 typedef int (*SG_server_IO_completion)( struct SG_gateway*, struct SG_request_data*, SG_messages::Request*, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp );
 
-// server I/O request completion context 
+/// Server I/O request completion context 
 struct SG_server_io {
    
-   int io_type;                                 // "read" or "write" I/O
-   struct SG_gateway* gateway;
-   struct SG_request_data* reqdat;
-   SG_messages::Request* request_msg;
-   struct md_HTTP_connection_data* con_data;
-   struct md_HTTP_response* resp;
+   int io_type;                                 ///< "read" or "write" I/O
+   struct SG_gateway* gateway;                  ///< Syndicate gateway
+   struct SG_request_data* reqdat;              ///< Request
+   SG_messages::Request* request_msg;           ///< Request message
+   struct md_HTTP_connection_data* con_data;    ///< Connection data
+   struct md_HTTP_response* resp;               ///< Http response
    
-   SG_server_IO_completion io_completion;
+   SG_server_IO_completion io_completion;       ///< IO completion
 };
 
 extern "C" {

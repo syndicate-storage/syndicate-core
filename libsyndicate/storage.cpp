@@ -14,9 +14,23 @@
    limitations under the License.
 */
 
+/**
+ * @file storage.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Syndicate storage related functionality
+ *
+ * @see libsyndicate/storage.h
+ */
+
 #include "libsyndicate/storage.h"
 
-// load a file as a string.  return the buffer with the file on success, or NULL on error
+/**
+ * @brief Load a file as a string
+ * @return The buffer with the file
+ * @retval NULL Error
+ */
 char* md_load_file_as_string( char const* path, size_t* size ) {
    
    off_t size_or_error = 0;
@@ -38,16 +52,18 @@ char* md_load_file_as_string( char const* path, size_t* size ) {
    ret[ *size ] = 0;
 
    return ret;
-}  
+}
 
 
-// safely load secret information as a null-terminated string, ensuring that the memory allocated is mlocked
-// return 0 on success
-// return negative errno on stat(2) failure on path
-// return -ENODATA if we failed to allocate a buffer of sufficient size for the file referred to by the path 
-// return -ENODATA if we failed to open path for reading, or failed to read all of the file
-// return -EINVAL if the path does not refer to a regular file (or a symlink to a regular file)
-// return -EOVERFLOW if the buf was allocated, but does not contain sufficient space
+/**
+ * @brief Safely load secret information as a null-terminated string, ensuring that the memory allocated is mlocked
+ * @retval 0 Success
+ * @retval <0 errno on stat(2) failure on path
+ * @retval -ENODATA if we failed to allocate a buffer of sufficient size for the file referred to by the path 
+ * @retval -ENODATA if we failed to open path for reading, or failed to read all of the file
+ * @retval -EINVAL if the path does not refer to a regular file (or a symlink to a regular file)
+ * @retval -EOVERFLOW if the buf was allocated, but does not contain sufficient space
+ */
 int md_load_secret_as_string( struct mlock_buf* buf, char const* path ) {
    
    struct stat statbuf;
@@ -116,13 +132,15 @@ int md_load_secret_as_string( struct mlock_buf* buf, char const* path ) {
    char_ptr[ buf->len ] = 0;
 
    return 0;
-}  
+}
 
 
-// initialize local storage
-// return 0 on success
-// return -ENOMEM if OOM
-// return negative on storage-related error (md_mkdirs)
+/**
+ * @brief Initialize local storage
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Storage-related error (md_mkdirs)
+ */
 int md_init_local_storage( struct md_syndicate_conf* c ) {
    
    char cwd[PATH_MAX + 1];
@@ -204,10 +222,12 @@ int md_init_local_storage( struct md_syndicate_conf* c ) {
    return rc;
 }
 
-// recursively make a directory.
-// return 0 if the directory exists at the end of the call.
-// return -ENOMEM if OOM
-// return negative if the directory could not be created.
+/**
+ * @brief Recursively make a directory.
+ * @retval 0 The directory exists at the end of the call.
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 The directory could not be created.
+ */
 int md_mkdirs2( char const* dirp, int start, mode_t mode ) {
    
    unsigned int i = start;
@@ -250,18 +270,30 @@ int md_mkdirs2( char const* dirp, int start, mode_t mode ) {
    return 0;
 }
 
+/**
+ * @brief Make directories, call md_mkdirs2 with provided mode
+ * @return Status of md_mkdirs2
+ * @see md_mkdirs2
+ */
 int md_mkdirs3( char const* dirp, mode_t mode ) {
    return md_mkdirs2( dirp, 0, mode );
 }
 
+/**
+ * @brief Make directories, call md_mkdirs2 with mode 0755
+ * @return Status of md_mkdirs2
+ * @see md_mkdirs2
+ */
 int md_mkdirs( char const* dirp ) {
    return md_mkdirs2( dirp, 0, 0755 );
 }
 
-// remove a bunch of empty directories
-// return 0 on success 
-// return -ENOMEM on OOM
-// return negative on error from rmdir(2)
+/**
+ * @brief Remove a bunch of empty directories
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Error from rmdir(2)
+ */
 int md_rmdirs( char const* dirp ) {
    
    char* dirname = SG_strdup_or_null( dirp );
@@ -298,8 +330,11 @@ int md_rmdirs( char const* dirp ) {
    return rc;
 }
 
-// get the path to a cached certificate 
-// path must be long enough--PATH_MAX should be safe--but it will be truncated with '\0'
+/**
+ * @brief Get the path to a cached certificate 
+ *
+ * @note Path must be long enough--PATH_MAX should be safe--but it will be truncated with '\0'
+ */
 void md_object_cert_path( char const* cert_path, char const* object_type, char const* object_name, char* path, size_t path_len ) {
    
    snprintf( path, path_len-1, "%s/%s-%s.cert", cert_path, object_type, object_name );
@@ -307,9 +342,11 @@ void md_object_cert_path( char const* cert_path, char const* object_type, char c
 }
 
 
-// load a syndicate public key from disk 
-// return 0 on success, and set *key to include the public key 
-// return -errno on filesystem-related errors 
+/**
+ * @brief Load a syndicate public key from disk 
+ * @retval 0 Success, and set *key to include the public key 
+ * @retval -errno Filesystem-related errors
+ */ 
 int md_syndicate_pubkey_load( char const* syndicate_dir, char const* syndicate_name, char** syndicate_pubkey_pem, size_t* syndicate_pubkey_pem_len ) {
     
    char path[ PATH_MAX+1 ];
@@ -331,9 +368,12 @@ int md_syndicate_pubkey_load( char const* syndicate_dir, char const* syndicate_n
 }
 
 
-// load a volume cert from disk 
-// return 0 on success, and populate *volume_cert 
-// return -errno on filesystem-related errors 
+/**
+ * @brief Load a volume cert from disk
+ * @param[out] volume_cert The volume certificate 
+ * @retval 0 Success, and populate *volume_cert 
+ * @retval -errno Filesystem-related errors
+ */
 int md_volume_cert_load( char const* cert_path, char const* volume_name, ms::ms_volume_metadata* volume_cert ) {
    
    int rc = 0;
@@ -363,11 +403,13 @@ int md_volume_cert_load( char const* cert_path, char const* volume_name, ms::ms_
 }
 
 
-// get a cached gateway certificate 
-// return 0 on success, and populate *cert on success 
-// return -ENOMEM on OOM
-// return -ENOENT if not found
-// return other -errno related to filesystem errors 
+/**
+ * @brief Get a cached gateway certificate 
+ * @retval 0 Success, and populate *cert on success 
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT Not found
+ * @retval Other -errno related to filesystem errors
+ */
 int md_gateway_cert_load( char const* cert_path, char const* gateway_name, ms::ms_gateway_cert* cert ) {
    
    int rc = 0;
@@ -397,10 +439,13 @@ int md_gateway_cert_load( char const* cert_path, char const* gateway_name, ms::m
 }
 
 
-// get a gateway's private key from disk 
-// return 0 on success, and populate *private_key 
-// return -ENOMEM on OOM 
-// return other -errno related to filesystem errors
+/**
+ * @brief Get a gateway's private key from disk
+ * @param[out] private_key The private key
+ * @retval 0 Success, and populate *private_key 
+ * @retval -ENOMEM Out of Memory 
+ * @retval other -errno Related to filesystem errors
+ */
 int md_gateway_private_key_load( char const* gateways_root, char const* gateway_name, struct mlock_buf* private_key ) {
    
    int rc = 0;
@@ -420,10 +465,12 @@ int md_gateway_private_key_load( char const* gateways_root, char const* gateway_
 }
 
 
-// load a cached user cert from disk 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -errno on filesystem-related errors
+/**
+ * @brief Load a cached user cert from disk 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Filesystem-related errors
+ */
 int md_user_cert_load( char const* certs_path, char const* username, ms::ms_user_cert* user_cert ) {
    
    int rc = 0;
@@ -452,10 +499,12 @@ int md_user_cert_load( char const* certs_path, char const* username, ms::ms_user
 }
 
 
-// load a cached cert bundle from disk 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -errno on filesystem-related errors
+/**
+ * @brief Load a cached cert bundle from disk 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno On filesystem-related errors
+ */
 int md_cert_bundle_load( char const* certs_path, char const* volume_name, SG_messages::Manifest* cert_bundle ) {
    
    int rc = 0;
@@ -484,10 +533,12 @@ int md_cert_bundle_load( char const* certs_path, char const* volume_name, SG_mes
 }
 
 
-// load a cached driver from disk
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -errno for filesystem-related errors 
+/**
+ * @brief Load a cached driver from disk
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Filesystem-related errors
+ */
 int md_driver_load( char const* certs_path, char const* hash, char** driver_text, size_t* driver_text_len ) {
 
    char* data = NULL;
@@ -510,11 +561,13 @@ int md_driver_load( char const* certs_path, char const* hash, char** driver_text
 
 
 
-// load the cached cert bundle version 
-// return 0 on success 
-// return -EPERM on failure
-// return -ENOMEM on OOM 
-// return -errno on filesystem-related error 
+/**
+ * @brief Load the cached cert bundle version 
+ * @retval 0 Success 
+ * @retval -EPERM Failure
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Filesystem-related error
+ */
 int md_cert_bundle_version_load( char const* certs_path, char const* volume_name, uint64_t* cert_bundle_version ) {
    
    char path[ PATH_MAX+1 ];

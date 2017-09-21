@@ -14,14 +14,22 @@
    limitations under the License.
 */
 
-/*
- * Syndicate on-disk cache.
- * Features:
- * * synchronous, thread-safe reads
- * * asynchronous, thread-safe writes and evictions, via a "write future" abstraction
- * * soft and hard limits
- * * no locks held during I/O, promotion, or LRU eviction
- * * minimal dependency on Syndicate--it only needs its URL-generation code (in url.cpp) and configuration structure (in libsyndicate.h)
+/**
+ * @file libsyndicate/cache.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for Syndicate on-disk cache
+ *
+ * Syndicate on-disk cache provides features such as
+ *
+ *      Synchronous and thread-safe reads
+ *      Asynchronous and thread-safe writes and evictions, via a "write future" abstraction
+ *      Soft and hard limits
+ *      No locks held during I/O, promotion, or LRU eviction
+ *      Minimal dependency on Syndicate -- it only needs its URL-generation code (in url.cpp) and configuration structure (in libsyndicate.h)
+ *
+ * @see libsyndicate/cache.cpp
  */
 
 #ifndef _LIBSYNDICATE_CACHE_H_
@@ -43,22 +51,22 @@
 
 #include "libsyndicate/libsyndicate.h"
 
-#define MD_CACHE_DEFAULT_SIZE_LIMIT        50000000        // 50 MB
+#define MD_CACHE_DEFAULT_SIZE_LIMIT        50000000     ///< 50 MB
 
-#define SG_CACHE_FLAG_DETACHED          0x1             // caller won't wait for a future to finish (so the cache should reap it)
-#define SG_CACHE_FLAG_UNSHARED          0x2             // cache can free the block data when it frees the block future--it's unshared from the caller
-#define SG_CACHE_FLAG_MANAGED           0x4             // caller will be responsible for evicting the block.  It will be kept in a separate top-level directory in the cache.
+#define SG_CACHE_FLAG_DETACHED          0x1             ///< caller won't wait for a future to finish (so the cache should reap it)
+#define SG_CACHE_FLAG_UNSHARED          0x2             ///< cache can free the block data when it frees the block future--it's unshared from the caller
+#define SG_CACHE_FLAG_MANAGED           0x4             ///< caller will be responsible for evicting the block.  It will be kept in a separate top-level directory in the cache.
 
 using namespace std;
 
-// prototypes 
+// prototypes, documented in cache.cpp 
 struct md_syndicate_conf;
 
 struct md_cache_entry_key {
-   uint64_t file_id;
-   int64_t file_version;
-   uint64_t block_id;
-   int64_t block_version;
+   uint64_t file_id;            ///< unique id
+   int64_t file_version;        ///< unique file version
+   uint64_t block_id;           ///< unique block id
+   int64_t block_version;       ///< unique block version
 };
 
 // ongoing cache write for a file

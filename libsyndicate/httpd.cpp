@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/httpd.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Http connection support functions
+ *
+ * @see libsyndicate/httpd.h
+ */
+
 
 #include "libsyndicate/httpd.h"
 #include "libsyndicate/gateway.h"
@@ -38,8 +48,10 @@ char const MD_HTTP_504_MSG[128] = "Remote Server Timeout\n";
 char const MD_HTTP_DEFAULT_MSG[128] = "RESPONSE\n";
 
 
-// find the text to return for a particular status code 
-// return the default response if not found.
+/**
+ * @brief Find the text to return for a particular status code 
+ * @return The default response if not found.
+ */
 static char const* md_HTTP_response_builtin_text( int status ) {
    
    char const* page = NULL;
@@ -127,10 +139,13 @@ static char const* md_HTTP_response_builtin_text( int status ) {
 }
 
 
-// respond to a request with data (if non-NULL), or with a built-in response.
-// either way, md_HTTP takes over responsibility for the data (i.e. the caller should NOT free it)
-// return MHD_YES on success
-// return MHD_NO on failure (i.e. OOM, or no data given when the status code doesn't match a built-in page)
+/**
+ * @brief Respond to a request with data (if non-NULL), or with a built-in response.
+ *
+ * Either way, md_HTTP takes over responsibility for the data (i.e. the caller should NOT free it)
+ * @retval MHD_YES Success
+ * @retval MHD_NO Failure (i.e. OOM, or no data given when the status code doesn't match a built-in page)
+ */
 static int md_HTTP_default_send_response( struct MHD_Connection* connection, int status_code, char* data ) {
    
    char const* page = NULL;
@@ -193,9 +208,11 @@ static int md_HTTP_default_send_response( struct MHD_Connection* connection, int
    return MHD_YES;
 }
 
-// make a built-in response (static RAM) from our built-in messages 
-// return 0 on success 
-// return -ENOMEM on OOM
+/**
+ * @brief Make a built-in response (static RAM) from our built-in messages 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_builtin( struct md_HTTP_response* resp, int status ) {
    
    char const* page = NULL;
@@ -211,9 +228,11 @@ int md_HTTP_create_response_builtin( struct md_HTTP_response* resp, int status )
    return 0;
 }
 
-// make a RAM response which MHD will defensively copy
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a RAM response which MHD will defensively copy
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_ram( struct md_HTTP_response* resp, char const* mimetype, int status, char const* data, int len ) {
    
    int rc = 0;
@@ -234,9 +253,11 @@ int md_HTTP_create_response_ram( struct md_HTTP_response* resp, char const* mime
    return 0;
 }
 
-// make a RAM response which MHD keep a pointer to and free later
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a RAM response which MHD keep a pointer to and free later
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_ram_nocopy( struct md_HTTP_response* resp, char const* mimetype, int status, char const* data, int len ) {
    
    int rc = 0;
@@ -257,9 +278,11 @@ int md_HTTP_create_response_ram_nocopy( struct md_HTTP_response* resp, char cons
    return 0;
 }
 
-// make a RAM response which MHD should not copy, but the caller will not free
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a RAM response which MHD should not copy, but the caller will not free
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_ram_static( struct md_HTTP_response* resp, char const* mimetype, int status, char const* data, int len ) {
    
    int rc = 0;
@@ -280,9 +303,11 @@ int md_HTTP_create_response_ram_static( struct md_HTTP_response* resp, char cons
    return 0;
 }
 
-// make an file-descriptor-based response
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make an file-descriptor-based response
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_fd( struct md_HTTP_response* resp, char const* mimetype, int status, int fd, off_t offset, size_t size ) {
    
    int rc = 0;
@@ -303,9 +328,11 @@ int md_HTTP_create_response_fd( struct md_HTTP_response* resp, char const* mimet
    return 0;
 }
 
-// make a callback response
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a callback response
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_create_response_stream( struct md_HTTP_response* resp, char const* mimetype, int status, uint64_t size, size_t blk_size, md_HTTP_stream_callback scb, void* cls, md_HTTP_free_cls_callback fcb ) {
    
    int rc = 0;
@@ -326,7 +353,9 @@ int md_HTTP_create_response_stream( struct md_HTTP_response* resp, char const* m
    return 0;
 }
 
-// give back a user-callback-created response
+/**
+ * @brief Give back a user-callback-created response
+ */
 static int md_HTTP_send_response( struct MHD_Connection* connection, struct md_HTTP_response* resp ) {
    
    int rc = 0;
@@ -366,15 +395,19 @@ static int md_HTTP_send_response( struct MHD_Connection* connection, struct md_H
 }
 
 
-// free an HTTP response
+/**
+ * @brief Free an HTTP response
+ */
 void md_HTTP_response_free( struct md_HTTP_response* resp ) {
    return;
 }
 
 
-// find an http header value
-// return a const char* pointer to the header on success
-// return NULL on not found
+/**
+ * @brief Find an http header value
+ * @return A const char* pointer to the header Success
+ * @retval NULL Not found
+ */
 char const* md_HTTP_header_lookup( struct md_HTTP_header** headers, char const* header ) {
    for( int i = 0; headers[i] != NULL; i++ ) {
       
@@ -385,9 +418,11 @@ char const* md_HTTP_header_lookup( struct md_HTTP_header** headers, char const* 
    return NULL;
 }
 
-// add a header
-// return 0 on success
-// return -ENOMEM on error
+/**
+ * @brief Add a header
+ * @retval 0 Success
+ * @retval -ENOMEM Error
+ */
 int md_HTTP_header_add( struct md_HTTP_response* resp, char const* header, char const* value ) {
    if( resp->resp != NULL ) {
       
@@ -399,9 +434,11 @@ int md_HTTP_header_add( struct md_HTTP_response* resp, char const* header, char 
    return 0;
 }
 
-// create an http header
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Create an http header
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_HTTP_header_create( struct md_HTTP_header* header, char const* h, char const* v ) {
    
    header->header = SG_strdup_or_null( h );
@@ -419,8 +456,10 @@ int md_HTTP_header_create( struct md_HTTP_header* header, char const* h, char co
    return 0;
 }
 
-// free an HTTP header
-// always succeeds
+/**
+ * @brief Free an HTTP header
+ * @note Always succeeds
+ */
 void md_HTTP_header_free( struct md_HTTP_header* header ) {
    
    if( header->header != NULL ) {
@@ -434,10 +473,12 @@ void md_HTTP_header_free( struct md_HTTP_header* header ) {
 }
 
 
-// accumulate inbound headers callback
-// return MHD_YES on success
-// return MHD_NO on failure
-// NOTE: if we fail on allocating memory, free the whole header list and set the first entry to (struct md_HTTP_header*)(-ENOMEM)
+/**
+ * @brief Accumulate inbound headers callback
+ * @note If we fail on allocating memory, free the whole header list and set the first entry to (struct md_HTTP_header*)(-ENOMEM)
+ * @retval MHD_YES Success
+ * @retval MHD_NO Failure
+ */
 static int md_accumulate_headers( void* cls, enum MHD_ValueKind kind, char const* key, char const* value ) {
    
    int rc = 0;
@@ -476,7 +517,9 @@ static int md_accumulate_headers( void* cls, enum MHD_ValueKind kind, char const
    return MHD_YES;
 }
 
-// free a list of headers
+/**
+ * @brief Free a list of headers
+ */
 static void md_free_headers( struct md_HTTP_header** headers ) {
    
    for( unsigned int i = 0; headers[i] != NULL; i++ ) {
@@ -489,10 +532,13 @@ static void md_free_headers( struct md_HTTP_header** headers ) {
 }
 
 
-// multiplex uploads by POST field (key), routing them to individual field handlers.
-// "*" is the catch-all field handler, if a more specific match cannot be found.
-// return MHD_YES on success
-// return MHD_NO on OOM or field handler error
+/**
+ * @brief Multiplex uploads by POST field (key), routing them to individual field handlers.
+ *
+ * "*" is the catch-all field handler, if a more specific match cannot be found.
+ * @retval MHD_YES Success
+ * @retval MHD_NO Out of Memory or field handler error
+ */
 int md_HTTP_post_upload_iterator( void *coninfo_cls, enum MHD_ValueKind kind,
                                   const char *key,
                                   const char *filename, const char *content_type,
@@ -565,10 +611,12 @@ int md_HTTP_post_upload_iterator( void *coninfo_cls, enum MHD_ValueKind kind,
    return rc;
 }
 
-// convert a sockaddr to a string containing the hostname and port number
-// return 0 on success
-// return -ENODATA on getnameinfo() failure  
-// return -ENOMEM on OOM
+/**
+ * @brief Convert a sockaddr to a string containing the hostname and port number
+ * @retval 0 Success
+ * @retval -ENODATA getnameinfo() failure  
+ * @retval -ENOMEM Out of Memory
+ */
 static int md_sockaddr_to_hostname_and_port( struct sockaddr* addr, char** buf, int* portnum ) {
    
    socklen_t addr_len = 0;
@@ -627,12 +675,13 @@ static int md_sockaddr_to_hostname_and_port( struct sockaddr* addr, char** buf, 
 }
 
 
-
-// field handler for holding data in a response buffer (RAM)
-// return 0 on success
-// return -EINVAL if cls is NULL
-// return -ENOMEM on OOM 
-// return -EOVERFLOW if the message is too big
+/**
+ * @brief Field handler for holding data in a response buffer (RAM)
+ * @retval 0 Success
+ * @retval -EINVAL cls is NULL
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EOVERFLOW The message is too big
+ */
 int md_HTTP_post_field_handler_ram( char const* field_name, char const* filename, char const* data, off_t offset, size_t len, void* cls ) {
    
    struct SG_HTTP_post_field* field = (struct SG_HTTP_post_field*)cls;
@@ -673,10 +722,12 @@ int md_HTTP_post_field_handler_ram( char const* field_name, char const* filename
 }
 
 
-// field handler for holding data in a temporary file (disk)
-// return 0 on success
-// return -errno on write error
-// return -EOVERFLOW if the message is too big
+/**
+ * @brief Field handler for holding data in a temporary file (disk)
+ * @retval 0 Success
+ * @retval -errno Write error
+ * @retval -EOVERFLOW The message is too big
+ */
 int md_HTTP_post_field_handler_disk( char const* field_name, char const* filename, char const* data, off_t offset, size_t len, void* cls ) {
    
    struct SG_HTTP_post_field* field = (struct SG_HTTP_post_field*)cls;
@@ -708,12 +759,15 @@ int md_HTTP_post_field_handler_disk( char const* field_name, char const* filenam
 }
 
 
-// get an uploaded field's contents from RAM.
-// the field must have been uploaded by md_HTTP_post_field_handler_ram
-// return 0 on success, and set *buf and *buflen to the contents and length (non-null-terminated)
-// return -ENOMEM on OOM
-// return -EINVAL if the field was not uploaded to RAM 
-// return -ENOENT if there is no such field 
+/**
+ * @brief Get an uploaded field's contents from RAM.
+ *
+ * The field must have been uploaded by md_HTTP_post_field_handler_ram
+ * @retval 0 Success, and set *buf and *buflen to the contents and length (non-null-terminated)
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The field was not uploaded to RAM 
+ * @retval -ENOENT There is no such field
+ */
 int md_HTTP_upload_get_field_buffer( struct md_HTTP_connection_data* con_data, char const* field_name, char** buf, size_t* buflen ) {
   
    struct SG_HTTP_post_field* field = NULL;
@@ -752,12 +806,15 @@ int md_HTTP_upload_get_field_buffer( struct md_HTTP_connection_data* con_data, c
    return 0;
 }
 
-// get an uploaded field's temporary file path and descriptor.
-// the field must have been uploaded by md_HTTP_post_field_handler_disk
-// return 0 on success, and set *path and *fd to the file path and file descriptor, respectively (if they are not NULL)
-// return -ENOMEM on OOM 
-// return -EINVAL if the field was not uploaded to disk 
-// return -ENOENT if there is no such field
+/**
+ * @brief Get an uploaded field's temporary file path and descriptor.
+ *
+ * The field must have been uploaded by md_HTTP_post_field_handler_disk
+ * @retval 0 Success, and set *path and *fd to the file path and file descriptor, respectively (if they are not NULL)
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The field was not uploaded to disk 
+ * @retval -ENOENT There is no such field
+ */
 int md_HTTP_upload_get_field_tmpfile( struct md_HTTP_connection_data* con_data, char const* field_name, char** path, int* fd ) {
    
    struct SG_HTTP_post_field* field = NULL;
@@ -803,8 +860,10 @@ int md_HTTP_upload_get_field_tmpfile( struct md_HTTP_connection_data* con_data, 
 }
 
 
-// free a field 
-// always succeeds
+/**
+ * @brief Free a field 
+ * @note Always succeeds
+ */
 static int md_HTTP_post_field_free( struct SG_HTTP_post_field* field ) {
    
    if( field->tmpfd >= 0 ) {
@@ -827,8 +886,10 @@ static int md_HTTP_post_field_free( struct SG_HTTP_post_field* field ) {
    return 0;
 }
 
-// free a field map 
-// always succeeds
+/**
+ * @brief Free a field map 
+ * @note Always succeeds
+ */
 static int md_HTTP_post_field_map_free( SG_HTTP_post_field_map_t* fields ) {
    
    for( SG_HTTP_post_field_map_t::iterator itr = fields->begin(); itr != fields->end(); itr++ ) {
@@ -841,9 +902,10 @@ static int md_HTTP_post_field_map_free( SG_HTTP_post_field_map_t* fields ) {
    return 0;
 }
 
-
-// unlink all temporary files in a field map 
-// always succeeds
+/**
+ * @brief Unlink all temporary files in a field map 
+ * @note Always succeeds
+ */
 static int md_HTTP_post_field_unlink_tmpfiles( SG_HTTP_post_field_map_t* fields ) {
    
    for( SG_HTTP_post_field_map_t::iterator itr = fields->begin(); itr != fields->end(); itr++ ) {
@@ -865,10 +927,12 @@ static int md_HTTP_post_field_unlink_tmpfiles( SG_HTTP_post_field_map_t* fields 
    return 0;
 }
 
-// set up a post processor 
-// return 0 on success
-// return -ENODATA if we failed to set one up 
-// return -ENOMEM if OOM
+/**
+ * @brief Set up a post processor 
+ * @retval 0 Success
+ * @retval -ENODATA Failed to set one up 
+ * @retval -ENOMEM Out of Memory
+ */
 static int md_HTTP_connection_setup_upload( struct md_HTTP* http_ctx, struct md_HTTP_connection_data* con_data, struct MHD_Connection* connection ) {
    
    struct MHD_PostProcessor* pp = NULL;
@@ -972,9 +1036,11 @@ static int md_HTTP_connection_setup_upload( struct md_HTTP* http_ctx, struct md_
 }
 
 
-// convert the string representation of an HTTP method to a nuermic one 
-// return the numeric mode ( > 0) on success
-// return -EINVAL if not recognized 
+/**
+ * @brief Convert the string representation of an HTTP method to a nuermic one 
+ * @retval >0 The numeric mode, Success
+ * @retval -EINVAL Not recognized
+ */ 
 static int md_HTTP_parse_method( char const* method ) {
    
    if( strcmp(method, "HEAD" ) == 0 ) {
@@ -997,9 +1063,11 @@ static int md_HTTP_parse_method( char const* method ) {
 }
 
 
-// is a method supported by our server?
-// return 0 if so 
-// return -ENOSYS if not 
+/**
+ * @brief Check if a method is supported by our server
+ * @retval 0 Supported
+ * @retval -ENOSYS Not supported
+ */
 static int md_HTTP_is_supported( struct md_HTTP* http_ctx, int method ) {
    
    if( method == MD_HTTP_GET && http_ctx->HTTP_GET_handler != NULL ) {
@@ -1022,9 +1090,11 @@ static int md_HTTP_is_supported( struct md_HTTP* http_ctx, int method ) {
 }
 
 
-// parse the HTTP version 
-// return X*10 + Y for version X.Y on success
-// return -EINVAL on parse error
+/**
+ * @brief Parse the HTTP version 
+ * @return X*10 + Y for version X.Y Success
+ * @retval -EINVAL Parse error
+ */
 static int md_HTTP_parse_version( char const* http_version ) {
    
    int major = 0;
@@ -1039,15 +1109,18 @@ static int md_HTTP_parse_version( char const* http_version ) {
 }
 
 
-// open a new HTTP connection
-// set up the given connection data, and call the http context's HTTP_connect method if given.
-// return 0 on success
-// return -EINVAL if we got a malformed URL, no headers were given, or we got a malformed Content-Length header
-// return -ENOMEM on OOM 
-// return -ENODATA if the caller is POST'ing or PUT'ing and we failed to create a post processor context 
-// return -ENOSYS if the HTTP method is not supported
-// return -ENOTCONN if we failed to look up the remote host 
-// return -ECONNREFUSED if the caller's HTTP_connect method failed
+/**
+ * @brief Open a new HTTP connection
+ *
+ * set up the given connection data, and call the http context's HTTP_connect method if given.
+ * @retval 0 Success
+ * @retval -EINVAL Malformed URL, no headers were given, or we got a malformed Content-Length header
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENODATA The caller is POST'ing or PUT'ing and we failed to create a post processor context 
+ * @retval -ENOSYS The HTTP method is not supported
+ * @retval -ENOTCONN Failed to look up the remote host 
+ * @retval -ECONNREFUSED The caller's HTTP_connect method failed
+ */
 static int md_HTTP_connection_setup( struct md_HTTP* http_ctx, struct md_HTTP_connection_data* con_data, struct MHD_Connection* connection, char const* url, char const* method, char const* version ) {
 
    // opening a new connection
@@ -1255,9 +1328,11 @@ static int md_HTTP_connection_setup( struct md_HTTP* http_ctx, struct md_HTTP_co
 }
 
 
-// handle an HTTP method.
-// return 0 on success, and allocate and fill in *resp
-// return -ENOMEM on OOM 
+/**
+ * @brief Handle an HTTP method.
+ * @retval 0 Success, and allocate and fill in *resp
+ * @retval -ENOMEM Out of Memory
+ */ 
 static int md_HTTP_do_method( char const* method_name, SG_HTTP_method_t method, struct MHD_Connection* connection, struct md_HTTP_connection_data* con_data, struct md_HTTP_response** ret_resp ) {
 
    struct md_HTTP_response* resp = NULL;
@@ -1289,8 +1364,11 @@ static int md_HTTP_do_method( char const* method_name, SG_HTTP_method_t method, 
 }
 
 
-// dispatch an HTTP method 
-// this finishes up the connection handler's work 
+/**
+ * @brief Dispatch an HTTP method 
+ *
+ * This finishes up the connection handler's work
+ */
 static int md_HTTP_dispatch_method( struct md_HTTP* http_ctx, struct md_HTTP_connection_data* con_data ) {
    
    int rc = 0;
@@ -1361,9 +1439,11 @@ static int md_HTTP_dispatch_method( struct md_HTTP* http_ctx, struct md_HTTP_con
    }
 }
 
-// HTTP connection handler, fed into libmicrohttpd
-// return MHD_YES on successful handing 
-// return MHD_NO if the connection should be terminated
+/**
+ * @brief HTTP connection handler, fed into libmicrohttpd
+ * @retval MHD_YES Successful handing 
+ * @retval MHD_NO The connection should be terminated
+ */
 static int md_HTTP_connection_handler( void* cls, struct MHD_Connection* connection, 
                                        char const* url, 
                                        char const* method, 
@@ -1461,11 +1541,13 @@ static int md_HTTP_connection_handler( void* cls, struct MHD_Connection* connect
    }
 }
 
-
-// suspend a connection.
-// must be resumed later.
-// return 0 on success
-// return -EINVAL if already suspended
+/**
+ * @brief Suspend a connection.
+ *
+ * Must be resumed later.
+ * @retval 0 Success
+ * @retval -EINVAL Already suspended
+ */
 int md_HTTP_connection_suspend( struct md_HTTP_connection_data* con_data ) {
    
    if( con_data->suspended ) {
@@ -1482,9 +1564,11 @@ int md_HTTP_connection_suspend( struct md_HTTP_connection_data* con_data ) {
 }
 
 
-// resume a connection 
-// return 0 on success
-// return -EINVAL if already resumed 
+/**
+ * @brief Resume a connection 
+ * @retval 0 Success
+ * @retval -EINVAL Already resumed
+ */
 int md_HTTP_connection_resume( struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
    
    if( !con_data->suspended ) {
@@ -1504,7 +1588,9 @@ int md_HTTP_connection_resume( struct md_HTTP_connection_data* con_data, struct 
 }
 
 
-// free a connection state
+/**
+ * @brief Free a connection state
+ */
 void md_HTTP_free_connection_data( struct md_HTTP_connection_data* con_data ) {
    
    if( con_data->pp != NULL ) {
@@ -1541,8 +1627,11 @@ void md_HTTP_free_connection_data( struct md_HTTP_connection_data* con_data ) {
 }
 
 
-// default cleanup handler
-// calls user-supplied cleanup handler as well
+/**
+ * @brief Default cleanup handler
+ *
+ * Calls user-supplied cleanup handler as well
+ */
 void md_HTTP_cleanup( void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode term ) {
    
    struct md_HTTP* http = (struct md_HTTP*)cls;
@@ -1569,7 +1658,9 @@ void md_HTTP_cleanup( void *cls, struct MHD_Connection *connection, void **con_c
 }
 
 
-// set fields in an HTTP structure
+/**
+ * @brief Set fields in an HTTP structure
+ */
 int md_HTTP_init( struct md_HTTP* http, int server_type, void* server_cls ) {
    memset( http, 0, sizeof(struct md_HTTP) );
    
@@ -1587,7 +1678,10 @@ int md_HTTP_init( struct md_HTTP* http, int server_type, void* server_cls ) {
 }
 
 
-// set HTTP limits 
+/**
+ * @brief Set HTTP limits
+ * @retval 0
+ */
 int md_HTTP_set_limits( struct md_HTTP* http, uint64_t max_ram_upload_size, uint64_t max_disk_upload_size ) {
    http->max_ram_upload_size = max_ram_upload_size;
    http->max_disk_upload_size = max_disk_upload_size;
@@ -1595,9 +1689,11 @@ int md_HTTP_set_limits( struct md_HTTP* http, uint64_t max_ram_upload_size, uint
 }
 
 
-// start the HTTP thread
-// return 0 on success
-// return -EPERM on failure to start
+/**
+ * @brief Start the HTTP thread
+ * @retval 0 Success
+ * @retval -EPERM Failure to start
+ */
 int md_HTTP_start( struct md_HTTP* http, int portnum ) {
    
    int rc = 0;
@@ -1640,7 +1736,10 @@ int md_HTTP_start( struct md_HTTP* http, int portnum ) {
    return rc;
 }
 
-// stop the HTTP thread
+/**
+ * @brief Stop the HTTP thread
+ * @retval 0
+ */
 int md_HTTP_stop( struct md_HTTP* http ) {
    MHD_stop_daemon( http->http_daemon );
    http->http_daemon = NULL;
@@ -1649,8 +1748,10 @@ int md_HTTP_stop( struct md_HTTP* http ) {
    return 0;
 }
 
-// free the HTTP server
-// always succeeds
+/**
+ * @brief Free the HTTP server
+ * @note Always succeeds
+ */
 int md_HTTP_free( struct md_HTTP* http ) {
    
    if( http->upload_field_handlers != NULL ) {
@@ -1660,9 +1761,11 @@ int md_HTTP_free( struct md_HTTP* http ) {
    return 0;
 }
 
-// parse a uint64_t 
-// return 0 on success, and set *out
-// return -EINVAL if it couldn't be parsed
+/**
+ * @brief Parse a uint64_t 
+ * @retval 0 Success, and set *out
+ * @retval -EINVAL Couldn't be parsed
+ */
 int md_parse_uint64( char* id_str, char const* fmt, uint64_t* out ) {
    uint64_t ret = 0;
    int rc = sscanf( id_str, fmt, &ret );
@@ -1676,9 +1779,11 @@ int md_parse_uint64( char* id_str, char const* fmt, uint64_t* out ) {
    return 0;
 }
 
-// parse a manifest timestamp 
-// return 0 on success, and set *manifest_timestamp
-// return -EINVAL if we fail
+/**
+ * @brief Parse a manifest timestamp 
+ * @retval 0 Success, and set *manifest_timestamp
+ * @retval -EINVAL Failure
+ */
 int md_parse_manifest_timestamp( char* _manifest_str, struct timespec* manifest_timestamp ) {
    long tv_sec = -1;
    long tv_nsec = -1;
@@ -1698,9 +1803,11 @@ int md_parse_manifest_timestamp( char* _manifest_str, struct timespec* manifest_
    return 0;
 }
 
-// parse a string in the form of $BLOCK_ID.$BLOCK_VERSION 
-// return 0 on success, and set *_block_id and *_block_version 
-// return -EINVAL on failure
+/**
+ * @brief Parse a string in the form of $BLOCK_ID.$BLOCK_VERSION 
+ * @retval 0 Success, and set *_block_id and *_block_version 
+ * @retval -EINVAL Failure
+ */
 int md_parse_block_id_and_version( char* _block_id_version_str, uint64_t* _block_id, int64_t* _block_version ) {
    uint64_t block_id = SG_INVALID_BLOCK_ID;
    int64_t block_version = 0;
@@ -1717,10 +1824,13 @@ int md_parse_block_id_and_version( char* _block_id_version_str, uint64_t* _block
 }
 
 
-// parse the file ID and version
-// format is path.file_id.version 
-// return 0 on success, and set *_file_id and *_file_version 
-// return -EINVAL on failure
+/**
+ * @brief Parse the file ID and version
+ *
+ * format is path.file_id.version 
+ * @retval 0 Success, and set *_file_id and *_file_version 
+ * @retval -EINVAL Failure
+ */
 int md_parse_file_id_and_version( char* _name_id_and_version_str, uint64_t* _file_id, int64_t* _file_version ) {
    
    // scan back for the second-to-last '.'
@@ -1758,7 +1868,10 @@ int md_parse_file_id_and_version( char* _name_id_and_version_str, uint64_t* _fil
 }
 
 
-// get the HTTP server's closure 
+/**
+ * @brief Get the HTTP server's closure
+ * @return http->server_cls
+ */
 void* md_HTTP_cls( struct md_HTTP* http ) {
    return http->server_cls;
 }

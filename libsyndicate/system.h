@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file system.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief system header file
+ *
+ * @see libsyndicate/system.cpp
+ */
+
 // system methods
 
 #ifndef _LIBSYNDICATE_SYSTEM_H_

@@ -14,14 +14,26 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/vacuum.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific vacuum related functions
+ *
+ * @see libsyndicate/ms/vacuum.h
+ */
+
 #include "libsyndicate/ms/vacuum.h"
 #include "libsyndicate/ms/url.h"
 #include "libsyndicate/ms/file.h"
 
 
-// make a vacuum entry.
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a vacuum entry.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_vacuum_entry_init( struct ms_vacuum_entry* vreq, uint64_t volume_id, uint64_t gateway_id, uint64_t file_id, int64_t file_version,
                                  int64_t manifest_mtime_sec, int32_t manifest_mtime_nsec, uint64_t* affected_blocks, size_t num_affected_blocks ) {
    
@@ -46,10 +58,12 @@ int ms_client_vacuum_entry_init( struct ms_vacuum_entry* vreq, uint64_t volume_i
    return 0;
 }
 
-// set a vacuum entry's affected blocks (i.e. if they weren't known at the time of initialization).
-// the caller must allocate affected_blocks; the ms_vacuum_entry will own the array.
-// return 0 on success
-// return -EINVAL if the entry already has blocks 
+/**
+ * @brief Set a vacuum entry's affected blocks (i.e. if they weren't known at the time of initialization).
+ * @note The caller must allocate affected_blocks; the ms_vacuum_entry will own the array.
+ * @retval 0 Success
+ * @retval -EINVAL Entry already has blocks
+ */
 int ms_client_vacuum_entry_set_blocks( struct ms_vacuum_entry* vreq, uint64_t* affected_blocks, size_t num_affected_blocks ) {
    
    if( vreq->affected_blocks != NULL || vreq->num_affected_blocks != 0 ) {
@@ -62,8 +76,10 @@ int ms_client_vacuum_entry_set_blocks( struct ms_vacuum_entry* vreq, uint64_t* a
    return 0;
 }
 
-// free a vacuum entry 
-// always succeeds
+/**
+ * @brief Free a vacuum entry 
+ * @return 0
+ */
 int ms_client_vacuum_entry_free( struct ms_vacuum_entry* vreq ) {
    
    SG_safe_free( vreq->affected_blocks );
@@ -73,9 +89,13 @@ int ms_client_vacuum_entry_free( struct ms_vacuum_entry* vreq ) {
 }
 
 
-// extract the affected blocks from an ms_vacuum_ticket 
-// return 0 on success, and set *affected_blocs and *num_affected_blocks (the former is calloc'ed)
-// return -ENOMEM on OOM
+/**
+ * @brief Extract the affected blocks from an ms_vacuum_ticket
+ * @param[out] *affected_blocks The affected blocks (calloc'ed)
+ * @param[out] *num_affected_blocks The number of affected blocks
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int ms_client_vacuum_entry_get_affected_blocks( ms::ms_vacuum_ticket* vt, uint64_t** affected_blocks, size_t* num_affected_blocks ) {
    
    if( vt->affected_blocks_size() == 0 ) {
@@ -103,9 +123,13 @@ static int ms_client_vacuum_entry_get_affected_blocks( ms::ms_vacuum_ticket* vt,
 }
 
 
-// sign the affected blocks in an update.
-// return 0 on success, and populate *sig and *sig_len 
-// return -ENOMEM on OOM 
+/**
+ * @brief Sign the affected blocks in an update.
+ * @param[out] *sig Signature
+ * @param[out] *sig_len Signature length
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_sign_vacuum_ticket( struct ms_client* client, struct ms_vacuum_entry* ve, unsigned char** sig, size_t* sig_len ) {
    
    int rc = 0;
@@ -142,11 +166,13 @@ int ms_client_sign_vacuum_ticket( struct ms_client* client, struct ms_vacuum_ent
 }
 
 
-// verify the authenticity of a vacuum ticket.
-// return 0 on success
-// return -EPERM if signature mismatch 
-// return -EAGAIN if the gateway that signed is unknown to us 
-// return -ENOMEM if OOM
+/**
+ * @brief Verify the authenticity of a vacuum ticket.
+ * @retval 0 Success
+ * @retval -EPERM Signature mismatch 
+ * @retval -EAGAIN The gateway that signed is unknown to us 
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_verify_vacuum_ticket( struct ms_client* client, ms::ms_vacuum_ticket* vt ) {
    
    int rc = 0;
@@ -170,16 +196,18 @@ int ms_client_verify_vacuum_ticket( struct ms_client* client, ms::ms_vacuum_tick
 }
 
 
-// get a vacuum log entry for a file 
-// return 0 on success
-// return -ENOMEM if OOM
-// return -ENODATA if there is no vacuum data to be had
-// return -EACCES if we aren't allowed to vacuum
-// return -EPERM if the vacuum ticket was not signed by a gateway we know
-// return -EBADMSG if the vacuum ticket contained invalid data
-// return -EREMOTEIO on remote server error
-// return -EPROTO on HTTP 400-level error (i.e. no data, access denied, bad request, etc.)
-// return negative if we couldn't download or parse the result
+/**
+ * @brief Get a vacuum log entry for a file 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA There is no vacuum data to be had
+ * @retval -EACCES Aren't allowed to vacuum
+ * @retval -EPERM The vacuum ticket was not signed by a gateway we know
+ * @retval -EBADMSG The vacuum ticket contained invalid data
+ * @retval -EREMOTEIO Remote server error
+ * @retval -EPROTO HTTP 400-level error (i.e. no data, access denied, bad request, etc.)
+ * @retval <0 Couldn't download or parse the result
+ */
 int ms_client_peek_vacuum_log( struct ms_client* client, uint64_t volume_id, uint64_t file_id, struct ms_vacuum_entry* ve ) {
    
    char* vacuum_url = ms_client_vacuum_url( client->url, volume_id, ms_client_volume_version( client ), ms_client_cert_version( client ), file_id );
@@ -267,13 +295,16 @@ int ms_client_peek_vacuum_log( struct ms_client* client, uint64_t volume_id, uin
 }
 
 
-// remove a vacuum log entry 
-// NOTE: any gateway can send this, as long as it is the current coordinator of the file.
-// writer_id identifies the gateway that performed the associated write; it can be obtained from the manifest or the vacuum log head.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EPROTO on MS RPC protocol-level error or HTTP 400-level error
-// return negative on RPC error (see ms_client_single_rpc)
+/**
+ * @brief Remove a vacuum log entry 
+ *
+ * writer_id identifies the gateway that performed the associated write; it can be obtained from the manifest or the vacuum log head.
+ * @note Any gateway can send this, as long as it is the current coordinator of the file.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPROTO MS RPC protocol-level error or HTTP 400-level error
+ * @retval <0 RPC error (see ms_client_single_rpc)
+ */
 int ms_client_remove_vacuum_log_entry( struct ms_client* client, uint64_t volume_id, uint64_t writer_id, uint64_t file_id, uint64_t file_version, int64_t manifest_mtime_sec, int32_t manifest_mtime_nsec ) {
    
    struct ms_client_request request;
@@ -342,11 +373,14 @@ int ms_client_remove_vacuum_log_entry( struct ms_client* client, uint64_t volume
 }
 
 
-// Append the vacuum log entry for a file.
-// Do this before replicating the actual data.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return negative on RPC error 
+/**
+ * @brief Append the vacuum log entry for a file.
+ *
+ * Do this before replicating the actual data.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval <0 RPC error
+ */
 int ms_client_append_vacuum_log_entry( struct ms_client* client, struct ms_vacuum_entry* ve ) {
    
    // generate our update 

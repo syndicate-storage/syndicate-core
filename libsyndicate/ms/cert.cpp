@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/cert.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific gateway certificate related functions
+ *
+ * @see libsyndicate/ms/cert.h
+ */
+
 #include "libsyndicate/ms/cert.h"
 #include "libsyndicate/ms/volume.h"
 #include "libsyndicate/ms/url.h"
@@ -21,7 +31,7 @@
 #include "libsyndicate/download.h"
 #include "libsyndicate/client.h"
 
-// free a cert
+/// Free a cert
 void ms_client_gateway_cert_free( struct ms_gateway_cert* cert ) {
    
    SG_safe_free( cert->hostname );
@@ -38,7 +48,7 @@ void ms_client_gateway_cert_free( struct ms_gateway_cert* cert ) {
 }
 
 
-// free a cert bundle 
+/// Free a cert bundle 
 void ms_client_cert_bundle_free( ms_cert_bundle* bundle ) {
    
    for( ms_cert_bundle::iterator itr = bundle->begin(); itr != bundle->end(); itr++ ) {
@@ -53,17 +63,23 @@ void ms_client_cert_bundle_free( ms_cert_bundle* bundle ) {
 }
 
 
-// does a certificate have a public key set?
+/**
+ * @brief Check if a certificate has a public key set
+ * @retval 1 True
+ * @retval 0 False
+ */
 int ms_client_cert_has_public_key( ms::ms_gateway_cert* ms_cert ) {
    return (strcmp( ms_cert->public_key().c_str(), "NONE" ) != 0);
 }
 
 
-// initialize a gateway certificate.
-// NOTE cert takes ownership of ms_cert 
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL on invalid
+/**
+ * @brief Initialize a gateway certificate.
+ * @note cert takes ownership of ms_cert 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Invalid
+ */
 int ms_client_gateway_cert_init( struct ms_gateway_cert* cert, uint64_t my_gateway_id, ms::ms_gateway_cert* ms_cert ) {
    
    int rc = 0;
@@ -143,34 +159,39 @@ int ms_client_gateway_cert_init( struct ms_gateway_cert* cert, uint64_t my_gatew
 }
 
 
-// get the cert version 
+/// Get the cert version 
 uint64_t ms_client_gateway_cert_version( struct ms_gateway_cert* cert ) {
    return cert->version;
 }
 
 
-// get the user cert 
+/// Get the user cert 
 ms::ms_user_cert* ms_client_gateway_cert_user( struct ms_gateway_cert* cert ) {
    return cert->user_pb;
 }
 
 
-// get the gateway cert pb 
+/// Get the gateway cert pb 
 ms::ms_gateway_cert* ms_client_gateway_cert_gateway( struct ms_gateway_cert* cert ) {
    return cert->pb;
 }
 
-// get gateway name (ref)
+/// Get gateway name (ref)
 char const* ms_client_gateway_cert_name( struct ms_gateway_cert* cert ) {
    return cert->name;
 }
 
-// get gateway pubkey (ref)
+/// Get gateway pubkey (ref)
 EVP_PKEY* ms_client_gateway_pubkey( struct ms_gateway_cert* cert ) {
    return cert->pubkey;
 }
 
-// copy out driver hash (should be at least SHA256_DIGEST_LEN bytes)
+/**
+ * @brief Copy out driver hash (should be at least SHA256_DIGEST_LEN bytes)
+ * @param[out] hash_buf The driver hash
+ * @retval 0 Success
+ * @retval -ENOENT Null driver hash
+ */
 int ms_client_gateway_driver_hash_buf( struct ms_gateway_cert* cert, unsigned char* hash_buf ) {
    if( cert->driver_hash == NULL ) {
       return -ENOENT;
@@ -181,30 +202,36 @@ int ms_client_gateway_driver_hash_buf( struct ms_gateway_cert* cert, unsigned ch
 }
 
 
-// get cert hostname
+/// Get cert hostname
 char const* ms_client_gateway_cert_hostname( struct ms_gateway_cert* cert ) {
    return cert->hostname;
 }
 
-// get cert portnum
+/// Get cert portnum
 int ms_client_gateway_cert_portnum( struct ms_gateway_cert* cert ) {
    return cert->portnum;
 }
 
 
-// add a user protobuf 
-// NOTE: no authenticity check will be performed; this just sets the field.
-// return 0 on success
+/**
+ * @brief Add a user protobuf 
+ *
+ * No authenticity check will be performed; this just sets the field.
+ * @retval 0 Success
+ */
 int ms_client_gateway_cert_set_user( struct ms_gateway_cert* cert, ms::ms_user_cert* user_pb ) {
    
    cert->user_pb = user_pb;
    return 0;
 }
 
-// set the cert's driver 
-// NOTE: no consistency check will be performed against the hash; this just sets the field.
-// NOTE: the gateway cert takes ownership of the driver; the driver text must be malloc'ed or otherwise not go out of scope.
-// return 0 on success 
+/**
+ * @brief Set the cert's driver 
+ *
+ * No consistency check will be performed against the hash; this just sets the field.
+ * @note The gateway cert takes ownership of the driver; the driver text must be malloc'ed or otherwise not go out of scope.
+ * @retval 0 Success
+ */
 int ms_client_gateway_cert_set_driver( struct ms_gateway_cert* cert, char* driver_text, uint64_t driver_text_len ) {
    
    if( cert->driver_text != NULL ) {
@@ -217,10 +244,13 @@ int ms_client_gateway_cert_set_driver( struct ms_gateway_cert* cert, char* drive
 }
 
 
-// set the cert driver hash 
-// NOTE: no consistency check will be performed against the driver text; this just sets the field
-// NOTE: the gateway cert takes ownership of the hash; the driver hash must be malloc'ed or otherwise not go out of scope.
-// return 0 on success 
+/**
+ * @brief Set the cert driver hash 
+ *
+ * No consistency check will be performed against the driver text; this just sets the field
+ * @note: the gateway cert takes ownership of the hash; the driver hash must be malloc'ed or otherwise not go out of scope.
+ * @retval 0 Success
+ */ 
 int ms_client_gateway_cert_set_driver_hash( struct ms_gateway_cert* cert, unsigned char* driver_hash, size_t driver_hash_len ) {
    
    if( cert->driver_hash != NULL ) {
@@ -232,9 +262,11 @@ int ms_client_gateway_cert_set_driver_hash( struct ms_gateway_cert* cert, unsign
    return 0;
 }
 
-// put a cert into a cert bundle 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Put a cert into a cert bundle 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_cert_bundle_put( ms_cert_bundle* bundle, struct ms_gateway_cert* cert ) {
    try {
       (*bundle)[ cert->gateway_id ] = cert;
@@ -246,22 +278,22 @@ int ms_client_cert_bundle_put( ms_cert_bundle* bundle, struct ms_gateway_cert* c
    return 0;
 }
 
-// get user id 
+/// Get user id 
 uint64_t ms_client_gateway_cert_user_id( struct ms_gateway_cert* cert ) {
    return cert->user_id;
 }
 
-// get gateway type 
+/// Get gateway type 
 uint64_t ms_client_gateway_cert_gateway_type( struct ms_gateway_cert* cert ) {
    return cert->gateway_type;
 }
 
-// get gateway id 
+/// Get gateway id 
 uint64_t ms_client_gateway_cert_gateway_id( struct ms_gateway_cert* cert ) {
    return cert->gateway_id;
 }
 
-// get volume id 
+/// Get volume id 
 uint64_t ms_client_gateway_cert_volume_id( struct ms_gateway_cert* cert ) {
    return cert->volume_id;
 }

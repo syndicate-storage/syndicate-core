@@ -14,37 +14,49 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/xattr.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific extended attribute (xattr) related functions
+ *
+ * @see libsyndicate/ms/xattr.h
+ */
+
 #include "libsyndicate/ms/xattr.h"
 #include "libsyndicate/ms/file.h"
 #include "libsyndicate/ms/url.h"
 
 #include <endian.h>
 
-// borrowed from https://github.com/stevengj/nlopt/blob/master/util/qsort_r.c
-// the algorithms swap() and nlopt_qsort_r() are subject to the following copyright notice:
-
-/* copyright 2007-2014 MIT
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- * 
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
-*/
-
-/* swap size bytes between a_ and b_ */
+/**
+ * @brief Swap size bytes between a_ and b_
+ *
+ * Borrowed from https://github.com/stevengj/nlopt/blob/master/util/qsort_r.c
+ * the algorithms swap() and nlopt_qsort_r() are subject to the following copyright notice:
+```
+  Copyright 2007-2014 MIT
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+  
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+ */
 static void swap(void *a_, void *b_, size_t size)
 {
      if (a_ == b_) return;
@@ -71,6 +83,10 @@ static void swap(void *a_, void *b_, size_t size)
      }
 }
 
+/**
+ * @brief Part of the swap algorithm
+ * @see swap
+ */
 void nlopt_qsort_r(void *base_, size_t nmemb, size_t size, void *thunk,
 		   int (*compar)(void *, const void *, const void *))
 {
@@ -108,10 +124,14 @@ void nlopt_qsort_r(void *base_, size_t nmemb, size_t size, void *thunk,
      }
 }
 
-// sort comparator 
-// xattr_i1 and xattr_i2 are pointers to integers 
-// cls is the list of xattr names
-// the effect of this method is to order the integer array by xattr name.
+/**
+ * @brief Sort comparator 
+ *
+ * The effect of this method is to order the integer array by xattr name.
+ * xattr_i1 and xattr_i2 are pointers to integers 
+ * cls is the list of xattr names
+ * @relatesalso ms_client_xattr_hash
+ */
 static int ms_client_xattr_compar( void* cls, const void* xattr_i1, const void* xattr_i2 ) {
    
    char** xattr_names = (char**)cls;
@@ -121,14 +141,17 @@ static int ms_client_xattr_compar( void* cls, const void* xattr_i1, const void* 
    return strcmp( xattr_names[*i1], xattr_names[*i2] );
 }
 
-// find the hash over a file's xattrs and metadata.
-// xattr_names and xattr_values should be the same length, and should be null-terminated
-// or, xattr_names and xattr_values and xattr_lengths can all be NULL
-// the hash incorporates the volume ID, file ID, xattr nonce, xattr names, and xattr values, in that order.
-// the numbers are converted to network byte order first.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL if the number of xattr names and values doesn't match, or if some but not all of (xattr_names, xattr_values, xattr_lengths) are NULL
+/**
+ * @brief Find the hash over a file's xattrs and metadata.
+ *
+ * xattr_names and xattr_values should be the same length, and should be null-terminated
+ * or, xattr_names and xattr_values and xattr_lengths can all be NULL
+ * the hash incorporates the volume ID, file ID, xattr nonce, xattr names, and xattr values, in that order.
+ * the numbers are converted to network byte order first.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The number of xattr names and values doesn't match, or if some but not all of (xattr_names, xattr_values, xattr_lengths) are NULL
+ */
 int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_t file_id, int64_t xattr_nonce, char** xattr_names, char** xattr_values, size_t* xattr_lengths ) {
    
    uint64_t volume_id_nb = htobe64( volume_id );
@@ -208,10 +231,15 @@ int ms_client_xattr_hash( unsigned char* sha256_buf, uint64_t volume_id, uint64_
 }
 
 
-// extract xattr names, values, and lengths from an ms reply 
-// return 0 on success, and set *xattr_names, *xattr_values, *xattr_lengths (the former two will be NULL-terminated)
-// return -ENOMEM on OOM 
-// return -EINVAL for mismatched quantities of each.
+/**
+ * @brief Extract xattr names, values, and lengths from an ms reply
+ * @param[out] *xattr_names Null terminated xattr names
+ * @param[out] *xattr_values Null terminated xattr values
+ * @param[out] *xattr_lengths Length of names and values
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Mismatched quantities of each.
+ */
 static int ms_client_extract_xattrs( ms::ms_reply* reply, char*** xattr_names, char*** xattr_values, size_t** xattr_lengths ) {
    
    int rc = 0;
@@ -275,18 +303,20 @@ static int ms_client_extract_xattrs( ms::ms_reply* reply, char*** xattr_names, c
 }
 
 
-// fetch and verify all xattrs.
-// this method should only be called by the coordinator for the file.
-// return 0 on success
-// return -EPERM if we failed to verify the set of xattrs against the hash
-// return -ENOENT if the file doesn't exist or either isn't readable or writable.
-// return -ENODATA if the semantics in flags can't be met.
-// return -ENOMEM if OOM 
-// return -ENODATA if the replied message has no xattr field
-// return -EBADMSG on reply's signature mismatch
-// return -EPROTO on HTTP 400-level error
-// return -EREMOTEIO for HTTP 500-level error 
-// return -errno on socket, connect, and recv related errors
+/**
+ * @brief Fetch and verify all xattrs.
+ * @note This method should only be called by the coordinator for the file.
+ * @retval 0 Success
+ * @retval -EPERM Failed to verify the set of xattrs against the hash
+ * @retval -ENOENT File doesn't exist or either isn't readable or writable.
+ * @retval -ENODATA Semantics in flags can't be met.
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENODATA Replied message has no xattr field
+ * @retval -EBADMSG Reply's signature mismatch
+ * @retval -EPROTO HTTP 400-level error
+ * @retval -EREMOTEIO HTTP 500-level error 
+ * @retval -errno socket, connect, and recv related errors
+ */
 int ms_client_fetchxattrs( struct ms_client* client, uint64_t volume_id, uint64_t file_id, int64_t xattr_nonce, unsigned char* xattr_hash, char*** xattr_names, char*** xattr_values, size_t** xattr_lengths ) {
    
    char* fetchxattrs_url = NULL;
@@ -382,9 +412,11 @@ int ms_client_fetchxattrs( struct ms_client* client, uint64_t volume_id, uint64_
 }
 
 
-// make a putxattr request 
-// NOTE: shallow-copies
-// return 0 on success 
+/**
+ * @brief Make a putxattr request 
+ * @note Shallow-copies
+ * @retval 0 Success
+ */
 int ms_client_putxattr_request( struct ms_client* ms, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, unsigned char* xattr_hash, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -402,19 +434,21 @@ int ms_client_putxattr_request( struct ms_client* ms, struct md_entry* ent, char
    return 0;
 }
 
-// put a new xattr name/value, new xattr nonce, and xattr signature.
-// only the coordinator should call this, and only to keep its xattrs replica coherent with the MS
-// return 0 on success
-// return -EPERM if we failed to sign the xattr, for some reason
-// return -ENOENT if the file doesn't exist or either isn't readable or writable.
-// return -ENODATA if the semantics in flags can't be met.
-// return -ENOMEM if OOM 
-// return -ENODATA if the replied message has no xattr field
-// return -EBADMSG on reply's signature mismatch
-// return -EPROTO on HTTP 400-level error, or an MS RPC-level error
-// return -EREMOTEIO for HTTP 500-level error 
-// return -errno on socket, connect, and recv related errors
-// WARN: ent->ent_sig and ent->ent_sig_len will be changed.  If ent->ent_sig is not NULL, it will be free'd (be sure that it's heap-allocated!)
+/**
+ * @brief Put a new xattr name/value, new xattr nonce, and xattr signature.
+ * @attention ent->ent_sig and ent->ent_sig_len will be changed.  If ent->ent_sig is not NULL, it will be free'd (be sure that it's heap-allocated!)
+ * @note Only the coordinator should call this, and only to keep its xattrs replica coherent with the MS
+ * @retval 0 Success
+ * @retval -EPERM Failed to sign the xattr, for some reason
+ * @retval -ENOENT The file doesn't exist or either isn't readable or writable.
+ * @retval -ENODATA The semantics in flags can't be met.
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENODATA The replied message has no xattr field
+ * @retval -EBADMSG Reply's signature mismatch
+ * @retval -EPROTO HTTP 400-level error, or an MS RPC-level error
+ * @retval -EREMOTEIO HTTP 500-level error 
+ * @retval -errno socket, connect, and recv related errors
+ */
 int ms_client_putxattr( struct ms_client* client, struct md_entry* ent, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, unsigned char* xattr_hash ) {
    
    int rc = 0;
@@ -492,8 +526,10 @@ int ms_client_putxattr( struct ms_client* client, struct md_entry* ent, char con
 }
 
 
-// make a removexattr request 
-// return 0 on success 
+/**
+ * @brief Make a removexattr request 
+ * @retval 0 Success
+ */
 int ms_client_removexattr_request( struct ms_client* client, struct md_entry* ent, char const* xattr_name, unsigned char* xattr_hash, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -509,16 +545,19 @@ int ms_client_removexattr_request( struct ms_client* client, struct md_entry* en
    return 0;
 }
 
-// remove an xattr.
-// fails if the file isn't readable or writable, or the xattr exists and it's not writable
-// succeeds even if the xattr doesn't exist (i.e. idempotent)
-// return 0 on success 
-// return -ENOMEM if OOM 
-// return -ENODATA if the replied message has no xattr field
-// return -EBADMSG on reply's signature mismatch
-// return -EPROTO on HTTP 400-level error or an MS RPC error
-// return -EREMOTEIO for HTTP 500-level error 
-// return -errno on socket, connect, and recv related errors
+/**
+ * @brief Remove an xattr.
+ *
+ * Fails if the file isn't readable or writable, or the xattr exists and it's not writable
+ * Succeeds even if the xattr doesn't exist (i.e. idempotent)
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENODATA The replied message has no xattr field
+ * @retval -EBADMSG Reply's signature mismatch
+ * @retval -EPROTO HTTP 400-level error or an MS RPC error
+ * @retval -EREMOTEIO HTTP 500-level error 
+ * @retval -errno socket, connect, and recv related errors
+ */
 int ms_client_removexattr( struct ms_client* client, struct md_entry* ent, char const* xattr_name, unsigned char* xattr_hash ) {
    
    int rc = 0;

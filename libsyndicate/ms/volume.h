@@ -14,24 +14,34 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/volume.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for MS specific volume.cpp
+ *
+ * @see libsyndicate/ms/volume.cpp
+ */
+
 #ifndef _MS_CLIENT_VOLUME_H_
 #define _MS_CLIENT_VOLUME_H_
 
 #include "libsyndicate/ms/core.h"
 #include "libsyndicate/ms/cert.h"
 
-// Volume data
+/// Volume data
 struct ms_volume {
-   uint64_t volume_id;           // ID of this Volume
-   uint64_t volume_owner_id;     // UID of the User that owns this Volume
-   uint64_t blocksize;           // blocksize of this Volume
-   char* name;                   // name of the volume
+   uint64_t volume_id;                  ///< ID of this Volume
+   uint64_t volume_owner_id;            ///< UID of the User that owns this Volume
+   uint64_t blocksize;                  ///< Blocksize of this Volume
+   char* name;                          ///< Name of the volume
    
-   EVP_PKEY* volume_public_key;  // Volume public key 
+   EVP_PKEY* volume_public_key;         ///< Volume public key 
    
-   uint64_t volume_version;      // version of the above information
+   uint64_t volume_version;             ///< Version of the above information
    
-   ms::ms_volume_metadata* volume_md;   // the signed cert for the above
+   ms::ms_volume_metadata* volume_md;   ///< The signed cert for the above
 };
 
 extern "C" {

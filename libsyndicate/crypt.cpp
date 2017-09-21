@@ -14,6 +14,18 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/crypt.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Cryptography support functions
+ *
+ * Interface with OpenSSL libraries.
+ *
+ * @see libsyndicate/crypt.h
+ */
+
 #include "libsyndicate/crypt.h"
 
 // to help valgrind ignore OpenSSL uninitialized values during debugging
@@ -24,9 +36,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 // derived from http://www.cs.odu.edu/~cs772/sourcecode/NSwO/compiled/common.c
 
-// set up OpenSSL 
-// return 1 on success
-// return 0 on failure
+/**
+ * @brief Set up OpenSSL 
+ * @retval 1 Success
+ * @retval 0 Failure
+ */
 int md_init_OpenSSL(void) {
    
    int rc = md_openssl_thread_setup();
@@ -50,10 +64,12 @@ int md_init_OpenSSL(void) {
 }
 
 
-/* This array will store all of the mutexes available to OpenSSL. */
+/// An array to store all of the mutexes available to OpenSSL. 
 static MD_MUTEX_TYPE *md_openssl_mutex_buf = NULL ;
 
-// callback to libssl for locking
+/**
+ * @brief Callback to libssl for locking
+ */
 static void md_ssl_locking_function(int mode, int n, const char * file, int line) {
    
    if (mode & CRYPTO_LOCK) {
@@ -65,14 +81,18 @@ static void md_ssl_locking_function(int mode, int n, const char * file, int line
    }
 }
 
-// callback to libssl for thread id
+/**
+ * @brief Callback to libssl for thread id
+ */
 static unsigned long md_ssl_thread_id_function(void) {
   return ((unsigned long)MD_THREAD_ID);
 }
 
-// set up libssl threads
-// return 1 on success
-// return 0 on failure
+/**
+ * @brief Set up libssl threads
+ * @retval 1 Success
+ * @retval 0 Failure
+ */
 int md_openssl_thread_setup(void) {
    
   if( md_openssl_mutex_buf != NULL ) {
@@ -96,9 +116,11 @@ int md_openssl_thread_setup(void) {
   return 1;
 }
 
-// clean up libssl threads 
-// return 1 on success
-// return 0 on failure 
+/**
+ * @brief Clean up libssl threads 
+ * @retval 1 Success
+ * @retval 0 Failure
+ */
 int md_openssl_thread_cleanup(void) {
 
    int i;
@@ -120,14 +142,16 @@ int md_openssl_thread_cleanup(void) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static int urandom_fd = -1;     // /dev/urandom
-static int inited = 0;
+static int urandom_fd = -1;     ///< File descriptor for /dev/urandom
+static int inited = 0;          ///< Flag whether crypt is initialized
 
-// initialize crypto libraries and set up state
-// return 0 on success
-// return -EPERM if we failed to set up OpenSSL
-// return -errno if we failed to open /dev/urandom (see open(2))
-// NOTE: this is not thread-safe!
+/**
+ * @brief Initialize crypto libraries and set up state
+ * @note This is not thread-safe!
+ * @retval 0 Success
+ * @retval -EPERM failed to set up OpenSSL
+ * @retval -errno failed to open /dev/urandom (see open(2))
+ */
 int md_crypt_init() {
    SG_debug("%s\n", "starting up");
    
@@ -151,8 +175,11 @@ int md_crypt_init() {
    return 0;
 }
 
-// shut down crypto libraries and free state
-// always succeeds
+/**
+ * @brief Shut down crypto libraries and free state
+ * @note Always succeeds
+ * @return 0
+ */
 int md_crypt_shutdown() {
    
    SG_debug("%s\n", "shutting down");
@@ -173,9 +200,11 @@ int md_crypt_shutdown() {
 }
 
 
-// check crypt initialization
-// return 1 if initialized
-// return 0 if not.
+/**
+ * @brief Check crypt initialization
+ * @retval 1 Initialized
+ * @retval 0 Not initialized
+ */
 int md_crypt_check_init() {
    if( inited == 0 ) {
       return 0;
@@ -185,10 +214,12 @@ int md_crypt_check_init() {
    }
 }
 
-// read bytes from /dev/urandom
-// return 0 on success (i.e. read len bytes)
-// return -EINVAL if the crypto hasn't been initialized 
-// return -errno if we failed to read
+/**
+ * @brief Read bytes from /dev/urandom
+ * @retval 0 Success (i.e. read len bytes)
+ * @retval -EINVAL crypto hasn't been initialized 
+ * @retval -errno Failed to read
+ */
 int md_read_urandom( char* buf, size_t len ) {
    if( urandom_fd < 0 ) {
       
@@ -215,7 +246,10 @@ int md_read_urandom( char* buf, size_t len ) {
 }
 
 
-// print an OpenSSL error message
+/**
+ * @brief Print an OpenSSL error message
+ * @return 0
+ */
 int md_openssl_error() {
    unsigned long err = ERR_get_error();
    char buf[4096];
@@ -225,10 +259,12 @@ int md_openssl_error() {
    return 0;
 }
 
-// verify a message, given a base64-encoded signature
-// return 0 on success
-// return -EINVAL if we failed to parse the buffer
-// return -EBADMSG if we failed to verify the digest
+/**
+ * @brief Verify a message, given a base64-encoded signature
+ * @retval 0 Success
+ * @retval -EINVAL Failed to parse the buffer
+ * @retval -EBADMSG Failed to verify the digest
+ */
 int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len, char* sig_bin, size_t sig_bin_len ) {
       
    const EVP_MD* sha256 = EVP_sha256();
@@ -292,13 +328,16 @@ int md_verify_signature_raw( EVP_PKEY* public_key, char const* data, size_t len,
    return 0;
 }
 
-// verify a message with base64 signature
-// if it hasn't been initialized yet, initialize the crypto subsystems
-// return 0 on success
-// return negative if we failed to set up the crypto subsystem (if it was not initialized)
-// return -EINVAL if the message could not be decoded
-// return -ENOMEM if we ran out of memory
-// return -errno on failure to initialize the crypto subsystem, if it had not been initialized already
+/**
+ * @brief Verify a message with base64 signature
+ *
+ * If it hasn't been initialized yet, initialize the crypto subsystems
+ * @retval 0 Success
+ * @retval <0 failed to set up the crypto subsystem (if it was not initialized)
+ * @retval -EINVAL Message could not be decoded
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Failure to initialize the crypto subsystem, if it had not been initialized already
+ */
 int md_verify_signature( EVP_PKEY* pubkey, char const* data, size_t len, char* sigb64, size_t sigb64_len ) {
    
    // safety for external clients
@@ -330,7 +369,9 @@ int md_verify_signature( EVP_PKEY* pubkey, char const* data, size_t len, char* s
 }
 
 
-// sign a message
+/**
+ * @brief Sign a message
+ */
 int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** sig, size_t* siglen ) {
 
    // sign this with SHA256
@@ -411,11 +452,13 @@ int md_sign_message_raw( EVP_PKEY* pkey, char const* data, size_t len, char** si
 }
 
    
-// sign a message, producing the base64 signature
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -1 on failure to sign 
-// return -errno on failure to initialize the crypto subsystem, if it had not been initialized already
+/**
+ * @brief Sign a message, producing the base64 signature
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -1 on failure to sign 
+ * @retval -errno on failure to initialize the crypto subsystem, if it had not been initialized already
+ */
 int md_sign_message( EVP_PKEY* pkey, char const* data, size_t len, char** sigb64, size_t* sigb64_len ) {
    
    int rc = 0;
@@ -461,9 +504,11 @@ int md_sign_message( EVP_PKEY* pkey, char const* data, size_t len, char** sigb64
 }
 
 
-// load a PEM-encoded (RSA) public key into an EVP key
-// return 0 on success
-// return -EINVAL if the public key could not be loaded
+/**
+ * @brief Load a PEM-encoded (RSA) public key into an EVP key
+ * @retval 0 Success
+ * @retval -EINVAL public key could not be loaded
+ */
 int md_load_pubkey( EVP_PKEY** key, char const* pubkey_str, size_t pubkey_len ) {
    BIO* buf_io = BIO_new_mem_buf( (void*)pubkey_str, pubkey_len );
 
@@ -484,9 +529,11 @@ int md_load_pubkey( EVP_PKEY** key, char const* pubkey_str, size_t pubkey_len ) 
 }
 
 
-// load a PEM-encoded (RSA) private key into an EVP key
-// return 0 on success 
-// return -EINVAL onfailure to load the private key 
+/**
+ * @brief Load a PEM-encoded (RSA) private key into an EVP key
+ * @retval 0 Success 
+ * @retval -EINVAL Failure to load the private key
+ */
 int md_load_privkey( EVP_PKEY** key, char const* privkey_str, size_t privkey_len ) {
    BIO* buf_io = BIO_new_mem_buf( (void*)privkey_str, privkey_len );
 
@@ -506,9 +553,11 @@ int md_load_privkey( EVP_PKEY** key, char const* privkey_str, size_t privkey_len
    return 0;
 }
 
-// load both public and private keys from an RSA private key into EVP key structures
-// return 0 on success 
-// return -EINVAL on failure to load either key 
+/**
+ * @brief Load both public and private keys from an RSA private key into EVP key structures
+ * @retval 0 Success 
+ * @retval -EINVAL Failure to load either key
+ */
 int md_load_public_and_private_keys( EVP_PKEY** _pubkey, EVP_PKEY** _privkey, char const* privkey_str ) {
    BIO* buf_priv_io = BIO_new_mem_buf( (void*)privkey_str, strlen(privkey_str) + 1 );
    
@@ -555,8 +604,10 @@ int md_load_public_and_private_keys( EVP_PKEY** _pubkey, EVP_PKEY** _privkey, ch
 }
 
 
-// get the RSA public key from the RSA private key 
-// return -EINVAL on failure to serialize the private key, or failure to load the public key from it
+/**
+ * @brief Get the RSA public key from the RSA private key 
+ * @retval -EINVAL Failure to serialize the private key, or failure to load the public key from it
+ */
 int md_public_key_from_private_key( EVP_PKEY** ret_pubkey, EVP_PKEY* privkey ) {
    
    // get the public part 
@@ -587,9 +638,11 @@ int md_public_key_from_private_key( EVP_PKEY** ret_pubkey, EVP_PKEY* privkey ) {
    return 0;
 }
 
-// generate RSA public/private key pair
-// return 0 on success
-// return -1 on failure 
+/**
+ * @brief Generate RSA public/private key pair
+ * @retval 0 Success
+ * @retval -1 Failure
+ */
 int md_generate_key( EVP_PKEY** key ) {
 
    SG_debug("%s", "Generating public/private key...\n");
@@ -630,9 +683,11 @@ int md_generate_key( EVP_PKEY** key ) {
 }
 
 
-// dump a key to memory as a PEM-encoded string
-// return -EINVAL on failure to serialize the key 
-// return -ENOMEM on OOM
+/**
+ * @brief Dump a key to memory as a PEM-encoded string
+ * @retval -EINVAL Failure to serialize the key 
+ * @retval -ENOMEM Out of Memory
+ */
 long md_dump_pubkey( EVP_PKEY* pkey, char** buf ) {
    BIO* mbuf = BIO_new( BIO_s_mem() );
    
@@ -663,14 +718,17 @@ long md_dump_pubkey( EVP_PKEY* pkey, char** buf ) {
 }
 
 
-// Seal data with a given public key, using AES256 in CBC mode.
-// Sign the encrypted data with the given public key.
-// return 0 on success 
-// return -1 on failure to use an OpenSSL method 
-// return -errno on failure to read random data
-// return -ENOMEM on OOM 
-// return -EOVERFLOW if the outputted message or any of its fields would be too long 
-// return -ERANGE if the message is greater than 2**30 bytes long
+/**
+ * @brief Seal data with a given public key, using AES256 in CBC mode.
+ *
+ * Sign the encrypted data with the given public key.
+ * @retval 0 Success 
+ * @retval -1 Failure to use an OpenSSL method 
+ * @retval -errno Failure to read random data
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EOVERFLOW Outputted message or any of its fields would be too long 
+ * @retval -ERANGE Message is greater than 2**30 bytes long
+ */
 int md_encrypt( EVP_PKEY* sender_pkey, EVP_PKEY* receiver_pubkey, char const* in_data, size_t in_data_len, char** out_data, size_t* out_data_len ) {
    
    // use AES256 in CBC mode
@@ -877,13 +935,16 @@ int md_encrypt( EVP_PKEY* sender_pkey, EVP_PKEY* receiver_pubkey, char const* in
 }
 
 
-// decrypt data with a given private key, generated from md_encrypt
-// check the signature BEFORE decrypting!
-// return 0 on success 
-// return -EINVAL if the message is malformed (i.e. has nonsensical field sizes)
-// return -EOVERFLOW on numeric overflow 
-// return -1 if the signature is invalid
-// NOTE: we will reject any message that reports to be 2**30 bytes long with -ERANGE
+/**
+ * @brief Decrypt data with a given private key, generated from md_encrypt
+ *
+ * Check the signature BEFORE decrypting!
+ * @note Reject any message that reports to be 2**30 bytes long with -ERANGE
+ * @retval 0 Success 
+ * @retval -EINVAL message is malformed (i.e. has nonsensical field sizes)
+ * @retval -EOVERFLOW on numeric overflow 
+ * @retval -1 signature is invalid
+ */
 int md_decrypt( EVP_PKEY* sender_pubkey, EVP_PKEY* receiver_pkey, char const* in_data, size_t in_data_len, char** plaintext, size_t* plaintext_len ) {
    int32_t iv_len = 0;
    int32_t ek_len = 0;
@@ -1055,11 +1116,13 @@ int md_decrypt( EVP_PKEY* sender_pubkey, EVP_PKEY* receiver_pkey, char const* in
 }
 
 
-// helper function for md_encrypt, when we can't deal with EVP_PKEY (i.e. from a python script)
-// return 0 on success 
-// return -EINVAL on failure to load either the public or private key 
-// return -errno on failure to encrypt 
-// return -errno on failure to initialize the crypto subsystem, if it had not been initialized already
+/**
+ * @brief Helper function for md_encrypt, when we can't deal with EVP_PKEY (i.e. from a python script)
+ * @retval 0 Success 
+ * @retval -EINVAL Failure to load either the public or private key 
+ * @retval -errno Failure to encrypt 
+ * @retval -errno Failure to initialize the crypto subsystem, if it had not been initialized already
+ */
 int md_encrypt_pem( char const* sender_pkey_pem, char const* receiver_pubkey_pem, char const* in_data, size_t in_data_len, char** out_data, size_t* out_data_len ) {
    
    int rc = 0;
@@ -1102,9 +1165,11 @@ int md_encrypt_pem( char const* sender_pkey_pem, char const* receiver_pubkey_pem
 }
 
 
-// helper function for md_decrypt, when we can't deal with EVP_PKEY (i.e. from a python script)
-// return 0 on success 
-// return -errno on failure to initialize the crypto subsystem, if it had not been initialized already
+/**
+ * @brief Helper function for md_decrypt, when we can't deal with EVP_PKEY (i.e. from a python script)
+ * @retval 0 Success 
+ * @retval -errno Failure to initialize the crypto subsystem, if it had not been initialized already
+ */
 int md_decrypt_pem( char const* sender_pubkey_pem, char const* receiver_privkey_pem, char const* in_data, size_t in_data_len, char** out_data, size_t* out_data_len ) {
    
    int rc = 0;
@@ -1146,16 +1211,21 @@ int md_decrypt_pem( char const* sender_pubkey_pem, char const* receiver_privkey_
    return rc;
 }
 
-// how big is the ciphertext buffer for md_encrypt_symmetric_ex?
-// return the size 
+/**
+ * @brief Get size of the ciphertext buffer for md_encrypt_symmetric_ex?
+ * @relatesalso md_encrypt_symmetric_ex
+ * @retval Size 
+ */
 size_t md_encrypt_symmetric_ex_ciphertext_len( size_t data_len ) {
    const EVP_CIPHER* cipher = MD_DEFAULT_CIPHER();
    return data_len + EVP_CIPHER_block_size( cipher );
 }
 
-// encrypt data using a symmetric key and an IV
-// return 0 on success
-// return -1 on OpenSSL initialization failure 
+/**
+ * @brief Encrypt data using a symmetric key and an IV
+ * @retval 0 Success
+ * @retval -1 OpenSSL initialization failure
+ */
 int md_encrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned char const* iv, size_t iv_len, char* data, size_t data_len, char** ciphertext, size_t* ciphertext_len ) {
    
    if( key_len != 32 ) {
@@ -1242,17 +1312,22 @@ int md_encrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
 }
 
 
-// how big is the ciphertext buffer for md_encrypt_symmetric_ex?
+/**
+ * @brief Get size of the ciphertext buffer for md_encrypt_symmetric_ex
+ * @relatesalso md_encrypt_symmetric_ex
+ */
 size_t md_decrypt_symmetric_ex_ciphertext_len( size_t ciphertext_len ) {
    const EVP_CIPHER* cipher = MD_DEFAULT_CIPHER();
    return ciphertext_len + EVP_CIPHER_block_size( cipher );
 }
 
-// decrypt data using a symmetric key and an IV
-// return 0 on success 
-// return -EINVAL for invalid key length 
-// return -1 on OpenSSL error 
-// return -ENOMEM on OOM 
+/**
+ * @brief Decrypt data using a symmetric key and an IV
+ * @retval 0 Success 
+ * @retval -EINVAL Invalid key length 
+ * @retval -1 OpenSSL error 
+ * @retval -ENOMEM Out of Memory
+ */
 int md_decrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned char const* iv, size_t iv_len, char* ciphertext_data, size_t ciphertext_len, char** data, size_t* data_len ) {
    
    if( key_len != 32 ) {
@@ -1337,18 +1412,23 @@ int md_decrypt_symmetric_ex( unsigned char const* key, size_t key_len, unsigned 
 }
 
 
-// how big should the ciphertext buffer be for md_encrypt_symmetric?
+/**
+ * @brief Get the size of the ciphertext buffer for md_encrypt_symmetric
+ * @return Size
+ */
 size_t md_encrypt_symmetric_ciphertext_len( size_t data_len ) {
    const EVP_CIPHER* cipher = MD_DEFAULT_CIPHER();
    return data_len + EVP_CIPHER_iv_length( cipher ) + EVP_CIPHER_block_size( cipher );
 }
 
-// encrypt data using a symmetric key.  Generate an IV and keep it with the ciphertext
-// return 0 on success 
-// return -EINVAL on invalid key length 
-// return -ENOMEM on OOM 
-// return non-zero on failure to encrypt
-// return -errno on failure to read random data
+/**
+ * @brief Encrypt data using a symmetric key.  Generate an IV and keep it with the ciphertext
+ * @retval 0 Success 
+ * @retval -EINVAL Invalid key length 
+ * @retval -ENOMEM Out of Memory 
+ * @retval !0 Failure to encrypt
+ * @retval -errno Failure to read random data
+ */
 int md_encrypt_symmetric( unsigned char const* key, size_t key_len, char* data, size_t data_len, char** ret_ciphertext, size_t* ret_ciphertext_len ) {
    
    if( key_len != 32 ) {
@@ -1399,16 +1479,23 @@ int md_encrypt_symmetric( unsigned char const* key, size_t key_len, char* data, 
    return 0;
 }
 
-// how big should the plaintext bufer be for md_decrypt_symmetric?
+/**
+ * @brief Get the size of the plaintext buffer for md_decrypt_symmetric
+ * @return Size
+ */
 size_t md_decrypt_symmetric_plaintext_len( size_t ciphertext_buffer_len ) {
    const EVP_CIPHER* cipher = MD_DEFAULT_CIPHER();
    return ciphertext_buffer_len - EVP_CIPHER_iv_length( cipher ) + EVP_CIPHER_block_size( cipher );
 }
 
-// unseal data with a symmetric key.  the ciphertext buffer will have had to have been generated by md_encrypt_symmetric
-// return 0 on success 
-// return -EINVAL on invalid key length, or invalid buffer length 
-// return non-zero on failure to decrypt 
+/**
+ * @brief Unseal data with a symmetric key
+ *
+ * The ciphertext buffer will have had to have been generated by md_encrypt_symmetric
+ * @retval 0 Success 
+ * @retval -EINVAL Invalid key length, or invalid buffer length 
+ * @retval !0 Failure to decrypt 
+ */
 int md_decrypt_symmetric( unsigned char const* key, size_t key_len, char* ciphertext_buffer, size_t ciphertext_buffer_len, char** data, size_t* data_len ) {
    
    if( key_len != 32 ) {

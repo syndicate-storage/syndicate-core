@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/httpd.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for http support
+ *
+ * @see libsyndicate/httpd.cpp
+ */
+
 // HTTP daemon code
 
 #ifndef _LIBSYNDICATE_HTTPD_H_
@@ -76,7 +86,7 @@ using namespace std;
 
 #define SG_HTTP_TMPFILE_FORMAT          "/tmp/.syndicate-upload.XXXXXX"
 
-// HTTP headers
+/// HTTP headers
 struct md_HTTP_header {
    char* header;
    char* value;
@@ -89,61 +99,61 @@ typedef MHD_ContentReaderCallback md_HTTP_stream_callback;
 // void (*)(void* cls)
 typedef MHD_ContentReaderFreeCallback md_HTTP_free_cls_callback;
 
-// HTTP stream response
+/// HTTP stream response
 struct md_HTTP_stream_response {
-   md_HTTP_stream_callback scb;
-   md_HTTP_free_cls_callback fcb;
+   md_HTTP_stream_callback scb;         ///< Stream callback
+   md_HTTP_free_cls_callback fcb;       ///< Caller specified state callback
    
-   void* cls;
-   size_t blk_size;
-   uint64_t size;
+   void* cls;                           ///< Caller specified state/data
+   size_t blk_size;                     ///< Block size
+   uint64_t size;                       ///< Response size
 };
    
 
-// HTTP response (to be populated by handlers)
+/// HTTP response (to be populated by handlers)
 struct md_HTTP_response {
-   int status;
-   struct MHD_Response* resp;
+   int status;                          ///< Response status
+   struct MHD_Response* resp;           ///< Response
 };
 
 struct md_HTTP;
 
-// HTTP post field data 
+/// HTTP post field data 
 struct SG_HTTP_post_field {
-   md_response_buffer_t* rb;    // for RAM upload 
+   md_response_buffer_t* rb;            ///< For RAM upload 
    
-   int tmpfd;                   // temporary file 
+   int tmpfd;                           ///< Temporary file 
    char* tmpfd_path;
 
-   uint64_t num_written;        // number of bytes accepted
-   uint64_t max_size;           // maximum allowed size 
+   uint64_t num_written;                ///< Number of bytes accepted
+   uint64_t max_size;                   ///< Maximum allowed size 
 };
 
 typedef map<string, struct SG_HTTP_post_field> SG_HTTP_post_field_map_t;
 
-// HTTP connection data
+/// HTTP connection data
 struct md_HTTP_connection_data {
    
-   struct md_HTTP* http;                // HTTP server reference
-   struct MHD_PostProcessor* pp;        // HTTP post processor 
-   struct md_HTTP_header** headers;     // headers from the request 
-   char* remote_host;                   // remote peer (host:port string)
-   uint64_t content_length;             // length of the content returned
+   struct md_HTTP* http;                ///< HTTP server reference
+   struct MHD_PostProcessor* pp;        ///< HTTP post processor 
+   struct md_HTTP_header** headers;     ///< Headers from the request 
+   char* remote_host;                   ///< Remote peer (host:port string)
+   uint64_t content_length;             ///< Length of the content returned
    
-   int status;                // HTTP status
-   int mode;                  // numerical alias for the operation
-   off_t offset;              // if there isn't a post-processor, then this stores the offset 
+   int status;                          ///< HTTP status
+   int mode;                            ///< Numerical alias for the operation
+   off_t offset;                        ///< If there isn't a post-processor, then this stores the offset 
    
-   void* cls;                 // user-supplied closure
-   int version;               // HTTP version
-   char* url_path;            // path requested
-   char* query_string;        // url's query string (points to data alloc'ed to url_path)
+   void* cls;                           ///< User-supplied closure
+   int version;                         ///< HTTP version
+   char* url_path;                      ///< Path requested
+   char* query_string;                  ///< Url's query string (points to data alloc'ed to url_path)
    
-   SG_HTTP_post_field_map_t* post_fields;       // upload data keyed by field
+   SG_HTTP_post_field_map_t* post_fields; ///< Upload data keyed by field
    
-   struct MHD_Connection* connection;   // reference to HTTP connection 
-   volatile bool suspended;             // if true, then this connection is suspended
-   struct md_HTTP_response* resume_resp;        // if set, this is the response to send back immediately following a connection resume
+   struct MHD_Connection* connection;   ///< Reference to HTTP connection 
+   volatile bool suspended;             ///< If true, then this connection is suspended
+   struct md_HTTP_response* resume_resp;  ///< If set, this is the response to send back immediately following a connection resume
 };
 
 typedef int (*SG_HTTP_method_t)( struct md_HTTP_connection_data*, struct md_HTTP_response* );
@@ -151,35 +161,34 @@ typedef int (*SG_HTTP_post_field_handler_t)( char const*, char const*, char cons
 
 typedef map<string, SG_HTTP_post_field_handler_t> SG_HTTP_post_field_handler_map_t;
 
-// HTTP callbacks and control code
+/// HTTP callbacks and control code
 struct md_HTTP {
    
-   struct MHD_Daemon* http_daemon;
-   int server_type;   // one of the MHD options
+   struct MHD_Daemon* http_daemon;      ///< The http daemon
+   int server_type;                     ///< One of the MHD options
    
-   bool running;
+   bool running;                        ///< Flag whether http is running
 
-   // connection setup/cleanup
-   int  (*HTTP_connect)( struct md_HTTP_connection_data* md_con_data, void** cls );
-   void (*HTTP_cleanup)( void* cls );
+   int  (*HTTP_connect)( struct md_HTTP_connection_data* md_con_data, void** cls ); ///< Connection setup
+   void (*HTTP_cleanup)( void* cls );   ///< Connection cleanup
    
-   // associated server-wide state to make available to connections
+   /// associated server-wide state to make available to connections
    void* server_cls;
    
    // method handlers
-   SG_HTTP_method_t HTTP_HEAD_handler;
-   SG_HTTP_method_t HTTP_GET_handler;
-   SG_HTTP_method_t HTTP_POST_finish;
-   SG_HTTP_method_t HTTP_PUT_finish;
-   SG_HTTP_method_t HTTP_DELETE_handler;
+   SG_HTTP_method_t HTTP_HEAD_handler;  ///< Method handler
+   SG_HTTP_method_t HTTP_GET_handler;   ///< Method handler
+   SG_HTTP_method_t HTTP_POST_finish;   ///< Method handler
+   SG_HTTP_method_t HTTP_PUT_finish;    ///< Method handler
+   SG_HTTP_method_t HTTP_DELETE_handler; ///< Method handler
    
-   // upload field handlers
+   /// Upload field handlers
    SG_HTTP_post_field_handler_map_t* upload_field_handlers;
 
-   // maximum RAM upload size per connection
+   /// Maximum RAM upload size per connection
    uint64_t max_ram_upload_size;
 
-   // maximum disk upload size per connection 
+   /// Maximum disk upload size per connection 
    uint64_t max_disk_upload_size;
 };
 

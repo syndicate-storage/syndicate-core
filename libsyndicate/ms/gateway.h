@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/gateway.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for gateway.cpp
+ *
+ * @see libsyndicate/ms/gateway.cpp
+ */
+
 #ifndef _MS_CLIENT_GATEWAY_H_
 #define _MS_CLIENT_GATEWAY_H_
 
@@ -46,10 +56,12 @@ char* ms_client_get_gateway_url( struct ms_client* client, uint64_t gateway_id )
 }
 
 // have to put this here, since C++ forbids separating the declaration and definition of template functions across multiple files???
-// Verify the authenticity of a gateway message, encoded as a protobuf (class T)
-// return 0 if successfully verified 
-// return -EINVAL if message came from outside the volume
-// return -EAGAIN if we have no certificate for this gateway_id 
+/**
+ * @brief Verify the authenticity of a gateway message, encoded as a protobuf (class T)
+ * @retval 0 Success (verified)
+ * @retval -EINVAL The message came from outside the volume
+ * @retval -EAGAIN No certificate for this gateway_id
+ */
 template< class T > int ms_client_verify_gateway_message( struct ms_client* client, uint64_t volume_id, uint64_t gateway_id, T* protobuf ) {
    
    int rc = 0;

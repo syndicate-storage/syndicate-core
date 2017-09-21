@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/benchmark.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for benchmark.cpp
+ *
+ * @see libsyndicate/ms/benchmark.cpp
+ */
+
 #ifndef _MS_CLIENT_BENCHMARK_H_
 #define _MS_CLIENT_BENCHMARK_H_
 
@@ -34,7 +44,7 @@
 #define HTTP_REMOVEXATTRS_TIMES "X-Removexattrs-Times"
 #define HTTP_MS_LASTMOD    "X-MS-LastMod"
 
-// benchmarking structure
+/// benchmarking structure
 struct ms_client_timing {
    uint64_t total_time;
    uint64_t volume_time;

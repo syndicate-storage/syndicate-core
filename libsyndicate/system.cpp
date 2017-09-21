@@ -14,13 +14,28 @@
    limitations under the License.
 */
 
+/**
+ * @file system.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief General system related functions
+ *
+ * @see libsyndicate/system.h
+ */
+
 #include "libsyndicate/system.h"
 
-// turn into a daemonn. if non-null, log to the file referred to by logfile_path.  If non-null, put the child PID into the file referred to by pidfile_path
-// return 0 on success (to both the child and parent), and set *logfile to the logfile stream opened if logfile_path is not NULL
-// return 0 to the parent if the fork() succeeded, -errno if not (see fork(2))
-// return 0 to the child if the child started successfully.
-// return -errno if the child failed to create the logfile or PID file (see open(2), fopen(3))
+/**
+ * @brief Turn into a daemon
+ *
+ * If non-null, log to the file referred to by logfile_path.  If non-null, put the child PID into the file referred to by pidfile_path
+ * @param[in,out] *logfile The log file, set to the logfile stream opened if logfile_path is not NULL
+ * @retval 0 Success (to both the child and parent)
+ * @note Return 0 to the parent if the fork() succeeded, -errno if not (see fork(2))
+ * @note Return 0 to the child if the child started successfully.
+ * @retval -errno if the child failed to create the logfile or PID file (see open(2), fopen(3))
+ */
 int md_daemonize( char* logfile_path, char* pidfile_path, FILE** logfile ) {
 
    FILE* log = NULL;
@@ -136,10 +151,12 @@ int md_daemonize( char* logfile_path, char* pidfile_path, FILE** logfile ) {
 }
 
 
-// assume the privileges of a lesser user
-// return 0 on success
-// return negative on failure (see getpwnam(3))
-// NOTE: this is not thread-safe
+/**
+ * @brief Assume the privileges of a lesser user
+ * @note This is not thread-safe
+ * @retval 0 Success
+ * @retval <0 Failure (see getpwnam(3))
+ */
 int md_release_privileges( char const* username ) {
    
    struct passwd* pwd;

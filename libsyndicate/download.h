@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/download.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for download functions
+ *
+ * @see libsyndicate/download.cpp
+ */
+
 #ifndef _LIBSYNDICATE_DOWNLOAD_H_
 #define _LIBSYNDICATE_DOWNLOAD_H_
 

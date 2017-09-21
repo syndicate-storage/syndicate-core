@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file server.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Syndicate server related functionality
+ *
+ * @see libsyndicate/server.h
+ */
+
 #include "libsyndicate/server.h"
 #include "libsyndicate/gateway.h"
 #include "libsyndicate/manifest.h"
@@ -21,10 +31,12 @@
 
 static int SG_server_dataplane_auth( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, int* ret_chunks_fd );
 
-// connection initialization handler for embedded HTTP server
-// return 0 on success 
-// return -ENOMEM on OOM
-// return -EINVAL if the request is not a valid URL
+/**
+ * @brief Connection initialization handler for embedded HTTP server
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The request is not a valid URL
+ */
 int SG_server_HTTP_connect( struct md_HTTP_connection_data* con_data, void** cls ) {
    
    struct SG_server_connection* sgcon = SG_CALLOC( struct SG_server_connection, 1 );
@@ -40,8 +52,10 @@ int SG_server_HTTP_connect( struct md_HTTP_connection_data* con_data, void** cls
 }
 
 
-// translate a stat error into an HTTP response 
-// return the result of md_HTTP_create_response_builtin 
+/**
+ * @brief Translate a stat error into an HTTP response 
+ * @return The result of md_HTTP_create_response_builtin
+ */ 
 static int SG_server_stat_fail_response( int rc, struct md_HTTP_response* resp ) {
 
    // not found or permission error?
@@ -67,10 +81,13 @@ static int SG_server_stat_fail_response( int rc, struct md_HTTP_response* resp )
 }
 
 
-// stat a file given its request info, and set up an HTTP response with the appropriate failure code if it fails 
-// return 0 if we handled the failure 
-// return 1 if there was no failure to handle
-// return negative on error 
+/**
+ * @brief Stat a file given its request info, and set up an HTTP response with the appropriate failure code if it fails
+ * @param[out] resp The http response
+ * @retval 0 Handled the failure 
+ * @retval 1 No failure to handle
+ * @retval -1 Error
+ */ 
 static int SG_gateway_impl_stat_or_fail( struct SG_gateway* gateway, struct md_HTTP_response* resp, struct SG_request_data* reqdat, struct SG_request_data* entity_info, mode_t* mode ) {
    
    int rc = 0;
@@ -87,10 +104,13 @@ static int SG_gateway_impl_stat_or_fail( struct SG_gateway* gateway, struct md_H
 }
 
 
-// stat a file's block given its request info, and set up an HTTP response with the appropriate failure code if it fails 
-// return 0 if we handled the failure 
-// return 1 if there was no failure to handle
-// return negative on error 
+/**
+ * @brief Stat a file's block given its request info, and set up an HTTP response with the appropriate failure code if it fails 
+ * @param[out] resp The http response
+ * @retval 0 Handled the failure 
+ * @retval 1 No failure to handle
+ * @retval -1 Error
+ */
 static int SG_gateway_impl_stat_block_or_fail( struct SG_gateway* gateway, struct md_HTTP_response* resp, struct SG_request_data* reqdat, struct SG_request_data* entity_info, mode_t* mode ) {
    
    int rc = 0;
@@ -107,12 +127,13 @@ static int SG_gateway_impl_stat_block_or_fail( struct SG_gateway* gateway, struc
 }
 
 
-
-// stat the requested entity, and verify that it has an appropriate mode.
-// if not, generate the appropriate HTTP response
-// return 0 if the request was handled 
-// return 1 if not handled, but the request is sound (i.e. the caller should service it)
-// return negative on error 
+/**
+ * @brief Stat the requested entity, and verify that it has an appropriate mode.
+ * If not, generate the appropriate HTTP response
+ * @retval 0 The request was handled 
+ * @retval 1 Not handled, but the request is sound (i.e. the caller should service it)
+ * @retval -1 Error
+ */
 static int SG_server_stat_request( struct SG_gateway* gateway, struct md_HTTP_response* resp, struct SG_request_data* reqdat, mode_t mode ) {
    
    int rc = 0;
@@ -139,14 +160,17 @@ static int SG_server_stat_request( struct SG_gateway* gateway, struct md_HTTP_re
 }
 
 
-// early sanity-check on inbound requests:
-// * accept a request if the gateway imposes no request rejection policy--i.e. all requests are considered sound.
-// * reject a request if the requested entity is not found, or does not have the requisite permissions.
-// * redirect a request if the request refers to a stale version of the entity.
-// redirect a request if it is to a stale version, or to a file we don't coordinate
-// return 0 if handled (will populate resp) 
-// return 1 if not handled, but the request is sound (i.e. the caller should service it)
-// return negative on error (will populate resp)
+/**
+ * @brief Early sanity-check on inbound requests
+ *
+ * Accept a request if the gateway imposes no request rejection policy--i.e. all requests are considered sound.
+ * Reject a request if the requested entity is not found, or does not have the requisite permissions.
+ * Redirect a request if the request refers to a stale version of the entity.
+ * Redirect a request if it is to a stale version, or to a file we don't coordinate
+ * @retval 0 Handled (will populate resp) 
+ * @retval 1 Not handled, but the request is sound (i.e. the caller should service it)
+ * @retval -1 Error (will populate resp)
+ */
 static int SG_server_redirect_request( struct SG_gateway* gateway, struct md_HTTP_response* resp, struct SG_request_data* reqdat, mode_t mode ) {
    
    int rc = 0;
@@ -451,11 +475,14 @@ static int SG_server_redirect_request( struct SG_gateway* gateway, struct md_HTT
 }
 
 
-// populate a reply message
-// optionally sign it
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL on failure to serialize and sign
+/**
+ * @brief Populate a reply message
+ *
+ * Optionally sign it
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Failure to serialize and sign
+ */
 static int SG_server_reply_populate( struct SG_gateway* gateway, SG_messages::Reply* reply, uint64_t message_nonce, int error_code, bool sign ) {
    
    int rc = 0;
@@ -500,10 +527,12 @@ static int SG_server_reply_populate( struct SG_gateway* gateway, SG_messages::Re
 }
 
 
-// sign a reply message
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL on failure to serialize and sign
+/**
+ * @brief Sign a reply message
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Failure to serialize and sign
+ */
 static int SG_server_reply_sign( struct SG_gateway* gateway, SG_messages::Reply* reply ) {
    
    int rc = 0;
@@ -519,11 +548,13 @@ static int SG_server_reply_sign( struct SG_gateway* gateway, SG_messages::Reply*
 }
 
 
-
-// generate a populated, signed reply.
-// serialize it and put it into a response 
-// return 0 on success (indicates that we generated the HTTP response)
-// return -ENOMEM on OOM 
+/**
+ * @brief Generate a populated, signed reply.
+ *
+ * Serialize it and put it into a response 
+ * @retval 0 Success (indicates that we generated the HTTP response)
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_server_reply_serialize( struct SG_gateway* gateway, SG_messages::Reply* reply, struct md_HTTP_response* resp ) {
    
    char* serialized_reply = NULL;
@@ -543,8 +574,11 @@ static int SG_server_reply_serialize( struct SG_gateway* gateway, SG_messages::R
 }
 
 
-// HTTP HEAD handler
-// see if a block or manifest exists, and get redirected if need be
+/**
+ * @brief HTTP HEAD handler
+ *
+ * See if a block or manifest exists, and get redirected if need be
+ */
 int SG_server_HTTP_HEAD_handler( struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
 
    struct SG_server_connection* sgcon = (struct SG_server_connection*)con_data->cls;
@@ -590,9 +624,11 @@ int SG_server_HTTP_HEAD_handler( struct md_HTTP_connection_data* con_data, struc
 }
 
 
-// GET an xattr
-// return 0 on success 
-// return -ENOMEM on OOM
+/**
+ * @brief GET an xattr
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_GET_getxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* ignored, struct md_HTTP_connection_data* ignored2, struct md_HTTP_response* resp ) {
    
    int rc = 0;
@@ -661,9 +697,11 @@ int SG_server_HTTP_GET_getxattr( struct SG_gateway* gateway, struct SG_request_d
 }
 
 
-// GET the list of xattrs
-// return 0 on success 
-// return -ENOMEM on OOM
+/**
+ * @brief GET the list of xattrs
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_GET_listxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* ignored, struct md_HTTP_connection_data* ignored2, struct md_HTTP_response* resp ) {
    
    int rc = 0;
@@ -751,11 +789,14 @@ int SG_server_HTTP_GET_listxattr( struct SG_gateway* gateway, struct SG_request_
    }
 }
 
-// GET a block, as part of an I/O complection.
-// try the cache first, then the implementation.
-// on cache miss, run the block through the "put block" driver method and cache it for next time.
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief GET a block, as part of an I/O complection.
+ *
+ * Try the cache first, then the implementation.
+ * on cache miss, run the block through the "put block" driver method and cache it for next time.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_GET_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* ignored, struct md_HTTP_connection_data* ignored2, struct md_HTTP_response* resp ) {
    
    int rc = 0;
@@ -845,12 +886,14 @@ int SG_server_HTTP_GET_block( struct SG_gateway* gateway, struct SG_request_data
 }
 
 
-
-// GET a manifest, as part of an I/O completion
-// try the cache first, then the implementation.
-// on cache miss, run the serialized signed manifest through the "put manifest" driver method and cache it for next time.
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief GET a manifest, as part of an I/O completion
+ *
+ * Try the cache first, then the implementation.
+ * on cache miss, run the serialized signed manifest through the "put manifest" driver method and cache it for next time.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* ignored, struct md_HTTP_connection_data* ignored2, struct md_HTTP_response* resp ) {
    
    int rc = 0;
@@ -1020,11 +1063,15 @@ int SG_server_HTTP_GET_manifest( struct SG_gateway* gateway, struct SG_request_d
 }
 
 
-// HTTP GET handler.
-// dispatch the GET to the gateway's get_block or get_manifest, depending on the URL path.
-// try the cache first, and then the implementation.
-// return 0 on success, and populate *resp
-// return -ENOMEM on OOM
+/**
+ * @brief HTTP GET handler.
+ *
+ * Dispatch the GET to the gateway's get_block or get_manifest, depending on the URL path.
+ * Try the cache first, and then the implementation.
+ * @param[out] resp HTTP response
+ * @retval 0 Success, and populate *resp
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_GET_handler( struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
 
    struct SG_server_connection* sgcon = (struct SG_server_connection*)con_data->cls;
@@ -1119,12 +1166,14 @@ int SG_server_HTTP_GET_handler( struct md_HTTP_connection_data* con_data, struct
 }
 
 
-// extract and verify a request's authenticity
-// return 0 on success
-// return -EINVAL if the message could not be parsed or verified 
-// return -ENOMEM on OOM
-// return -EAGAIN if we couldn't find the requester's certificate (i.e. we need to reload our config)
-// return -EPERM if the message could not be validated, and will not ever be in the future.
+/**
+ * @brief Extract and verify a request's authenticity
+ * @retval 0 Success
+ * @retval -EINVAL The message could not be parsed or verified 
+ * @retval -ENOMEM Out of Memory
+ * @retval -EAGAIN Couldn't find the requester's certificate (i.e. we need to reload our config)
+ * @retval -EPERM The message could not be validated, and will not ever be in the future.
+ */
 static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Request* msg, char* msg_buf, size_t msg_sz ) {
    
    int rc = 0;
@@ -1186,11 +1235,13 @@ static int SG_request_message_parse( struct SG_gateway* gateway, SG_messages::Re
 }
 
 
-// extract request info from the request message 
-// return 0 on success
-// return -ENOMEM if OOM
-// return -EINVAL if no message type could be discerned
-// NOTE: if request_msg encodes multiple blocks, only the first (block ID, block version) pair will be put into reqdat
+/**
+ * @brief Extract request info from the request message 
+ * @retval 0 Success
+ * @note If request_msg encodes multiple blocks, only the first (block ID, block version) pair will be put into reqdat
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL No message type could be discerned
+ */
 static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_messages::Request* request_msg ) {
    
    SG_request_data_init( reqdat );
@@ -1299,9 +1350,11 @@ static int SG_request_data_from_message( struct SG_request_data* reqdat, SG_mess
 }
 
 
-// what are the capabilities required for a particular operation?
-// return the bitwise OR of the cpability set 
-// return (uint64_t)(-1) if the operation is not valid 
+/**
+ * @brief What are the capabilities required for a particular operation?
+ * @return The bitwise OR of the capability set 
+ * @retval (uint64_t)(-1) The operation is not valid
+ */ 
 uint64_t SG_server_request_capabilities( uint64_t request_type ) {
    
    uint64_t caps_required = (uint64_t)(-1);         // all bits set
@@ -1356,12 +1409,15 @@ uint64_t SG_server_request_capabilities( uint64_t request_type ) {
 }
 
 
-// verify that the sender of the given request has sufficiently capability for carrying out the requested operation.
-// call this after parsing and validating the message.
-// return 0 if so 
-// return -EPERM if not permitted 
-// return -EINVAL if the message is malformed, or came from outside the volume
-// return -EAGAIN if the gateway is not known to us (indicates that we might have to reload our config)
+/**
+ * @brief Verify that the sender of the given request has sufficiently capability for carrying out the requested operation.
+ *
+ * @note Call this after parsing and validating the message.
+ * @retval 0 Success, true
+ * @retval -EPERM Not permitted 
+ * @retval -EINVAL The message is malformed, or came from outside the volume
+ * @retval -EAGAIN The gateway is not known to us (indicates that we might have to reload our config)
+ */
 int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Request* request ) {
    
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -1443,11 +1499,16 @@ int SG_server_check_capabilities( struct SG_gateway* gateway, SG_messages::Reque
 }
 
 
-// start up an I/O request: suspend the connection and pass the request on to an I/O thread, for it to be dispatched asynchronously 
-// reqdat and request_msg must be heap-allocated; the I/O subsystem will take ownership
-// return 0 on success 
-// return -ENOMEM on OOM 
-// on failure, set up the resp with an appropriate HTTP status (the caller should not do this)
+/**
+ * @brief Start up an I/O request
+ *
+ * Suspend the connection and pass the request on to an I/O thread, for it to be dispatched asynchronously 
+ * @note reqdat and request_msg must be heap-allocated; the I/O subsystem will take ownership
+ * @note On failure, set up the resp with an appropriate HTTP status (the caller should not do this)
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ * @todo Modify SG_server_HTTP_IO_start to use "select()" on outstanding I/O requests and collect results as they are received 
+ */
 int SG_server_HTTP_IO_start( struct SG_gateway* gateway, int type, SG_server_IO_completion io_cb, struct SG_request_data* reqdat, SG_messages::Request* request_msg,
                              struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
    
@@ -1516,11 +1577,14 @@ int SG_server_HTTP_IO_start( struct SG_gateway* gateway, int type, SG_server_IO_
 }
 
 
-// finish an I/O request: generate a response, resume the connection, and send it off.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -errno on failure to generate a response
-// TODO: allow the I/O completion callback to populate reply_msg.ent_out
+/**
+ * @brief Finish an I/O request: generate a response, resume the connection, and send it off.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to generate a response
+ * @todo Allow the I/O completion callback to populate reply_msg.ent_out
+ * @todo Have a static built-in response when unable to create a response in SG_server_HTTP_IO_finish
+ */
 int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
    
    struct SG_server_io* io = (struct SG_server_io*)cls;
@@ -1612,12 +1676,16 @@ int SG_server_HTTP_IO_finish( struct md_wreq* wreq, void* cls ) {
 }
 
 
-// handle a WRITE request--run a manifest through the implementation's "patch manifest" callback.
-// this is called as part of an IO completion.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if the WRITE fields in request_msg are missing or malformed
-// return -ENOSYS if there is no impl_patch_manifest method defined
+/**
+ * @brief Handle a WRITE request
+ *
+ * Run a manifest through the implementation's "patch manifest" callback.
+ * This is called as part of an IO completion.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The WRITE fields in request_msg are missing or malformed
+ * @retval -ENOSYS There is no impl_patch_manifest method defined
+ */ 
 static int SG_server_HTTP_POST_WRITE( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -1691,12 +1759,16 @@ static int SG_server_HTTP_POST_WRITE( struct SG_gateway* gateway, struct SG_requ
 }
 
 
-// handle a TRUNCATE request: feed the request to the implementation's "truncate" callback.
-// this is called as part of an IO completion.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL if the new size field is missing
-// return -ENOSYS if not implemented
+/**
+ * @brief Handle a TRUNCATE request
+ *
+ * Feed the request to the implementation's "truncate" callback.
+ * This is called as part of an IO completion.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The new size field is missing
+ * @retval -ENOSYS Not implemented
+ */
 static int SG_server_HTTP_POST_TRUNCATE( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -1728,12 +1800,16 @@ static int SG_server_HTTP_POST_TRUNCATE( struct SG_gateway* gateway, struct SG_r
 }
 
 
-// handle a RENAME (or RENAME_HINT) request: feed the request to the implementation's "rename" callback.
-// this is called as part of an IO completion.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL if the new path field is missing 
-// return -ENOSYS if not implemented
+/**
+ * @brief Handle a RENAME (or RENAME_HINT) request
+ *
+ * Feed the request to the implementation's "rename" callback.
+ * This is called as part of an IO completion.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The new path field is missing 
+ * @retval -ENOSYS Not implemented
+ */
 static int SG_server_HTTP_POST_RENAME( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -1867,12 +1943,16 @@ SG_server_HTTP_POST_RENAME_finish:
    return rc;
 }
 
-// handle a DETACH request: feed the request to the implementation's "detach" callback
-// This is called as part of an IO completion.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -ENOSYS if not implemented
-// return -EINVAL if this isn't a manifest request
+/**
+ * @brief Handle a DETACH request
+ *
+ * Feed the request to the implementation's "detach" callback
+ * This is called as part of an IO completion.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOSYS Not implemented
+ * @retval -EINVAL This isn't a manifest request
+ */
 static int SG_server_HTTP_POST_DETACH( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -1901,12 +1981,16 @@ static int SG_server_HTTP_POST_DETACH( struct SG_gateway* gateway, struct SG_req
 }
 
 
-// handle a DELETECHUNKS request: feed the request's serialized manifests and blocks into the implementation's "delete manifest" and "delete block" callbacks.
-// this is called as part of an IO completion.
-// return 0 on success, and evict the block from the cache.
-// return -ENOMEM on OOM 
-// return -ENOSYS if not implemented
-// return -EINVAL if the request is not a block request
+/**
+ * @brief Handle a DELETECHUNKS request
+ *
+ * Feed the request's serialized manifests and blocks into the implementation's "delete manifest" and "delete block" callbacks.
+ * This is called as part of an IO completion.
+ * @retval 0 Success, and evict the block from the cache.
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOSYS Not implemented
+ * @retval -EINVAL The request is not a block request
+ */
 static int SG_server_HTTP_POST_DELETECHUNKS( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -2005,14 +2089,18 @@ SG_server_HTTP_POST_DELETECHUNKS_finish:
 }
 
 
-// authenticate a data-plane message.
-// make the data-plane message read-only
-// SIDE-EFFECT: make the data-plane message on-disk read-only
-// return 0 on success, and set *ret_chunks_fd to be the fd to the on-disk message
-// return -EINVAL on invalid request_msg
-// return -EPERM if we couldn't access the dataplane data
-// return -ENODATA if the dataplane message wasn't big enough
-// return -EBADMSG on integrity check failure
+/**
+ * @brief Authenticate a data-plane message.
+ *
+ * Make the data-plane message read-only
+ * @note SIDE-EFFECT: make the data-plane message on-disk read-only
+ * @param[out] *ret_chunks_fd The fd to the on-disk message
+ * @retval 0 Success, and set *ret_chunks_fd to be the fd to the on-disk message
+ * @retval -EINVAL Invalid request_msg
+ * @retval -EPERM Couldn't access the dataplane data
+ * @retval -ENODATA The dataplane message wasn't big enough
+ * @retval -EBADMSG Integrity check failure
+ */
 static int SG_server_dataplane_auth( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, int* ret_chunks_fd ) {
 
    int rc = 0;
@@ -2121,15 +2209,19 @@ static int SG_server_dataplane_auth( struct SG_gateway* gateway, struct SG_reque
    return 0;
 }
 
-// handle a PUTCHUNKS request: deserialize each chunk into a block or manifest, and feed them into the implementation's "put block" and "put manifest" callbacks.
-// this is called as part of an IO completion.
-// return 0 on success
-// return -ENOSYS if not implemented 
-// return -EINVAL if the request does not contain block information
-// return -EBADMSG if the block's hash does not match the hash given on the control plane
-// return -ENODATA if we failed to load the data into the gateway
-// return -EPERM on internal error
-// return -errno on fchmod, lseek, mmap failure
+/**
+ * @brief Handle a PUTCHUNKS request
+ *
+ * Deserialize each chunk into a block or manifest, and feed them into the implementation's "put block" and "put manifest" callbacks.
+ * this is called as part of an IO completion.
+ * @retval 0 Success
+ * @retval -ENOSYS Not implemented 
+ * @retval -EINVAL The request does not contain block information
+ * @retval -EBADMSG The block's hash does not match the hash given on the control plane
+ * @retval -ENODATA Failed to load the data into the gateway
+ * @retval -EPERM Internal error
+ * @retval -errno fchmod, lseek, mmap failure
+ */
 static int SG_server_HTTP_POST_PUTCHUNKS( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -2310,12 +2402,16 @@ SG_server_HTTP_POST_PUTCHUNKS_finish:
 }
 
 
-// handle a REFRESH request: feed the request into the implementation's "refresh" callback
-// this is called as part of an IO completion.
-// return 0 on success
-// return -ENOSYS if not implemented 
-// return -EINVAL if the request does not contain xattr information
-// return -EAGAIN if stale
+/**
+ * @brief Handle a REFRESH request
+ *
+ * Feed the request into the implementation's "refresh" callback
+ * This is called as part of an IO completion.
+ * @retval 0 Success
+ * @retval -ENOSYS Not implemented 
+ * @retval -EINVAL The request does not contain xattr information
+ * @retval -EAGAIN Stale
+ */
 static int SG_server_HTTP_POST_REFRESH( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -2337,13 +2433,17 @@ static int SG_server_HTTP_POST_REFRESH( struct SG_gateway* gateway, struct SG_re
 }
 
 
-// handle a SETXATTR request: feed the request into the implementation's "setxattr" callback.
-// this is called as part of an IO completion.
-// NOTE: reqdat must be a getxattr request
-// return 0 on success
-// return -ENOSYS if not implemented 
-// return -EINVAL if the request does not contain xattr information
-// return -EAGAIN if stale
+/**
+ * @brief Handle a SETXATTR request
+ *
+ * Feed the request into the implementation's "setxattr" callback.
+ * This is called as part of an IO completion.
+ * @note reqdat must be a getxattr request
+ * @retval 0 Success
+ * @retval -ENOSYS Not implemented 
+ * @retval -EINVAL The request does not contain xattr information
+ * @retval -EAGAIN Stale
+ */
 static int SG_server_HTTP_POST_SETXATTR( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -2374,12 +2474,16 @@ static int SG_server_HTTP_POST_SETXATTR( struct SG_gateway* gateway, struct SG_r
 }
 
 
-// handle a REMOVEXATTR request: feed the request into the implementation's "removexattr" callback.
-// this is called as part of an IO completion.
-// NOTE: reqdat must be a getxattr request
-// return 0 on success
-// return -ENOSYS if not implemented 
-// return -EINVAL if the request does not contain xattr information
+/**
+ * @brief Handle a REMOVEXATTR request
+ *
+ * Feed the request into the implementation's "removexattr" callback.
+ * This is called as part of an IO completion.
+ * @note reqdat must be a getxattr request
+ * @retval 0 Success
+ * @retval -ENOSYS Not implemented 
+ * @retval -EINVAL The request does not contain xattr information
+ */
 static int SG_server_HTTP_POST_REMOVEXATTR( struct SG_gateway* gateway, struct SG_request_data* reqdat, SG_messages::Request* request_msg, struct md_HTTP_connection_data* con_data, struct md_HTTP_response* ignored ) {
    
    int rc = 0;
@@ -2406,9 +2510,13 @@ static int SG_server_HTTP_POST_REMOVEXATTR( struct SG_gateway* gateway, struct S
 }
 
 
-// handle a POST.  Extract the message and let the implementation handle it asynchronously.  Suspend the connection
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Handle a POST
+ *
+ * Extract the message and let the implementation handle it asynchronously.  Suspend the connection
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct md_HTTP_response* resp ) {
    
    struct SG_server_connection* sgcon = (struct SG_server_connection*)con_data->cls;
@@ -3037,8 +3145,11 @@ int SG_server_HTTP_POST_finish( struct md_HTTP_connection_data* con_data, struct
 }
 
 
-// clean up a connection
-// if this was a block GET request, and we streamed data back, then close up shop
+/**
+ * @brief Clean up a connection
+ *
+ * If this was a block GET request, and we streamed data back, then close up shop
+ */
 void SG_server_HTTP_cleanup( void *cls ) {
    
    struct SG_server_connection* sgcon = (struct SG_server_connection*)cls;
@@ -3047,8 +3158,10 @@ void SG_server_HTTP_cleanup( void *cls ) {
 }
 
 
-// initialize an HTTP server with this server's methods
-// always succeeds
+/**
+ * @brief Initialize an HTTP server with this server's methods
+ * @note Always succeeds
+ */
 int SG_server_HTTP_install_handlers( struct md_HTTP* http ) {
    
    md_HTTP_connect( *http, SG_server_HTTP_connect );

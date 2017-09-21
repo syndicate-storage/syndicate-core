@@ -14,14 +14,25 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/drivers/coblitz/coblitz.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for coblitz.cpp
+ *
+ * @see libsyndicate/drivers/coblitz/coblitz.cpp
+ */
+
 #ifndef _DRIVER_COBLITZ_H_
 #define _DRIVER_COBLITZ_H_
 
 #include "libsyndicate/closure.h"
 #include "libsyndicate/download.h"
 
+/// Coblitz cls structure
 struct coblitz_cls {
-   char* cdn_prefix;
+   char* cdn_prefix; ///< CDN prefix
 };
 
 extern "C" {

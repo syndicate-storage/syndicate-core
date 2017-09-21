@@ -14,22 +14,36 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/listdir.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific listdir related functions
+ *
+ * @see libsyndicate/ms/listdir.h
+ */
+
 #include "listdir.h"
 
 #include "libsyndicate/ms/path.h"
 
-// per-download state
+/**
+ * @brief Per-download state
+ */
 struct ms_client_get_dir_download_state {
    
-   int64_t batch_id;
-   char* url;
-   char* auth_header;
+   int64_t batch_id;   ///< Batch id
+   char* url;          ///< URL
+   char* auth_header;  ///< Auth header
 };
 
 
-// init a download state
-// takes ownership of url 
-// always succeeds 
+/**
+ * @brief Initialize a download state
+ *
+ * Takes ownership of url 
+ */
 static void ms_client_get_dir_download_state_init( struct ms_client_get_dir_download_state* dlstate, int64_t batch_id, char* url, char* auth_header ) {
    
    dlstate->batch_id = batch_id;
@@ -38,8 +52,7 @@ static void ms_client_get_dir_download_state_init( struct ms_client_get_dir_down
    return;
 }
 
-// free download state 
-// always succeeds
+/// Free download state 
 static void ms_client_get_dir_download_state_free( struct ms_client_get_dir_download_state* dlstate ) {
    
    SG_safe_free( dlstate->url );
@@ -49,13 +62,16 @@ static void ms_client_get_dir_download_state_free( struct ms_client_get_dir_down
 }
 
 
-// begin downloading metadata for a directory.
-// if least_unknown_generation >= 0, then use the generation number to generate the URL 
-// otherwise, use the batch (page) number
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL on invalid arguments
-// return negative on failure to initialize or start the download
+/**
+ * @brief Begin downloading metadata for a directory.
+ *
+ * If least_unknown_generation >= 0, then use the generation number to generate the URL 
+ * otherwise, use the batch (page) number
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL on invalid arguments
+ * @retval <0 Failure to initialize or start the download
+ */
 static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t parent_id, int64_t least_unknown_generation, int64_t batch_id, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -166,10 +182,14 @@ static int ms_client_get_dir_metadata_begin( struct ms_client* client, uint64_t 
 }
 
 
-// finish up getting directory metadata, and free up the download handle
-// return 0 on success, and set *batch_id to this download's batch
-//   *ret_num_children to the number of children downloaded, and *max_gen to be the largest generation number seen.
-// return -ENOMEM on OOM 
+/**
+ * @brief Finish up getting directory metadata, and free up the download handle
+ * @param[out] *batch_id Set to this download's batch
+ * @param[out] *ret_num Set to the number of children downloaded
+ * @param[out] *max_gen Set to the largest generation number seen
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ */
 static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t parent_id, struct md_download_context* dlctx, ms_client_dir_listing* dir_listing, int64_t* batch_id, size_t* ret_num_children, int64_t* max_gen ) {
    
    int rc = 0;
@@ -274,18 +294,22 @@ static int ms_client_get_dir_metadata_end( struct ms_client* client, uint64_t pa
    return 0;
 }
 
-// download metadata for a directory, in one of two ways:
-// LISTDIR: fetch num_children entries in parallel by requesting disjoint ranges of them by index, in the range [0, dir_capacity].
-// DIFFDIR: query by least unknown generation number until we have num_children entries, or the number of entries in a downloaded batch becomes 0 (i.e. no more entries known).
-// in both cases, stop once the number of children is exceeded.
-// if least_unknown_generation >= 0, then we will DIFFDIR.
-// if dir_capacity >= 0, then we will LISTDIR.
-// we can only do one or the other (both/neither are invalid arguments)
-// return partial results, even on error 
-// return 0 on success
-// return -EINVAL for invalid arguments.
-// return -ENOMEM on OOM
-// return negative on download failure, or corruption
+/**
+ * @brief Download metadata for a directory
+ *
+ * In one of two ways:
+ * LISTDIR: fetch num_children entries in parallel by requesting disjoint ranges of them by index, in the range [0, dir_capacity].
+ * DIFFDIR: query by least unknown generation number until we have num_children entries, or the number of entries in a downloaded batch becomes 0 (i.e. no more entries known).
+ * In both cases, stop once the number of children is exceeded.
+ * If least_unknown_generation >= 0, then we will DIFFDIR.
+ * If dir_capacity >= 0, then we will LISTDIR.
+ * We can only do one or the other (both/neither are invalid arguments)
+ * @return Partial results, even on error 
+ * @retval 0 Success
+ * @retval -EINVAL Invalid arguments.
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Download failure, or corruption
+ */
 static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent_id, int64_t num_children, int64_t least_unknown_generation, int64_t dir_capacity, struct ms_client_multi_result* results ) {
    
    int rc = 0;
@@ -558,18 +582,27 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
 }
 
 
-// list a directory, and put the data into results
-// return 0 on success
-// return negative on failure
-// NOTE: even if this method fails, the caller should free the contents of results
+/**
+ * @brief List a directory, and put the data into results
+ * @note Even if this method fails, the caller should free the contents of results
+ * @return Result of ms_client_get_dir_metadata
+ * @see ms_client_get_dir_metadata
+ * @retval 0 Success
+ * @retval <0 Failure
+ */
 int ms_client_listdir( struct ms_client* client, uint64_t parent_id, int64_t num_children, int64_t dir_capacity, struct ms_client_multi_result* results ) {
    return ms_client_get_dir_metadata( client, parent_id, num_children, -1, dir_capacity, results );
 }
 
-// get new directory entries, and put the data into results 
-// return 0 on success 
-// return negative on failure 
-// NOTE: even if this method fails, the caller should free the contents of results
+/**
+ * @brief Get new directory entries, and put the data into results 
+ * @param[out] *results The directory entries
+ * @note Even if this method fails, the caller should free the contents of results
+ * @return Result of ms_client_get_dir_metadata
+ * @see ms_client_get_dir_metadata
+ * @retval 0 Success 
+ * @retval <0 Failure
+ */
 int ms_client_diffdir( struct ms_client* client, uint64_t parent_id, int64_t num_children, int64_t least_unknown_generation, struct ms_client_multi_result* results ) {
    return ms_client_get_dir_metadata( client, parent_id, num_children, least_unknown_generation, -1, results );
 }

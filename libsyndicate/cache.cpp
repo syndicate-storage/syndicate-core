@@ -14,100 +14,122 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/cache.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Syndicate on-disk cache
+ *
+ * @see libsyndicate/cache.h
+ */
+
 #include "libsyndicate/cache.h"
 #include "libsyndicate/url.h"
 #include "libsyndicate/storage.h"
 
+/**
+ * @brief Structure to contain cache related information
+ */
 struct md_syndicate_cache {
    
-   // size limit (in blocks, not bytes!)
-   size_t max_size;
+   size_t max_size; ///< size limit (in blocks, not bytes!)
    
-   // reference to global configuration 
-   struct md_syndicate_conf* conf;
+   struct md_syndicate_conf* conf; ///< reference to global configuration 
    
-   int num_blocks_written;                  // how many blocks have been successfully written to disk?
+   int num_blocks_written; ///< how many blocks have been successfully written to disk
    
-   // data to cache that is scheduled to be written to disk 
-   md_cache_block_buffer_t* pending;
-   pthread_rwlock_t pending_lock;
+   md_cache_block_buffer_t* pending; ///< data to cache that is scheduled to be written to disk 
+   pthread_rwlock_t pending_lock; ///< read-write lock to the pending cache
    
-   // pending refers to one of these...
-   md_cache_block_buffer_t* pending_1;
-   md_cache_block_buffer_t* pending_2;
+   md_cache_block_buffer_t* pending_1; ///< pending refers to pending_1 or pending_2
+   md_cache_block_buffer_t* pending_2; ///< pending refers to pending_1 or pending_2
    
-   // data that is being asynchronously written to disk
-   md_cache_ongoing_writes_t* ongoing_writes;
-   pthread_rwlock_t ongoing_writes_lock;
+   md_cache_ongoing_writes_t* ongoing_writes; ///< data that is being asynchronously written to disk
+   pthread_rwlock_t ongoing_writes_lock; ///< read-write lock to the data being written to disk
    
-   // completed writes, to be reaped 
-   md_cache_completion_buffer_t* completed;
-   pthread_rwlock_t completed_lock;
+   md_cache_completion_buffer_t* completed; ///< completed writes, to be reaped 
+   pthread_rwlock_t completed_lock; ///< read-write lock to completed writes
    
-   // completed refers to one of these
-   md_cache_completion_buffer_t* completed_1;
-   md_cache_completion_buffer_t* completed_2;
+   md_cache_completion_buffer_t* completed_1; ///< completed refers to completed_1 or completed_2
+   md_cache_completion_buffer_t* completed_2; ///< completed refers to completed_1 or completed_2
    
-   // order in which blocks were added
-   md_cache_lru_t* cache_lru;
-   pthread_rwlock_t cache_lru_lock;
+   md_cache_lru_t* cache_lru; ///< order in which blocks were added
+   pthread_rwlock_t cache_lru_lock; ///< read-write lock to the cache_lru
    
-   // blocks to be promoted in the current lru 
-   md_cache_lru_t* promotes;
-   pthread_rwlock_t promotes_lock;
+   md_cache_lru_t* promotes; ///< blocks to be promoted in the current lru 
+   pthread_rwlock_t promotes_lock; ///< read-write lock for promotes
    
-   // promotes refers to one of these
-   md_cache_lru_t* promotes_1;
-   md_cache_lru_t* promotes_2;
+   md_cache_lru_t* promotes_1; ///< promotes refers to promotes_1 or promotes_2
+   md_cache_lru_t* promotes_2; ///< promotes refers to promotes_1 or promotes_2
    
-   // blocks to be evicted  (guarded by promotes_lock)
-   md_cache_lru_t* evicts;
+   md_cache_lru_t* evicts; ///< blocks to be evicted  (guarded by promotes_lock)
    
-   // evicts refers to one of these 
-   md_cache_lru_t* evicts_1;
-   md_cache_lru_t* evicts_2;
+   md_cache_lru_t* evicts_1; ///< evicts refers to evicts_1 or evicts_2
+   md_cache_lru_t* evicts_2; ///< evicts refers to evicts_1 or evicts_2
    
-   // thread for processing writes and evictions
-   pthread_t thread;
-   bool running;
+   pthread_t thread; ///< thread for processing writes and evictions
+   bool running; ///< indicate if cache is running
 };
 
-// arguments to the main thread 
+/**
+ * @brief Store arguments to the main thread
+ */
 struct md_syndicate_cache_thread_args {
    struct md_syndicate_cache* cache;
 };
 
-// arguments to the write callback
+/**
+ * @brief Arguments to the write callback
+ */
 struct md_syndicate_cache_aio_write_args {
    struct md_syndicate_cache* cache;
    struct md_cache_block_future* future;
 };
 
+/**
+ * @brief Blocks of cache to be written
+ */
 struct md_cache_block_future {
    
-   // ID of this chunk
+   /// ID of this chunk
    struct md_cache_entry_key key;
    
-   // chunk of data to write
+   /// chunk of data to write
    char* block_data;
+
+   /// size of data to write
    size_t data_len;
    
-   // fd to receive writes
+   /// fd to receive writes
    int block_fd;
    
-   // asynchronous disk I/O structures
+   /// asynchronous disk I/O structures
    struct aiocb aio;
+
+   /// asynchronous io error/success return code
    int aio_rc;
+
+   /// write error/success return code
    int write_rc;
-   
+
+   /// status semaphore 
    sem_t sem_ongoing;
-   uint64_t flags;      // cache future flags (detached, unshared, etc.)
-   
+
+   /// cache future flags (detached, unshared, etc.)
+   uint64_t flags;
+
+   /// finalized flag
    bool finalized;
 };
 
-// compare two cache records
-// they're ordered by file id, then version, then block id, then block version
+/**
+ * @brief Compare two cache records
+ *
+ * Cache records are ordered by file id, then version, then block id, then block version
+ * @retval True If c1 (first cache entry) is first
+ * @retval False if c2 (second cache entry) is first
+ */
 bool md_cache_entry_key_comp_func( const struct md_cache_entry_key& c1, const struct md_cache_entry_key& c2 ) {
    if( c1.file_id < c2.file_id ) {
       return true;
@@ -141,6 +163,9 @@ bool md_cache_entry_key_comp_func( const struct md_cache_entry_key& c1, const st
    }
 }
 
+/**
+ * @brief Compare cache entry keys
+ */
 struct md_cache_entry_key_comp {
    
    bool operator()( const struct md_cache_entry_key& c1, const struct md_cache_entry_key& c2 ) {
@@ -157,75 +182,132 @@ struct md_cache_entry_key_comp {
 void* md_cache_main_loop( void* arg );
 void md_cache_aio_write_completion( union sigval sigval );
 
-// lock primitives for the pending buffer
+/**
+ @brief Read lock primitives for the pending buffer
+ @return Status of pthread_rwlock_rdlock, 0 for success
+ */
 int md_cache_pending_rlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_rdlock( &cache->pending_lock );
 }
 
+/**
+ @brief Write lock primitives for the pending buffer
+ @return Status of pthread_rwlock_wdlock, 0 for success
+ */
 int md_cache_pending_wlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_wrlock( &cache->pending_lock );
 }
 
+/**
+ @brief Unlock primitives for the pending buffer
+ @return Status of pthread_rwlock_unlock, 0 for success
+ */
 int md_cache_pending_unlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_unlock( &cache->pending_lock );
 }
 
-// lock primitives for the completed writes buffer
+/**
+ @brief Read lock primitives for the completed writes buffer
+ @return Status of pthread_rwlock_rdlock, 0 for success
+ */
 int md_cache_completed_rlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_rdlock( &cache->completed_lock );
 }
 
+/**
+ @brief Write lock primitives for the completed writes buffer
+ @return Status of pthread_rwlock_wlock, 0 for success
+ */
 int md_cache_completed_wlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_wrlock( &cache->completed_lock );
 }
 
+/**
+ @brief Unlock primitives for the completed writes buffer
+ @return Status of pthread_rwlock_unlock, 0 for success
+ */
 int md_cache_completed_unlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_unlock( &cache->completed_lock );
 }
 
-// lock primitives for the lru buffer
+/**
+ @brief Read lock primitives for the lru buffer
+ @return Status of pthread_rwlock_rdlock, 0 for success
+ */
 int md_cache_lru_rlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_rdlock( &cache->cache_lru_lock );
 }
 
+/**
+ @brief Write lock primitives for the lru buffer
+ @return Status of pthread_rwlock_wrlock, 0 for success
+ */
 int md_cache_lru_wlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_wrlock( &cache->cache_lru_lock );
 }
 
+/**
+ @brief Unlock primitives for the lru buffer
+ @return Status of pthread_rwlock_unlock, 0 for success
+ */
 int md_cache_lru_unlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_unlock( &cache->cache_lru_lock );
 }
 
-
-// lock primitives for the promotion buffer
+/**
+ @brief Read lock primitives for the promotion buffer
+ @return Status of pthread_rwlock_rdlock, 0 for success
+ */
 int md_cache_promotes_rlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_rdlock( &cache->promotes_lock );
 }
 
+/**
+ @brief Read lock primitives for the promotion buffer
+ @return Status of pthread_rwlock_wrlock, 0 for success
+ */
 int md_cache_promotes_wlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_wrlock( &cache->promotes_lock );
 }
 
+/**
+ @brief Unlock lock primitives for the promotion buffer
+ @return Status of pthread_rwlock_unlock, 0 for success
+ */
 int md_cache_promotes_unlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_unlock( &cache->promotes_lock );
 }
 
-
-// lock primitives on the ongoing writes buffer
+/**
+ @brief Read lock primitives for the ongoing writes buffer
+ @return Status of pthread_rwlock_rdlock, 0 for success
+ */
 int md_cache_ongoing_writes_rlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_rdlock( &cache->ongoing_writes_lock );
 }
 
+/**
+ @brief Write lock primitives for the ongoing writes buffer
+ @return Status of pthread_rwlock_wrlock, 0 for success
+ */
 int md_cache_ongoing_writes_wlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_wrlock( &cache->ongoing_writes_lock );
 }
 
+/**
+ @brief Unlock primitives for the ongoing writes buffer
+ @return Status of pthread_rwlock_unlock, 0 for success
+ */
 int md_cache_ongoing_writes_unlock( struct md_syndicate_cache* cache ) {
    return pthread_rwlock_unlock( &cache->ongoing_writes_lock );
 }
 
-
-// make a cache entry
+/**
+ @brief Populate a cache entry
+ 
+ Populate the file_id, file_version, block_id and block_version of the given cache entry.
+ @return 0
+ */
 static int md_cache_entry_key_init( struct md_cache_entry_key* c, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    c->file_id = file_id;
    c->file_version = file_version;
@@ -234,18 +316,25 @@ static int md_cache_entry_key_init( struct md_cache_entry_key* c, uint64_t file_
    return 0;
 }
 
-// arguments to the cb below
+/**
+ * @brief Contains arguments to the callback (md_cache_cb_add_lru)
+ */
 struct md_cache_cb_add_lru_args {
    md_cache_lru_t* cache_lru;
    uint64_t file_id;
    int64_t file_version;
 };
 
-// callback to apply over a file's blocks.
-// cls must be of type struct md_cache_cb_add_lru_args
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL if we couldn't parse the block path 
+/**
+ * @brief Callback to apply over a file's blocks.
+ *
+ * @param block_path Path to block ID
+ * @param cls must be of type struct md_cache_cb_add_lru_args
+ *
+ * @retval 0 on success
+ * @retval -ENOMEM Out of memory 
+ * @retval -EINVAL if we couldn't parse the block path
+ */
 static int md_cache_cb_add_lru( char const* block_path, void* cls ) {
    struct md_cache_cb_add_lru_args* args = (struct md_cache_cb_add_lru_args*)cls;
    
@@ -292,8 +381,10 @@ static int md_cache_cb_add_lru( char const* block_path, void* cls ) {
    return rc;
 }
 
-// clean up a future
-// always succeeds
+/**
+ * @brief Clean up a future
+ * @return 0 Success
+ */
 int md_cache_block_future_clean( struct md_cache_block_future* f ) {
    if( f->block_fd >= 0 ) {
       close( f->block_fd );
@@ -314,8 +405,10 @@ int md_cache_block_future_clean( struct md_cache_block_future* f ) {
    return 0;
 }
 
-// free a future
-// always succeeds
+/**
+ * @brief Free a future
+ * @return 0 Success
+ */
 int md_cache_block_future_free( struct md_cache_block_future* f ) {
    if( f != NULL ) {
       md_cache_block_future_clean( f );
@@ -324,8 +417,10 @@ int md_cache_block_future_free( struct md_cache_block_future* f ) {
    return 0;
 }
 
-// apply a function over a list of futures 
-// always succeeds
+/**
+ * @brief Apply a function over a list of futures 
+ * @return 0 Success
+ */
 static int md_cache_block_future_apply_all( vector<struct md_cache_block_future*>* futs, void (*func)( struct md_cache_block_future*, void* ), void* func_cls ) {
    
    for( vector<struct md_cache_block_future*>::iterator itr = futs->begin(); itr != futs->end(); itr++ ) {
@@ -338,11 +433,14 @@ static int md_cache_block_future_apply_all( vector<struct md_cache_block_future*
    return 0;
 }
 
-// free cache futures with md_cache_block_future_free
-// if close_fds is true, then this will close the cache block file descriptors 
-// otherwise, it will leave them open, so the caller has to deal with them.
-// this is useful for when the caller needs to do things with the cached data, even if the data gets evicted
-// always succeeds
+/**
+ * @brief Free cache futures with md_cache_block_future_free
+ *
+ * If close_fds is true, then this will close the cache block file descriptors
+ * otherwise, it will leave them open, so the caller has to deal with them.
+ * this is useful for when the caller needs to do things with the cached data, even if the data gets evicted
+ * @return 0 Success
+ */
 int md_cache_block_future_free_all( vector<struct md_cache_block_future*>* futs, bool close_fds ) {
    
    struct local {
@@ -366,10 +464,13 @@ int md_cache_block_future_free_all( vector<struct md_cache_block_future*>* futs,
 }
 
 
-// flush a cache write 
-// return 0 on success
-// return -EIO if the block failed to write 
-// return negative if there was a problem with the semaphore (see md_download_sem_wait)
+/**
+ * @brief Flush a cache write 
+ *
+ * @retval 0 Success
+ * @retval -EIO If the block failed to write 
+ * @retval <0 If there was a problem with the semaphore (see md_download_sem_wait)
+ */
 int md_cache_flush_write( struct md_cache_block_future* f ) {
 
    // wait for this block to finish 
@@ -396,10 +497,13 @@ int md_cache_flush_write( struct md_cache_block_future* f ) {
 }
 
 
-// flush cache writes
-// try to flush all writes, even if some fail 
-// return 0 on success 
-// return negative on error--the last error encountered
+/**
+ * @brief Flush cache writes
+ *
+ * Try to flush all cache writes, even if some fail 
+ * @retval 0 Success 
+ * @retval <0 Error (the last error encountered)
+ */
 int md_cache_flush_writes( vector<struct md_cache_block_future*>* futs ) {
    
    struct local {
@@ -426,9 +530,13 @@ int md_cache_flush_writes( vector<struct md_cache_block_future*>* futs ) {
 }
 
 
-// create a URL to a cached file's data, based on whether or not it is cache-managed or caller-managed 
-// return the malloc'ed URL on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Create a URL to a cached file's data
+ *
+ * Based on whether or not it is cache-managed or caller-managed 
+ * @return The malloc'ed URL on success
+ * @retval -ENOMEM Out of memory
+ */
 static char* md_cache_file_url( struct md_syndicate_cache* cache, uint64_t file_id, int64_t version, uint64_t cache_flags ) {
 
    char* local_file_url = NULL;
@@ -448,10 +556,14 @@ static char* md_cache_file_url( struct md_syndicate_cache* cache, uint64_t file_
    return local_file_url;
 }
 
-// create a URL to a specific cached block, based on whether or not it is cache-managed or caller-managed.
-// if creating, then append '.temp' to the end, so we don't attempt to read it.
-// return the malloc'ed URL on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Create a URL to a specific cached block
+ *
+ * Based on whether or not it is cache-managed or caller-managed
+ * @note If creating, then append '.temp' to the end, so we don't attempt to read it.
+ * @return The malloc'ed URL on success
+ * @retval -ENOMEM Out of memory
+ */
 static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags, bool creating ) {
 
    char* local_block_url = NULL;
@@ -483,10 +595,12 @@ static char* md_cache_block_url( struct md_syndicate_cache* cache, uint64_t file
 }
 
 
-// set up a file's cache directory.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return negative if we failed to create the directory to hold the data
+/**
+ * @brief Set up a file's cache directory
+ * @retval 0 Success
+ * @retval <0 Failed to create the directory to hold the data
+ * @retval -ENOMEM Out of memory
+ */
 static int md_cache_file_setup( struct md_syndicate_cache* cache, uint64_t file_id, int64_t version, mode_t mode, uint64_t cache_flags ) {
    // it is possible for there to be a 0-sized non-directory here, to indicate the next version to be created.
    // if so, remove it
@@ -512,9 +626,13 @@ static int md_cache_file_setup( struct md_syndicate_cache* cache, uint64_t file_
 }
 
 
-// is a block in a cache readable?  As in, has it been completely written to disk?
-// return 0 on success
-// return -EAGAIN if the block is still being written
+/**
+ * @brief Check if a block in a cache readable.
+ *
+ * If a block is readable it has been completely written to disk
+ * @retval 0 Success
+ * @retval -EAGAIN The block is still being written
+ */
 int md_cache_is_block_readable( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    int rc = 0;
    
@@ -539,11 +657,14 @@ int md_cache_is_block_readable( struct md_syndicate_cache* cache, uint64_t file_
    return rc;
 }
 
-// open a block in the cache
-// if (cache_flags & SG_CACHE_FLAG_MANAGED) is set, then store the data under the "staging" directory, where it won't be touched by the evictor (otherwise store it directly into the cache)
-// return a file descriptor >= 0 on success
-// return -ENOMEM if OOM
-// return negative on error
+/**
+ * @brief Open a block in the cache
+ *
+ * While opening a block, if (cache_flags & SG_CACHE_FLAG_MANAGED) is set, then store the data under the "staging" directory, where it won't be touched by the evictor (otherwise store it directly into the cache)
+ * @retval >=0 The file descriptor (on success)
+ * @retval -ENOMEM Out of memory
+ * @retval <0 Error
+ */
 int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int flags, uint64_t cache_flags ) {
    
    int rc = 0;
@@ -582,10 +703,12 @@ int md_cache_open_block( struct md_syndicate_cache* cache, uint64_t file_id, int
 }
 
 
-// delete a block in the cache
-// return 0 on success
-// return -ENOMEM on OOM 
-// return negative (from unlink) on error
+/**
+ * @brief Delete a block in the cache
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory 
+ * @retval <0 Error (from unlink)
+ */
 static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t cache_flags, bool created ) {
    
    char* block_path = NULL;
@@ -628,10 +751,13 @@ static int md_cache_evict_block_internal( struct md_syndicate_cache* cache, uint
    return rc;
 }
 
-// delete a block in the cache, and decrement the number of blocks.
-// for use with external clients of this module only.
-// return 0 on success
-// return negative on error (see md_cache_evict_block_internal)
+/**
+ * @brief Delete a block in the cache, and decrement the number of blocks.
+ *
+ * For use with external clients of this module only.
+ * @retval 0 Success
+ * @retval <0 Error (see md_cache_evict_block_internal)
+ */
 int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, uint64_t flags ) {
    
    int rc = md_cache_evict_block_internal( cache, file_id, file_version, block_id, block_version, flags, false );
@@ -643,10 +769,12 @@ int md_cache_evict_block( struct md_syndicate_cache* cache, uint64_t file_id, in
 }
 
 
-// schedule a cache-managed block to be deleted.
-// return 0 on success
-// return -EAGAIN if the cache is not running
-// return -ENOMEM if OOM
+/**
+ * @brief Schedule a cache-managed block to be deleted.
+ * @retval 0 Success
+ * @retval -EAGAIN The cache is not running
+ * @retval -ENOMEM Out of memory
+ */
 int md_cache_evict_block_async( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    int rc = 0;
    
@@ -671,12 +799,15 @@ int md_cache_evict_block_async( struct md_syndicate_cache* cache, uint64_t file_
    return rc;
 }
 
-// apply a function over a file's cached blocks
-// keep applying it even if the callback fails on some of them
-// return 0 on success
-// return -ENOMEM on OOM
-// return negative on opendir(2) failure 
-// return non-zero if the block_func callback does not return 0
+/**
+ * @brief Apply a function over a file's cached blocks
+ *
+ * The function continues to apply even if the callback fails on some of them
+ * @retval 0 Success
+ * @retval <0 opendir(2) failure 
+ * @retval -ENOMEM Out of memory
+ * @retval !=0 if the block_func callback does not return 0
+ */
 int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char const*, void* ), void* cls ) {
    
    struct dirent* result = NULL;
@@ -736,10 +867,13 @@ int md_cache_file_blocks_apply( char const* local_path, int (*block_func)( char 
    return worst_rc;
 }
 
-// clear staging data for a particular gateway
-// not thread-safe; only do during initialization 
-// return 0 on success
-// return -EINVAL if the cache is running 
+/**
+ * @brief Clear staging data for a particular gateway
+ *
+ * @note Not thread-safe; only do during initialization 
+ * @retval 0 Success
+ * @retval -EINVAL The cache is running
+ */
 int md_cache_evict_staging( struct md_syndicate_cache* cache ) {
    
     if( cache->running ) {
@@ -771,10 +905,13 @@ int md_cache_evict_staging( struct md_syndicate_cache* cache ) {
 }
 
 
-// clear the entire cache state for a particular gateway 
-// not thread-safe; only do during initialization.
-// return 0 on success 
-// return -EINVAL if the cache is running
+/**
+ * @brief Clear the entire cache state for a particular gateway 
+ *
+ * @note Not thread-safe; only do during initialization.
+ * @retval 0 Success 
+ * @retval -EINVAL The cache is running
+ */
 int md_cache_evict_data( struct md_syndicate_cache* cache ) {
     
     if( cache->running ) {
@@ -807,10 +944,15 @@ int md_cache_evict_data( struct md_syndicate_cache* cache ) {
     return 0;
 }
 
-// evict a file from the cache, optionally overriding internal cache state
-// return 0 on success
-// return -ENOMEM on OOM
-// return negative if unlink(2) fails due to something besides -ENOENT
+/**
+ * @brief Evict a file from the cache
+ *
+ * Also optionally overrides internal cache state
+ *
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory
+ * @retval <0 unlink(2) fails due to something besides -ENOENT
+ */
 static int md_cache_evict_file_ex( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags, bool update_cache_state ) {
    
    char* local_file_path = NULL;
@@ -880,23 +1022,35 @@ static int md_cache_evict_file_ex( struct md_syndicate_cache* cache, uint64_t fi
    return rc;
 }
 
-// public version of md_cache_evict_file_ex
+/**
+ * @brief A public accessor to md_cache_evict_file_ex
+ *
+ * @return Status of md_cache_evict_file_ex
+ */
 int md_cache_evict_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags ) {
    return md_cache_evict_file_ex( cache, file_id, file_version, cache_flags, true );
 }
 
-// public version of md_cache_evict_file_ex
+/**
+ * @brief A public accessor to md_cache_evict_file_ex
+ *
+ * @return Status of md_cache_evict_file_ex
+ */
 int md_cache_clear_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t cache_flags ) {
    return md_cache_evict_file_ex( cache, file_id, file_version, cache_flags, false );
 }
 
-// reversion a file (either cache- or caller-managed, depending on cache_flags)
-// move it into place, and then insert the new cache_entry_key records for it to the cache_lru list.
-// don't bother removing the old cache_entry_key records; they will be removed from the cache_lru list automatically.
-// NOTE: the corresponding fent structure should be write-locked for this, to make it atomic.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return negative if stat(2) on the new path fails for some reason besides -ENOENT
+/**
+ * @brief Reversion a file
+ *
+ * Reversion a file, either cache or caller-managed, depending on cache_flags.
+ * Move it into place, and then insert the new cache_entry_key records for it to the cache_lru list.
+ * Don't bother removing the old cache_entry_key records; they will be removed from the cache_lru list automatically.
+ * @note the corresponding fent structure should be write-locked for this, to make it atomic.
+ * @retval 0 Success
+ * @retval <0 stat(2) on the new path fails for some reason besides -ENOENT
+ * @retval -ENOMEM Out of memory
+ */
 int md_cache_reversion_file( struct md_syndicate_cache* cache, uint64_t file_id, int64_t old_file_version, int64_t new_file_version, uint64_t cache_flags ) {
    
    char* cur_local_url = md_cache_file_url( cache, file_id, old_file_version, cache_flags );
@@ -999,16 +1153,25 @@ int md_cache_reversion_file( struct md_syndicate_cache* cache, uint64_t file_id,
 }
 
 
-// allocate a cache 
+/**
+ * @brief Allocate a cache
+ *
+ * calloc a struct md_syndicate_cache
+ * @return Status of calloc
+ */
 struct md_syndicate_cache* md_cache_new(void) {
    return SG_CALLOC( struct md_syndicate_cache, 1 );
 }
 
-// initialize the cache 
-// size_limit is the number of *blocks*
-// return 0 on success
-// return -ENOMEM if OOM 
-// return -EINVAL if size limit is 0
+/**
+ * @brief Initialize the cache
+ *
+ * @param size_limit The number of *blocks*
+ *
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory 
+ * @retval -EINVAL if size limit is 0
+ */
 int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* conf, size_t size_limit ) {
    
    int rc = 0; 
@@ -1079,9 +1242,12 @@ int md_cache_init( struct md_syndicate_cache* cache, struct md_syndicate_conf* c
    return 0;
 }
 
-// start the cache thread
-// return 0 on success
-// return -1 if we failed to start the thread
+/**
+ * @brief Start the cache thread
+ *
+ * @retval 0 Success
+ * @retval -1 Failed to start the thread
+ */
 int md_cache_start( struct md_syndicate_cache* cache ) {
    
    int rc = 0;
@@ -1103,12 +1269,14 @@ int md_cache_start( struct md_syndicate_cache* cache ) {
 }
 
 
-// flush the cache:
-// * block incoming writes
-// * wait for all pending writes to hit disk
-// NOTE: can be starved by writers; only call once no more writes will happen!
-// return 0 on success
-// return -EIO on failure
+/**
+ * @brief Flush the cache
+ *
+ * When flushing cache, this function also blocks incoming writes and waits for all pending writes to sync with disk
+ * @note can be starved by writers; only call once no more writes will happen!
+ * @retval 0 Success
+ * @retval -EIO Failure
+ */
 int md_cache_flush( struct md_syndicate_cache* cache ) {
 
    int worst_rc = 0;
@@ -1146,8 +1314,11 @@ int md_cache_flush( struct md_syndicate_cache* cache ) {
 }
 
 
-// stop the cache thread 
-// always succeeds
+/**
+ * @brief Stop the cache thread
+ *
+ * @retval 0 Always succeeds
+ */
 int md_cache_stop( struct md_syndicate_cache* cache ) {
   
    SG_debug("Stopping cache %p\n", cache); 
@@ -1160,9 +1331,12 @@ int md_cache_stop( struct md_syndicate_cache* cache ) {
 }
 
 
-// destroy the cache
-// return 0 on success
-// return -EINVAL if the cache is still running
+/**
+ * @brief Destroy the cache
+ *
+ * @retval 0 Success
+ * @retval -EINVAL The cache is still running
+ */
 int md_cache_destroy( struct md_syndicate_cache* cache ) {
    
    if( cache->running ) {
@@ -1262,15 +1436,24 @@ int md_cache_destroy( struct md_syndicate_cache* cache ) {
 }
 
 
-// is the cache running?
+/**
+ * @brief Check if the cache is running
+ *
+ * @return cache->running
+ * @retval True Is running
+ * @retval False Not running
+ */
 bool md_cache_is_running( struct md_syndicate_cache* cache ) {
    return cache->running;
 }
 
-// create an ongoing write
-// NOTE: the future will need to hold onto data, so the caller shouldn't free it!
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Create an ongoing write
+ *
+ * @note The future will need to hold onto data, so the caller shouldn't free it!
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory
+ */
 int md_cache_block_future_init( struct md_syndicate_cache* cache, struct md_cache_block_future* f,
                                 uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int block_fd,
                                 char* data, size_t data_len,
@@ -1315,10 +1498,13 @@ int md_cache_block_future_init( struct md_syndicate_cache* cache, struct md_cach
    return 0;
 }
 
-// add a block future to ongoing 
-// cache->ongoing_lock must be write-locked
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Add a block future to ongoing 
+ *
+ * @note cache->ongoing_lock must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory
+ */
 static int md_cache_add_ongoing( struct md_syndicate_cache* cache, struct md_cache_block_future* f ) {
    
    try {
@@ -1331,10 +1517,13 @@ static int md_cache_add_ongoing( struct md_syndicate_cache* cache, struct md_cac
    return 0;
 }
 
-// remove a block future from ongoing
-// cache->ongoing_lock must be write-locked 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Remove a block future from ongoing
+ *
+ * @note cache->ongoing_lock must be write-locked 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of memory
+ */
 static int md_cache_remove_ongoing( struct md_syndicate_cache* cache, struct md_cache_block_future* f ) {
    
    try {
@@ -1347,9 +1536,12 @@ static int md_cache_remove_ongoing( struct md_syndicate_cache* cache, struct md_
    return 0;
 }
 
-// asynchronously write a block 
-// return 0 on success
-// return negative errno on aio_write(3) failure
+/**
+ * @brief Asynchronously write a block 
+ *
+ * @retval 0 Success
+ * @retval <0 errno on aio_write(3) failure
+ */
 static int md_cache_aio_write( struct md_syndicate_cache* cache, struct md_cache_block_future* f ) {
    
    // allow external clients to keep track of pending writes for this file
@@ -1372,10 +1564,11 @@ static int md_cache_aio_write( struct md_syndicate_cache* cache, struct md_cache
    return rc;
 }
 
-
-// handle a completed write operation
-// put error codes into future->aio_rc and future->write_rc
-// always succeeds
+/**
+ * @brief Process a completed write operation
+ *
+ * Put error codes into future->aio_rc and future->write_rc, always succeeds
+ */
 void md_cache_aio_write_completion( union sigval sigval ) {
    
    struct md_syndicate_cache_aio_write_args* wargs = (struct md_syndicate_cache_aio_write_args*)sigval.sival_ptr;
@@ -1414,11 +1607,14 @@ void md_cache_aio_write_completion( union sigval sigval ) {
    md_cache_completed_unlock( cache );
 }
 
-
-// start pending writes.  keep trying even if some fail to start
-// NOTE: we assume that only one thread calls this, for a given cache
-// return 0 on success
-// return negative on failure (see md_cache_aio_write)
+/**
+ * @brief Start pending cache writes
+ *
+ * Keep trying to write even if some fail to start
+ * @note Assume that only one thread calls this, for a given cache
+ * @retval 0 Success
+ * @retval <0 Failure (see md_cache_aio_write)
+ */
 int md_cache_begin_writes( struct md_syndicate_cache* cache ) {
    
    int worst_rc = 0;
@@ -1457,11 +1653,12 @@ int md_cache_begin_writes( struct md_syndicate_cache* cache ) {
    return worst_rc;
 }
 
-
-// reap completed writes
-// if a write failed, remove the data from the cache.
-// NOTE: we assume that only one thread calls this at a time, for a given cache
-// always succeeds
+/**
+ * @brief Reap completed writes
+ *
+ * If a write failed, remove the data from the cache. This function always succeeds.
+ * @note Assume that only one thread calls this at a time, for a given cache
+ */
 void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t* write_lru ) {
    
    md_cache_completion_buffer_t* completed = NULL;
@@ -1571,11 +1768,13 @@ void md_cache_complete_writes( struct md_syndicate_cache* cache, md_cache_lru_t*
    completed->clear();
 }
 
-
-
-// promote blocks in a cache LRU
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Promote blocks in a cache LRU
+ *
+ * @retval 0 on success
+ * @retval -ENOMEM Out of memory
+ * @todo Possibly investigate boost biamp for processing block promotions
+ */
 int md_cache_promote_blocks( md_cache_lru_t* cache_lru, md_cache_lru_t* promotes ) {
    
    try {
@@ -1607,10 +1806,12 @@ int md_cache_promote_blocks( md_cache_lru_t* cache_lru, md_cache_lru_t* promotes
    }
 }
 
-
-// demote blocks in a cache LRU 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Demote blocks in a cache LRU
+ *
+ * @retval 0 on success
+ * @retval -ENOMEM Out of memory
+ */ 
 int md_cache_demote_blocks( md_cache_lru_t* cache_lru, md_cache_lru_t* demotes ) {
    
    try {
@@ -1639,10 +1840,14 @@ int md_cache_demote_blocks( md_cache_lru_t* cache_lru, md_cache_lru_t* demotes )
 }
 
 
-// evict blocks, according to their LRU ordering and whether or not they are requested to be eagerly evicted
-// NOTE: we assume that only one thread calls this at a time, for a given cache
-// return 0 on success
-// return the last eviction-related error on failure (i.e. due to bad I/O) (see md_cache_evict_block_internal)
+/**
+ * @brief Evict blocks
+ *
+ * Evict according to their LRU ordering and whether or not they are requested to be eagerly evicted
+ * @note Only one thread should call this at a time, for a given cache
+ * @retval 0 Success
+ * @retval errno The last eviction-related error on failure (i.e. due to bad I/O) (see md_cache_evict_block_internal)
+ */
 int md_cache_evict_blocks( struct md_syndicate_cache* cache, md_cache_lru_t* new_writes ) {
    
    md_cache_lru_t* promotes = NULL;
@@ -1749,11 +1954,14 @@ int md_cache_evict_blocks( struct md_syndicate_cache* cache, md_cache_lru_t* new
    return worst_rc;
 }
 
-
-// cache main loop.
-// * start new writes
-// * reap completed writes
-// * evict blocks after the size limit has been exceeded
+/**
+ * @brief Process cache blocks if the cache thread is running
+ *
+ * Loop over cache block to write if the cache thread is running.
+ * First start new writes, reap completed writes, then evict blocks after the size limit has been exceeded
+ *
+ * @todo Add asynchronous IO cancellations while waiting for writes to finish
+ */
 void* md_cache_main_loop( void* arg ) {
    struct md_syndicate_cache_thread_args* args = (struct md_syndicate_cache_thread_args*)arg;
    
@@ -1763,7 +1971,7 @@ void* md_cache_main_loop( void* arg ) {
    // cancel whenever by default
    pthread_setcanceltype( PTHREAD_CANCEL_ASYNCHRONOUS, NULL );
    
-   SG_debug("%s", "Cache writer thread strated\n" );
+   SG_debug("%s", "Cache writer thread started\n" );
    
    while( cache->running ) {
       
@@ -1776,7 +1984,7 @@ void* md_cache_main_loop( void* arg ) {
          sleep(1);
       }
       
-      // waken up to die?
+      // woken up to die?
       if( !cache->running ) {
          break;
       }
@@ -1838,15 +2046,17 @@ void* md_cache_main_loop( void* arg ) {
    return NULL;
 }
 
-// add a block to the cache, to be written asynchronously.
-// return a future that can be waited on 
-// return NULL on error, and set *_rc to the error code
-// *_rc can be:
-// * -EAGAIN if the cache is not running
-// * -ENOMEM if OOM
-// * -EEXIST if the block already exists
-// * negative if we failed to open the block (see md_cache_open_block)
-// NOTE: the given data will be referenced!  Do NOT free it!
+/**
+ * @brief Add a block to the cache, to be written asynchronously
+ *
+ * @return A future that can be waited on, or NULL on error
+ * @note On error, *_rc is set to the error code (defined with return values below)
+ * @note The given data will be referenced!  Do NOT free it!
+ * @retval -EAGAIN The cache is not running
+ * @retval -ENOMEM Out of memory
+ * @retval -EEXIST if the block already exists
+ * @retval <0 if we failed to open the block (see md_cache_open_block)
+ */
 struct md_cache_block_future* md_cache_write_block_async( struct md_syndicate_cache* cache,
                                                           uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version,
                                                           char* data, size_t data_len,
@@ -1899,9 +2109,12 @@ struct md_cache_block_future* md_cache_write_block_async( struct md_syndicate_ca
    return f;
 }
 
-// wait for a write to finish
-// return 0 on success
-// return negative if we couldn't wait on the semaphore (see md_download_sem_wait)
+/**
+ * @brief Wait for a write to finish
+ *
+ * @retval 0 Success
+ * @retval <0 if unable to wait on the semaphore (see md_download_sem_wait)
+ */
 int md_cache_block_future_wait( struct md_cache_block_future* f ) {
    
    int rc = md_download_sem_wait( &f->sem_ongoing, -1 );
@@ -1913,10 +2126,13 @@ int md_cache_block_future_wait( struct md_cache_block_future* f ) {
    return rc;
 }
 
-// does a block future have an error?
-// return 0 if no error 
-// return -EAGAIN if the future is not yet finalized 
-// return 1 if either aio_rc or write_rc has been set to indicate error
+/**
+ * @brief Check if a block future has an error
+ *
+ * @retval 0 Success
+ * @retval -EAGAIN The future is not yet finalized 
+ * @retval 1 Either aio_rc or write_rc has been set to indicate error
+ */
 int md_cache_block_future_has_error( struct md_cache_block_future* f ) {
    
    if( !f->finalized ) {
@@ -1930,8 +2146,10 @@ int md_cache_block_future_has_error( struct md_cache_block_future* f ) {
    return 0;
 }
 
-// what's the aio rc?
-// return -EAGAIN if f is not finalized
+/**
+ * @brief Get the asynch I/O rc (error)
+ * @return The value of the aio_rc or -EAGAIN The future is not finalized
+ */
 int md_cache_block_future_get_aio_error( struct md_cache_block_future* f ) {
    if( !f->finalized ) {
       return -EAGAIN;
@@ -1940,8 +2158,11 @@ int md_cache_block_future_get_aio_error( struct md_cache_block_future* f ) {
    return f->aio_rc;
 }
 
-// what's the write error?
-// return -EAGAIN if the future is not finalized
+/**
+ * @brief Get the write error
+ * @retval write_rc The value of the write_rc
+ * @retval -EAGAIN The future is not finalized
+ */
 int md_cache_block_future_get_write_error( struct md_cache_block_future* f ) {
    if( !f->finalized ) {
       return -EAGAIN;
@@ -1950,35 +2171,54 @@ int md_cache_block_future_get_write_error( struct md_cache_block_future* f ) {
    return f->write_rc;
 }
 
-// get the block future's file descriptor 
+/**
+ * @brief Get the block future's file descriptor
+ * @return block_fd (file descriptor)
+ */
 int md_cache_block_future_get_fd( struct md_cache_block_future* f ) {
    return f->block_fd;
 }
 
-// get block future file ID
+/**
+ * @brief Get the block future file ID
+ * @return key.file_id
+ */
 uint64_t md_cache_block_future_file_id( struct md_cache_block_future* fut ) {
    return fut->key.file_id;
 }
 
-// get block future file version 
+/**
+ * @brief Get the block future file version
+ * @return key.file_version
+ */
 int64_t md_cache_block_future_file_version( struct md_cache_block_future* fut ) {
    return fut->key.file_version;
 }
 
-// get block future block id
+/**
+ * @brief Get the block future block id
+ * @return key.block_id
+ */
 uint64_t md_cache_block_future_block_id( struct md_cache_block_future* fut ) {
    return fut->key.block_id;
 }
 
-// get block future block version
+/**
+ * @brief Get the block future block version
+ * @return key.block_version
+ */
 int64_t md_cache_block_future_block_version( struct md_cache_block_future* fut ) {
    return fut->key.block_version;
 }
 
-// extract the block file descriptor from a future, making it so the cache is no longer responsible for it.
-// caller must close and clean up.
-// NOTE: only call this after the future has finished!
-// return the file descriptor (>= 0)
+/**
+ * @brief Extract the block file descriptor from a future
+ *
+ * The cache is no longer responsible for the file descriptor
+ * @note Only call this after the future has finished!
+ * @note The caller must close and clean up.
+ * @return The file descriptor (>= 0)
+ */
 int md_cache_block_future_release_fd( struct md_cache_block_future* f ) {
    
    int fd = f->block_fd;
@@ -1986,10 +2226,13 @@ int md_cache_block_future_release_fd( struct md_cache_block_future* f ) {
    return fd;
 }
 
-// unshare data from a cache future 
-// the cache future will free it, so the caller had better not 
-// return 0 on success
-// return -EINVAL if the future is finalized
+/**
+ * @brief Unshare data from a cache future 
+ *
+ * @note The cache future will free it, so the caller better not 
+ * @retval 0 Success
+ * @retval -EINVAL If the future is finalized
+ */
 int md_cache_block_future_unshare_data( struct md_cache_block_future* f ) {
    
    if( f->finalized ) {
@@ -2000,10 +2243,14 @@ int md_cache_block_future_unshare_data( struct md_cache_block_future* f ) {
    return 0;
 }
 
-// promote a cached block, so it doesn't get evicted
-// return 0 on success
-// return -EAGAIN if the cache isn't running 
-// return -ENOMEM on OOM
+/**
+ * @brief Promote a cached block
+ *
+ * Promote so it doesn't get evicted
+ * @retval 0 Success
+ * @retval -EAGAIN The cache isn't running 
+ * @retval -ENOMEM Out of memory
+ */
 int md_cache_promote_block( struct md_syndicate_cache* cache, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version ) {
    int rc = 0;
    
@@ -2029,10 +2276,14 @@ int md_cache_promote_block( struct md_syndicate_cache* cache, uint64_t file_id, 
 }
 
 
-// read a block from the cache, in its entirety
-// return the number of bytes read on success (>= 0)
-// return -errno if we couldn't fstat(2) the block 
-// return -ENOMEM if OOM
+/**
+ * @brief Read a block from the cache
+ *
+ * The block is read in it's entirety
+ * @retval >=0 The number of bytes read on success
+ * @retval -errno if we couldn't fstat(2) the block 
+ * @retval -ENOMEM Out of memory
+ */
 ssize_t md_cache_read_block( int block_fd, char** buf ) {
    
    ssize_t nr = 0;

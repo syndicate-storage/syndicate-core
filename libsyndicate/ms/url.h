@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/url.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for url.cpp
+ *
+ * @see libsyndicate/ms/url.cpp
+ */
+
 #ifndef _MS_CLIENT_URL_H_
 #define _MS_CLIENT_URL_H_
 

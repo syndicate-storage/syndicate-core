@@ -14,6 +14,15 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/xattr.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for xattr.cpp
+ *
+ * @see libsyndicate/ms/xattr.cpp
+ */
 
 #ifndef _MS_CLIENT_XATTR_H_
 #define _MS_CLIENT_XATTR_H_
