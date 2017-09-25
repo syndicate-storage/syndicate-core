@@ -372,21 +372,19 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          
          // next batch 
          int64_t next_batch = batch_queue.front();
-         batch_queue.pop();
-         
-         query_count++;
          
          // next download 
          rc = md_download_loop_next( dlloop, &dlctx );
          if( rc != 0 ) {
             
             if( rc == -EAGAIN ) {
-               // all downloads are running 
+               // all downloads are running
+               SG_debug("LISTDIR: All downloads are running (rc = %d)\n", rc); 
                rc = 0; 
                break;
             }
             
-            SG_error("md_download_loop_next rc = %d\n", rc );
+            SG_error("LISTDIR: md_download_loop_next rc = %d\n", rc );
             break;
          }
          else { 
@@ -394,13 +392,20 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
              rc = ms_client_get_dir_metadata_begin( client, parent_id, least_unknown_generation, next_batch, dlloop, dlctx );
              if( rc != 0 ) {
             
-                SG_error("ms_client_get_dir_metadata_begin( LUG=%" PRId64 ", batch=%" PRId64 " ) rc = %d\n", least_unknown_generation, next_batch, rc );
+                SG_error("LISTDIR: ms_client_get_dir_metadata_begin( LUG=%" PRId64 ", batch=%" PRId64 " ) rc = %d\n", least_unknown_generation, next_batch, rc );
                 break;
+             }
+             else {
+                
+                SG_debug("LISTDIR: started batch %" PRId64 "\n", next_batch);
+                batch_queue.pop();
+                query_count++;
              }
          }
       }
       
       if( rc != 0 ) {
+         SG_debug("LISTDIR: Exiting download loop (rc = %d)\n", rc);
          break;
       }
       
@@ -409,8 +414,12 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       if( rc != 0 ) {
         
          if( rc < 0 ) { 
-             SG_error("md_download_loop_run rc = %d\n", rc );
+             SG_error("LISTDIR: md_download_loop_run rc = %d\n", rc );
          }
+         else {
+             SG_debug("LISTDIR: md_download_loop_run rc = %d\n", rc );
+         }
+
          break;
       }
       
@@ -427,13 +436,13 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
             // finished all downloads?
             if( rc == -EAGAIN ) {
               
-               SG_debug("Finished %d downloads (rc = %d)\n", num_downloads_finished, rc); 
+               SG_debug("LISTDIR: Finished %d downloads (rc = %d)\n", num_downloads_finished, rc); 
                rc = 0;
                have_downloads = false;
                break;
             }
             
-            SG_error("md_download_loop_finish rc = %d\n", rc );
+            SG_error("LISTDIR: md_download_loop_finish rc = %d\n", rc );
             break;
          }
 
@@ -441,7 +450,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
          rc = ms_client_get_dir_metadata_end( client, parent_id, dlctx, &children, &batch_id, &num_children_fetched, &max_generation_fetched );
          if( rc != 0 ) {
             
-            SG_error("ms_client_get_dir_metadata_end rc = %d\n", rc );
+            SG_error("LISTDIR: ms_client_get_dir_metadata_end rc = %d\n", rc );
             break;
          }
          
@@ -466,13 +475,13 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
             }
          }
 
-         SG_debug("Fetched %" PRIu64 " (%" PRIu64 " downloaded total)\n", num_children_fetched, num_children_downloaded );
+         SG_debug("LISTDIR: Fetched %" PRIu64 " (%" PRIu64 " downloaded total)\n", num_children_fetched, num_children_downloaded );
          
          // do we need to switch over to DIFFDIR?
          if( !have_downloads && batch_queue.size() == 0 && num_children > 0 && num_children_downloaded < (unsigned)num_children ) {
             
             // yup
-            SG_debug("Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 ". Switch to DIFFIDR protocol.\n", num_children_downloaded, num_children, max_known_generation + 1 );
+            SG_debug("LISTDIR: Downloaded %" PRIu64 " children (%" PRId64 " given by inode); l.u.g. is now %" PRIu64 ". Switch to DIFFIDR protocol.\n", num_children_downloaded, num_children, max_known_generation + 1 );
             least_unknown_generation = max_known_generation + 1;
             batch_queue.push( least_unknown_generation );
             diffdir = true;
@@ -480,7 +489,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       }
       
       if( rc != 0 ) { 
-         SG_debug("Breaking loop on rc = %d\n", rc );
+         SG_debug("LISTDIR: Breaking loop on rc = %d\n", rc );
          break;
       }
       
@@ -490,6 +499,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       
       // download stopped prematurely
       // manually unref and free downloads.
+      SG_debug("LISTDIR: aborting download loop %p due to rc = %d\n", dlloop, rc);
       md_download_loop_abort( dlloop );
       aborted = true;
    } 
@@ -527,7 +537,7 @@ static int ms_client_get_dir_metadata( struct ms_client* client, uint64_t parent
       rc = 0;
    }
    
-   SG_debug("Downloaded %" PRId64 " children (out of %" PRId64 ")\n", num_children_downloaded, num_children );
+   SG_debug("LISTDIR: Downloaded %" PRId64 " children (out of %" PRId64 ").  Batch queue has %zu entries.\n", num_children_downloaded, num_children, batch_queue.size());
 
    // coalesce what we have into results
    ents = SG_CALLOC( struct md_entry, children.size() );
