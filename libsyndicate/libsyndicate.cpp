@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/libsyndicate.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief General support functions for syndicate
+ *
+ * @see libsyndicate/libsyndicate.h
+ */
+
 #include "libsyndicate/libsyndicate.h"
 #include "libsyndicate/storage.h"
 #include "libsyndicate/opts.h"
@@ -29,15 +39,17 @@
 
 static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyvalue );
 
-// stacktrace for uncaught C++ exceptions
+/// Stacktrace for uncaught C++ exceptions
 void md_uncaught_exception_handler(void) {
    SG_error("%s", "UNCAUGHT EXCEPTION!");
    exit(1);
 }
 
-// set the hostname
-// return 0 on success
-// return -ENOMEM if OOM
+/**
+ * @brief Set the configured hostname
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_set_hostname( struct md_syndicate_conf* conf, char const* hostname ) {
 
    char* new_hostname = SG_strdup_or_null( hostname );
@@ -53,17 +65,21 @@ int md_set_hostname( struct md_syndicate_conf* conf, char const* hostname ) {
    return 0;
 }
 
-// get the hostname
-// return a duplicate of the hostname string on success
-// return NULL on OOM, or if no host is defined
+/**
+ * @brief Get the configured hostname
+ * @return A duplicate of the hostname string
+ * @retval NULL Out of Memory, or if no host is defined
+ */
 char* md_get_hostname( struct md_syndicate_conf* conf ) {
 
    return SG_strdup_or_null( conf->hostname );
 }
 
-// look up a gateway cert by ID
-// return a pointer to the cert on success
-// return NULL if not found
+/**
+ * @brief Look up a gateway cert by ID
+ * @return A pointer to the cert Success
+ * @retval NULL Not found
+ */
 struct ms_gateway_cert* md_gateway_cert_find( ms_cert_bundle* gateway_certs, uint64_t gateway_id ) {
 
    ms_cert_bundle::iterator itr = gateway_certs->find( gateway_id );
@@ -77,11 +93,14 @@ struct ms_gateway_cert* md_gateway_cert_find( ms_cert_bundle* gateway_certs, uin
    }
 }
 
-// load a cert bundle, given the name of the gateway and volume
-// return 0 on success, and populate gateway_certs
-// return -ENOMEM on OOM
-// return -ENOENT on missing certificate
-// sets conf->cert_bundle_version
+/**
+ * @brief Load a cert bundle, given the name of the gateway and volume
+ *
+ * Sets conf->cert_bundle_version
+ * @retval 0 Success, and populate gateway_certs
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT Missing certificate
+ */
 static int md_gateway_certs_load( struct md_syndicate_conf* conf, ms_cert_bundle* gateway_certs ) {
 
    int rc = 0;
@@ -147,10 +166,12 @@ md_gateway_certs_load_out:
 }
 
 
-// get the name of our syndicate instance
-// return 0 on success, and set *ret_syndicate_name
-// return -ENOMEM on OOM
-// return -EINVAL on invalid syndicate host
+/**
+ * @brief Get the name of our syndicate instance
+ * @retval 0 Success, and set *ret_syndicate_name
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Invalid syndicate host
+ */
 static int md_syndicate_name( struct md_syndicate_conf* conf, char** ret_syndicate_name ) {
 
     int rc = 0;
@@ -195,13 +216,16 @@ static int md_syndicate_name( struct md_syndicate_conf* conf, char** ret_syndica
 }
 
 
-// Make sure that all the certs we need for this volume are downloaded and fresh.
-// Use our helper programs to go and get them.
-// The security of this method is dependent on having a secure way to get and validate *user* certificates.
-// Once we can be guaranteed that we have the right user certs, then the right volume and gateway certs will follow.
-// Return 0 on success, and populate conf with all volume, user, and gateway runtime information obtained from the certs.
-// return -EPERM on validation error
-// return -ENOMEM on OOM
+/**
+ * @brief Make sure that all the certs we need for this volume are downloaded and fresh.
+ *
+ * Use the helper programs to go and get them.
+ * The security of this method is dependent on having a secure way to get and validate *user* certificates.
+ * Once we can be guaranteed that we have the right user certs, then the right volume and gateway certs will follow.
+ * @retval 0 Success, and populate conf with all volume, user, and gateway runtime information obtained from the certs.
+ * @retval -EPERM Validation error
+ * @retval -ENOMEM Out of Memory
+ */
 int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey, ms::ms_user_cert* user_cert, ms::ms_user_cert* volume_owner_cert, ms::ms_volume_metadata* volume_cert, ms_cert_bundle* gateway_certs ) {
 
    int rc = 0;
@@ -337,11 +361,13 @@ int md_certs_reload( struct md_syndicate_conf* conf, EVP_PKEY** syndicate_pubkey
 }
 
 
-// reload the gateway driver, validating it against the hash we have on file.
-// return 0 on success, and store the driver to the given cert.
-// return -EPERM on validation error
-// return -ENOMEM on OOM
-// return -ENOENT if there is no driver
+/**
+ * @brief Reload the gateway driver, validating it against the hash we have on file.
+ * @retval 0 Success, and store the driver to the given cert.
+ * @retval -EPERM Validation error
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT No driver
+ */
 int md_driver_reload( struct md_syndicate_conf* conf, struct ms_gateway_cert* cert ) {
 
    int rc = 0;
@@ -387,13 +413,16 @@ int md_driver_reload( struct md_syndicate_conf* conf, struct ms_gateway_cert* ce
 }
 
 
-// initialize fields in the config that cannot be loaded from command line options alone.
-// (hence 'runtime_init' in the name).
-// This includes downloading and loading all files, setting up local storage (if needed), setting up networking (if needed).
-// return 0 on success, and populate the volume certificate and gateway certificates
-// return -ENONET if we couldn't load a file requested by the config
-// return negative if we couldn't initialize local storage, setup crypto, setup networking, or load a sensitive file securely.
-// NOTE: if this fails, the caller must free the md_syndicate_conf structure's fields
+/**
+ * @brief Initialize fields in the config that cannot be loaded from command line options alone.
+ *
+ * (hence 'runtime_init' in the name).
+ * This includes downloading and loading all files, setting up local storage (if needed), setting up networking (if needed).
+ * @retval 0 Success, and populate the volume certificate and gateway certificates
+ * @retval -ENONET Couldn't load a file requested by the config
+ * @retval <0 Couldn't initialize local storage, setup crypto, setup networking, or load a sensitive file securely.
+ * @note If this fails, the caller must free the md_syndicate_conf structure's fields
+ */
 static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pubkey, ms::ms_volume_metadata* volume_cert, ms_cert_bundle* gateway_certs ) {
 
    int rc = 0;
@@ -620,8 +649,13 @@ static int md_runtime_init( struct md_syndicate_conf* c, EVP_PKEY** syndicate_pu
 }
 
 
-// if level >= 1, this turns on debug messages.
-// if level >= 2, this turns on locking debug messages
+/**
+ * @brief Enable debug
+ *
+ * If level >= 1, this turns on debug messages.
+ * If level >= 2, this turns on locking debug messages
+ * @retval 0
+ */
 int md_debug( struct md_syndicate_conf* conf, int level ) {
    md_set_debug_level( level );
 
@@ -635,17 +669,24 @@ int md_debug( struct md_syndicate_conf* conf, int level ) {
    return 0;
 }
 
-// if level >= 1, this turns on error messages
-// always succeeds
+/**
+ * @brief Set the error level
+ *
+ * If level >= 1, this turns on error messages
+ * @note Always succeeds
+ */
 int md_error( struct md_syndicate_conf* conf, int level ) {
    md_set_error_level( level );
    return 0;
 }
 
 
-// shut down the library.
-// free all global data structures
-// always succeeds
+/**
+ * @brief Shut down the library.
+ *
+ * And free all global data structures
+ * @note Always succeeds
+ */
 int md_shutdown() {
 
    // shut down protobufs
@@ -657,9 +698,12 @@ int md_shutdown() {
    return 0;
 }
 
-// read an long value
-// return 0 on success, and set *ret to the parsed value
-// return -EINVAL if it could not be parsed
+/**
+ * @brief Read a long value
+ * @param[out] *ret The parsed value
+ * @retval 0 Success, and set *ret to the parsed value
+ * @retval -EINVAL Could not be parsed
+ */
 long md_conf_parse_long( char const* value, long* ret ) {
    char *end = NULL;
    long val = strtol( value, &end, 10 );
@@ -674,10 +718,13 @@ long md_conf_parse_long( char const* value, long* ret ) {
 }
 
 
-// add an environment variable.
-// keyvalue will be cloned, so the caller can free it
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Add an environment variable.
+ *
+ * @note keyvalue will be cloned, so the caller can free it
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyvalue ) {
 
     char* value_dup = strdup( keyvalue );
@@ -711,9 +758,11 @@ static int md_conf_add_envar( struct md_syndicate_conf* conf, char const* keyval
 }
 
 
-// ini parser callback
-// return 1 on success
-// return <= 0 on failure
+/**
+ * @brief ini parser callback
+ * @retval 1 Success
+ * @retval <=0 Failure
+ */
 static int md_conf_ini_parser( void* userdata, char const* section, char const* key, char const* value ) {
 
    struct md_syndicate_conf* conf = (struct md_syndicate_conf*)userdata;
@@ -1155,7 +1204,9 @@ static int md_conf_ini_parser( void* userdata, char const* section, char const* 
 }
 
 
-// read the configuration file and populate a md_syndicate_conf structure
+/**
+ * @brief Read the configuration file and populate a md_syndicate_conf structure
+ */
 int md_read_conf( char const* conf_path, struct md_syndicate_conf* conf ) {
 
    int rc = 0;
@@ -1207,7 +1258,9 @@ int md_read_conf( char const* conf_path, struct md_syndicate_conf* conf ) {
 }
 
 
-// free all memory associated with a server configuration
+/**
+ * @brief Free all memory associated with a server configuration
+ */
 int md_free_conf( struct md_syndicate_conf* conf ) {
 
    void* to_free[] = {
@@ -1288,9 +1341,12 @@ int md_free_conf( struct md_syndicate_conf* conf ) {
 }
 
 
-// set the driver parameters
-// return 0 on success, and populate *conf
-// return -ENOMEM on OOM
+/**
+ * @brief Set the driver parameters
+ * @param[out] conf Set the driver params within conf
+ * @retval 0 Success, and populate *conf
+ * @retval -ENOMEM Out of Memory
+ */
 int md_conf_set_driver_params( struct md_syndicate_conf* conf, char const* driver_exec_path, char const** driver_roles, size_t num_roles ) {
 
    char* driver_exec_path_dup = SG_strdup_or_null( driver_exec_path );
@@ -1328,7 +1384,9 @@ int md_conf_set_driver_params( struct md_syndicate_conf* conf, char const* drive
 }
 
 
-// destroy an md entry
+/**
+ * @brief Destroy an md entry
+ */
 void md_entry_free( struct md_entry* ent ) {
    if( ent->name != NULL ) {
       SG_safe_free( ent->name );
@@ -1344,7 +1402,9 @@ void md_entry_free( struct md_entry* ent ) {
 }
 
 
-// destroy a bunch of md_entries
+/**
+ * @brief Destroy a bunch of md_entries
+ */
 void md_entry_free_all( struct md_entry** ents ) {
    for( int i = 0; ents[i] != NULL; i++ ) {
       md_entry_free( ents[i] );
@@ -1352,9 +1412,11 @@ void md_entry_free_all( struct md_entry** ents ) {
    }
 }
 
-// duplicate an md_entry.
-// return a calloc'ed duplicate on success
-// return NULL on error
+/**
+ * @brief Duplicate an md_entry.
+ * @return A calloc'ed duplicate
+ * @retval NULL Error
+ */
 struct md_entry* md_entry_dup( struct md_entry* src ) {
 
    int rc = 0;
@@ -1376,9 +1438,12 @@ struct md_entry* md_entry_dup( struct md_entry* src ) {
 }
 
 
-// duplicate an md_entry into a given ret
-// return 0 on success
-// return -ENOMEM if out of memory
+/**
+ * @brief Duplicate an md_entry into a given ret
+ * @param[out] ret A duplicated md_entry
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_entry_dup2( struct md_entry* src, struct md_entry* ret ) {
 
    // copy non-pointers
@@ -1427,11 +1492,12 @@ int md_entry_dup2( struct md_entry* src, struct md_entry* ret ) {
    return 0;
 }
 
-// concatenate two paths.
-// fill in dest with the result.
-// if dest is NULL, then allocate and return a buffer containing the path
-// return the path on success
-// return NULL on OOM
+/**
+ * @brief Concatenate two paths.
+ * @param[out] dest Fill in dest with the result, if dest is NULL, then allocate and return a buffer containing the path
+ * @retval Path The concatenated path
+ * @retval NULL Out of Memory
+ */
 char* md_fullpath( char const* root, char const* path, char* dest ) {
    char delim = 0;
    int path_off = 0;
@@ -1468,12 +1534,14 @@ char* md_fullpath( char const* root, char const* path, char* dest ) {
 }
 
 
-// generate the directory name of a path.
-// if dest is not NULL, write the path to dest.
-// otherwise, malloc and return the dirname
-// if a well-formed path is given, then a string ending in a / is returned
-// return the directory on success
-// return NULL on OOM
+/**
+ * @brief Generate the directory name of a path.
+ *
+ * If a well-formed path is given, then a string ending in a / is returned
+ * @param dest If dest is not NULL, write the path to dest, otherwise, malloc and return the dirname
+ * @return The path/directory
+ * @retval NULL Out of Memory
+ */
 char* md_dirname( char const* path, char* dest ) {
 
    if( dest == NULL ) {
@@ -1509,12 +1577,15 @@ char* md_dirname( char const* path, char* dest ) {
    return dest;
 }
 
-// find the depth of a node in a path.
-// the depth of / is 0
-// the depth of /foo/bar/baz/ is 3
-// the depth of /foo/bar/baz is also 3
-// the paths must be normalized, and not include ..
-// return the depth on success
+/**
+ * @brief Find the depth of a node in a path.
+ *
+   The depth of / is 0
+   The depth of /foo/bar/baz/ is 3
+   The depth of /foo/bar/baz is also 3
+   The paths must be normalized, and not include ..
+ * @return The depth
+ */
 int md_depth( char const* path ) {
    int i = strlen(path) - 1;
 
@@ -1537,9 +1608,11 @@ int md_depth( char const* path ) {
 }
 
 
-// find the integer offset into a path where the directory name begins
-// return the index of the last '/'
-// return -1 if there is no '/' in path
+/**
+ * @brief Find the integer offset into a path where the directory name begins
+ * @return The index of the last '/'
+ * @retval -1 if there is no '/' in path
+ */
 int md_dirname_end( char const* path ) {
 
    int delim_i = strlen(path) - 1;
@@ -1557,11 +1630,12 @@ int md_dirname_end( char const* path ) {
 }
 
 
-// find the basename of a path.
-// if dest is not NULL, write it to dest
-// otherwise, allocate the basename
-// return the basename on success
-// return NULL on OOM
+/**
+ * @brief Find the basename of a path.
+ * @param[out] dest If dest is not NULL, write it to dest, otherwise, allocate the basename
+ * @return The basename
+ * @retval NULL Out of Memory
+ */
 char* md_basename( char const* path, char* dest ) {
    int delim_i = strlen(path) - 1;
    if( delim_i <= 0 ) {
@@ -1604,9 +1678,11 @@ char* md_basename( char const* path, char* dest ) {
 }
 
 
-// find the integer offset into a path where the basename begins.
-// return the index of the basename
-// return -1 if there is no '/'
+/**
+ * @brief Find the integer offset into a path where the basename begins.
+ * @return The index of the basename
+ * @retval -1 If there is no '/'
+ */
 int md_basename_begin( char const* path ) {
 
    int delim_i = strlen(path) - 1;
@@ -1623,10 +1699,11 @@ int md_basename_begin( char const* path ) {
 }
 
 
-// prepend a prefix to a string
-// put the resulting string in output, if output is non-NULL
-// otherwise, allocate and return the prepended string
-// return NULL on OOM
+/**
+ * @brief Prepend a prefix to a string
+ * @param[out] output The resulting string, if output is non-NULL, otherwise, allocate and return the prepended string
+ * @retval NULL Out of Memory
+ */
 char* md_prepend( char const* prefix, char const* str, char* output ) {
    if( output == NULL ) {
       output = SG_CALLOC( char, strlen(prefix) + strlen(str) + 1 );
@@ -1639,8 +1716,10 @@ char* md_prepend( char const* prefix, char const* str, char* output ) {
 }
 
 
-// hash a path
-// return the hash as a long on success
+/**
+ * @brief Hash a path
+ * @return The hash as a long
+ */
 long md_hash( char const* path ) {
    locale loc;
    const collate<char>& coll = use_facet<collate<char> >(loc);
@@ -1648,10 +1727,12 @@ long md_hash( char const* path ) {
 }
 
 
-// split a path into its components.
-// each component will be duplicated, so the caller must free the strings in results
-// return 0 on success
-// return -ENOMEM if OOM, in which case the values in result are undefined
+/**
+ * @brief Split a path into its components.
+ * @note Each component will be duplicated, so the caller must free the strings in results
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory, in which case the values in result are undefined
+ */
 int md_path_split( char const* path, vector<char*>* result ) {
    char* tmp = NULL;
    char* path_copy = SG_strdup_or_null( path );
@@ -1700,7 +1781,9 @@ int md_path_split( char const* path, vector<char*>* result ) {
    return 0;
 }
 
-// make sure paths don't end in /, unless they're root.
+/**
+ * @brief Make sure paths don't end in /, unless they're root.
+ */
 void md_sanitize_path( char* path ) {
 
    if( strcmp( path, "/" ) != 0 ) {
@@ -1714,9 +1797,11 @@ void md_sanitize_path( char* path ) {
    }
 }
 
-// start a thread
-// return 0 on success
-// return -1 on failure
+/**
+ * @brief Start a thread
+ * @retval 0 Success
+ * @retval -1 Failure
+ */
 int md_start_thread( pthread_t* th, void* (*thread_func)(void*), void* arg, bool detach ) {
 
    // start up a thread to listen for connections
@@ -1746,7 +1831,14 @@ int md_start_thread( pthread_t* th, void* (*thread_func)(void*), void* arg, bool
    return rc;;
 }
 
-// extract hostname and port number from a URL
+/**
+ * @brief Extract hostname and port number from a URL
+ * @param[in] url The url to extract from
+ * @param[out] hostname The extracted hostname
+ * @param[out] portnum The extracted port number
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_parse_hostname_portnum( char const* url, char** hostname, int* portnum ) {
 
    char const* host_ptr = NULL;
@@ -1802,10 +1894,13 @@ int md_parse_hostname_portnum( char const* url, char** hostname, int* portnum ) 
    return 0;
 }
 
-// parse a query string into a list of CGI arguments
-// NOTE: this modifies args_str
-// return a NULL-terminated list of strings on success.  each string points to args_str
-// return NULL on OOM (in which case args_str is not modified
+/**
+ * @brief Parse a query string into a list of CGI arguments
+ * @note This modifies args_str
+ * @param[in,out] args_str String to be parsed and returned as CGI arguments
+ * @return A NULL-terminated list of strings.  Each string points to args_str
+ * @retval NULL Out of Memory (in which case args_str is not modified)
+ */
 char** md_parse_cgi_args( char* args_str ) {
    int num_args = 1;
    for( unsigned int i = 0; i < strlen(args_str); i++ ) {
@@ -1850,9 +1945,11 @@ char** md_parse_cgi_args( char* args_str ) {
 }
 
 
-// locate the path from the url
-// return the path in a malloc'ed buffer on success
-// return NULL on OOM
+/**
+ * @brief Locate the path from the url
+ * @return The path in a malloc'ed buffer
+ * @retval NULL Out of Memory
+ */
 char* md_path_from_url( char const* url ) {
    // find the ://, if given
    char* off = strstr( (char*)url, "://" );
@@ -1878,9 +1975,13 @@ char* md_path_from_url( char const* url ) {
 }
 
 
-// flatten a path.  That is, remove /./, /[/]*, etc, but don't resolve ..
-// return the flattened URL on success
-// return NULL on OOM
+/**
+ * @brief Flatten a path.
+ *
+ * That is, remove /./, /[/]*, etc, but don't resolve ..
+ * @return The flattened URL Success
+ * @retval NULL Out of Memory
+ */
 char* md_flatten_path( char const* path ) {
 
    size_t len = strlen(path);
@@ -1936,10 +2037,14 @@ char* md_flatten_path( char const* path ) {
 }
 
 
-// split a url into the url+path and query string
-// return 0 on success, set *url_and_path and *qs to calloc'ed strings with the url/path and query string, respectively.
-//   if there is no query string, set *qs to NULL
-// return -ENOMEM if OOM
+/**
+ * @brief Split a url into the url+path and query string
+ * @param[in] url The url to parse
+ * @param[out] url_and_path The url and path
+ * @param[out] qs The query string, or NULL if there is not query string
+ * @retval 0 Success, set *url_and_path and *qs to calloc'ed strings with the url/path and query string, respectively.
+ * @retval -ENOMEM Out of Memory
+ */
 int md_split_url_qs( char const* url, char** url_and_path, char** qs ) {
 
    if( strstr( url, "?" ) != NULL ) {
@@ -1981,9 +2086,11 @@ int md_split_url_qs( char const* url, char** url_and_path, char** qs ) {
 }
 
 
-// get the offset at which the value starts in a header
-// return >= 0 on success
-// return -1 if not found
+/**
+ * @brief Get the offset at which the value starts in a header
+ * @retval >=0 Success
+ * @retval -1 Not found
+ */
 off_t md_header_value_offset( char* header_buf, size_t header_len, char const* header_name ) {
 
    size_t off = 0;
@@ -2025,10 +2132,13 @@ off_t md_header_value_offset( char* header_buf, size_t header_len, char const* h
 }
 
 
-// parse an accumulated null-terminated header buffer, and find the first instance of the given header name
-// return 0 on success, and put the Location into *location_url as a null-terminated string
-// return -ENOENT if not found
-// return -ENOMEM if OOM
+/**
+ * @brief Parse an accumulated null-terminated header buffer, and find the first instance of the given header name
+ * @param[out] header_value Location
+ * @retval 0 Success, and put the Location into *header_value as a null-terminated string
+ * @retval -ENOENT Not found
+ * @retval -ENOMEM Out of Memory
+ */
 int md_parse_header( char* header_buf, char const* header_name, char** header_value ) {
 
    size_t span = 0;
@@ -2059,8 +2169,10 @@ int md_parse_header( char* header_buf, char const* header_name, char** header_va
 }
 
 
-// parse one value in a header (excluding UINT64_MAX)
-// return UINT64_MAX on error
+/**
+ * @brief Parse one value in a header (excluding UINT64_MAX)
+ * @retval UINT64_MAX Error
+ */
 uint64_t md_parse_header_uint64( char* hdr, off_t offset, size_t size ) {
    char* value = hdr + offset;
    size_t value_len = size - offset;
@@ -2084,9 +2196,11 @@ uint64_t md_parse_header_uint64( char* hdr, off_t offset, size_t size ) {
    return data;
 }
 
-// read a csv of values
-// place UINT64_MAX in an element on failure to parse
-// return NULL on OOM
+/**
+ * @brief Read a csv of values
+ * @note Place UINT64_MAX in an element Failure to parse
+ * @retval NULL Out of Memory
+ */
 uint64_t* md_parse_header_uint64v( char* hdr, off_t offset, size_t size, size_t* ret_len ) {
 
    char* value = hdr + offset;
@@ -2139,10 +2253,11 @@ uint64_t* md_parse_header_uint64v( char* hdr, off_t offset, size_t size, size_t*
    return ret;
 }
 
-// remove the last token of a string by setting
-// the last instance of delim to '\0'
-// return a pointer to the chomped string if delim was found.
-// return NULL otherwise
+/**
+ * @brief Remove the last token of a string by setting the last instance of delim to '\0'
+ * @return A pointer to the chomped string if delim was found.
+ * @retval NULL otherwise
+ */
 char* md_rchomp( char* str, char delim ) {
    char* ptr = strrchr( str, delim );
    if( ptr == NULL ) {
@@ -2154,9 +2269,13 @@ char* md_rchomp( char* str, char delim ) {
 }
 
 
-// convert an md_entry to an ms_entry
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Convert an md_entry to an ms_entry
+ * @param[in] md_entry The md_entry to convert
+ * @param[out] ms_entry The resulting ms_entry after conversion 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_entry_to_ms_entry( ms::ms_entry* msent, struct md_entry* ent ) {
 
    try {
@@ -2213,9 +2332,13 @@ int md_entry_to_ms_entry( ms::ms_entry* msent, struct md_entry* ent ) {
 }
 
 
-// convert ms_entry to md_entry
-// return 0 on success
-// return negative on error
+/**
+ * @brief Convert ms_entry to md_entry
+ * @param[in] ms_entry The ms_entry to convert
+ * @param[out] md_entry The resulting md_entry after conversion
+ * @retval 0 Success
+ * @retval <0 on error
+ */
 int ms_entry_to_md_entry( const ms::ms_entry& msent, struct md_entry* ent ) {
    memset( ent, 0, sizeof(struct md_entry) );
 
@@ -2280,10 +2403,12 @@ int ms_entry_to_md_entry( const ms::ms_entry& msent, struct md_entry* ent ) {
 }
 
 
-// verify the MS's signature over an ms_entry
-// return 0 if the given gateway is known to us, and matches the signature and user
-// return -EPERM if the gateway signature is invalid or missing
-// return -ENOMEM on OOM
+/**
+ * @brief Verify the MS's signature over an ms_entry
+ * @retval 0 The given gateway is known to us, and matches the signature and user
+ * @retval -EPERM The gateway signature is invalid or missing
+ * @retval -ENOMEM Out of Memory
+ */
 static int ms_entry_verify_ms_signature( struct ms_client* ms, ms::ms_entry* msent ) {
 
    // NOTE: derived from md_verify template function; see if we can't use it here too (address ms_signature vs signature field)
@@ -2357,12 +2482,15 @@ static int ms_entry_verify_ms_signature( struct ms_client* ms, ms::ms_entry* mse
    return rc;
 }
 
-// verify an ms_entry: the coordinator must have signed it
-// no-op for directories
-// return 0 if the given gateway is known to us, and matches the signature and user
-// return -EAGAIN if the gateway is not on file
-// return -EPERM if the gateway signature is invalid, or the gateway is not owned by the same user
-// return -ENOMEM if OOM
+/**
+ * @brief Verify an ms_entry
+ *
+ * The coordinator must have signed it, no-op for directories
+ * @retval 0 The given gateway is known to us, and matches the signature and user
+ * @retval -EAGAIN The gateway is not on file
+ * @retval -EPERM The gateway signature is invalid, or the gateway is not owned by the same user
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 
    int rc = 0;
@@ -2502,9 +2630,13 @@ int ms_entry_verify( struct ms_client* ms, ms::ms_entry* msent ) {
 }
 
 
-// sign an md_entry
-// return 0 on success, and fill in *sig and *sig_len
-// return -ENOMEM on OOM
+/**
+ * @brief Sign an md_entry
+ * @param[out] sig The signature
+ * @param[out] sig_len Length of the signature
+ * @retval 0 Success, and fill in *sig and *sig_len
+ * @retval -ENOMEM Out of Memory
+ */
 int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig, size_t* sig_len, char const* file, int lineno ) {
 
    ms::ms_entry msent;
@@ -2555,10 +2687,14 @@ int md_entry_sign2( EVP_PKEY* privkey, struct md_entry* ent, unsigned char** sig
 }
 
 
-// expand a path, with wordexp
-// return 0 on success, and set *expanded and *expanded_len
-// return -ENOMEM on OOM
-// return -EINVAL on failure to parse
+/**
+ * @brief Expand a path, with wordexp
+ * param[out] expanded The expanded path
+ * param[out] expanded_len Length of expanded
+ * @retval 0 Success, and set *expanded and *expanded_len
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Failure to parse
+ */
 int md_expand_path( char const* path, char** expanded, size_t* expanded_len ) {
 
     int rc = 0;
@@ -2594,10 +2730,14 @@ int md_expand_path( char const* path, char** expanded, size_t* expanded_len ) {
 }
 
 
-// clear the IPC root (only do this on startup)
-// will clear gateway-specific state
-// return 0 on success
-// return -EPERM on failure
+/**
+ * @brief Clear the IPC root
+ *
+ * Will clear gateway-specific state
+ * @note Only do this on startup
+ * @retval 0 Success
+ * @retval -EPERM Failure
+ */
 static int md_ipc_root_clear( char const* ipc_root, uint64_t gateway_id ) {
 
    int rc = 0;
@@ -2632,9 +2772,13 @@ static int md_ipc_root_clear( char const* ipc_root, uint64_t gateway_id ) {
 }
 
 
-// initialize Syndicate
-// return 0 on success
-// if this fails, the caller should shut down the library and free conf
+/**
+ * @brief Initialize Syndicate
+ * @note If this fails, the caller should shut down the library and free conf
+ * @retval 0 Success
+ * @retval -EPERM Failed to clear IPC root
+ * @retval -ENOMEM Out of Memory
+ */
 static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* client, struct md_opts* opts, bool is_client ) {
 
    char const* ms_url = opts->ms_url;
@@ -2835,20 +2979,30 @@ static int md_init_common( struct md_syndicate_conf* conf, struct ms_client* cli
 }
 
 
-// initialize syndicate as a client only
+/**
+ * @brief Initialize syndicate as a client only
+ * @return Result of md_init_common
+ * @see md_init_common
+ */
 int md_init_client( struct md_syndicate_conf* conf, struct ms_client* client, struct md_opts* opts ) {
    return md_init_common( conf, client, opts, true );
 }
 
-// initialize syndicate as a full gateway
+/**
+ * @brief Initialize syndicate as a full gateway
+ * @return Result of md_init_common
+ * @see md_init_common
+ */
 int md_init( struct md_syndicate_conf* conf, struct ms_client* client, struct md_opts* opts ) {
    return md_init_common( conf, client, opts, false );
 }
 
 
-// default configuration
-// return 0 on success
-// exit on error (will be due to memory exhaustion)
+/**
+ * @brief Default configuration
+ * @retval 0 Success
+ * @note Exit on error (will be due to memory exhaustion)
+ */
 int md_default_conf( struct md_syndicate_conf* conf ) {
 
    size_t path_len = 0;
@@ -2947,8 +3101,11 @@ int md_default_conf( struct md_syndicate_conf* conf ) {
 }
 
 
-// check a configuration structure to see that it has everything we need.
-// print warnings too
+/**
+ * @brief Check a configuration structure to see that it has everything we need.
+ * @note Print warnings too
+ * @retval -EINVAL Failed
+ */
 int md_check_conf( struct md_syndicate_conf* conf ) {
 
    // char const* warn_fmt = "WARN: missing configuration parameter: %s\n";
@@ -2994,7 +3151,13 @@ int md_check_conf( struct md_syndicate_conf* conf ) {
 }
 
 
-// convert an md_entry to string
+/**
+ * @brief Convert an md_entry to string
+ * @param[in] ent md_entry
+ * @param[out] data Resulting string of md_entry
+ * @retval -ENOMEM Out of Memory
+ * @retval 0 Success
+ */
 int md_entry_to_string( struct md_entry* ent, char** data ) {
 
     int rc = 0;
@@ -3115,17 +3278,25 @@ int md_entry_to_string( struct md_entry* ent, char** data ) {
 }
 
 
-// get data root directory
+/**
+ * @brief Get data root directory
+ */
 char* md_conf_get_data_root( struct md_syndicate_conf* conf ) {
     return conf->data_root;
 }
 
-// get IPC root directory
+/**
+ * @brief Get IPC root directory
+ */
 char* md_conf_get_ipc_root( struct md_syndicate_conf* conf ) {
    return conf->ipc_root;
 }
 
-// get IPC gateway-specific directory
+/**
+ * @brief Get IPC gateway-specific directory
+ * @return Gateway-specific directory
+ * @retval NULL Overflow
+ */
 char* md_conf_get_ipc_dir( struct md_syndicate_conf* conf, char* pathbuf, size_t pathbuf_len ) {
    int rc = snprintf( pathbuf, pathbuf_len, "%s/%" PRIu64, conf->ipc_root, conf->gateway );
    if( (unsigned)rc == pathbuf_len ) {

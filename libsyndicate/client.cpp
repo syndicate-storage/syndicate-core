@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/client.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Syndicate Gateway client API code
+ *
+ * @see libsyndicate/client.h
+ */
+
 #include "libsyndicate/client.h"
 #include "libsyndicate/server.h"
 #include "libsyndicate/proc.h"
@@ -24,78 +34,93 @@
 static char const* SG_post_field_data = SG_SERVER_POST_FIELD_DATA_PLANE;
 static char const* SG_post_field_control = SG_SERVER_POST_FIELD_CONTROL_PLANE;
 
-// extra data to include in a write
+/**
+ * @brief Extra data to include in a write
+ */
 struct SG_client_WRITE_data {
 
-    bool has_write_delta;
-    struct SG_manifest* write_delta;
+    bool has_write_delta;               ///< flag that write delta exists, updates after UG_replicate
+    struct SG_manifest* write_delta;    ///< information about a write delta
 
-    bool has_mtime;
-    struct timespec mtime;
+    bool has_mtime;                     ///< has updated mtime
+    struct timespec mtime;              ///< time
 
-    bool has_mode;
-    mode_t mode;
+    bool has_mode;                      ///< write has a mode
+    mode_t mode;                        ///< mode
 
-    bool has_new_size;
-    uint64_t new_size;
+    bool has_new_size;                  ///< flag whether write has new size
+    uint64_t new_size;                  ///< the new size in bytes
 
-    bool has_owner_id;
-    uint64_t owner_id;
+    bool has_owner_id;                  ///< flag that write has owner id
+    uint64_t owner_id;                  ///< owner id
 
-    bool has_consistency;
-    int32_t max_read_freshness;
-    int32_t max_write_freshness;
+    bool has_consistency;               ///< flag that consistency checks pass
+    int32_t max_read_freshness;         ///< time since last refresh, in millis, this inode is to be considered fresh for reading
+    int32_t max_write_freshness;        ///< time since last refresh, in millis, this inode is to be considered fresh from a remote update (0 means "always fresh")
 
-    // routing information--can be set separately, but will be imported from write_delta if not given
-    bool has_routing_information;
-    uint64_t coordinator_id;
-    uint64_t volume_id;
-    uint64_t file_id;
-    int64_t file_version;
+    bool has_routing_information;       ///< flag for if write has updated routing information, if not, it will be imported from write_delta
+    uint64_t coordinator_id;            ///< coordinator id
+    uint64_t volume_id;                 ///< volume id
+    uint64_t file_id;                   ///< file id
+    int64_t file_version;               ///< file version
 };
 
-// per-request state to be preserved for running multiple requests
+/**
+ * @brief Per-request state to be preserved for running multiple requests
+ */
 struct SG_client_request_cls {
 
-   uint64_t chunk_id;                   // ID of the chunk we're transfering
-   SG_messages::Request* message;       // the original control-plane message (if uploading)
-   uint64_t dest_gateway_id;            // gateway that was supposed to receive the message
-   char* serialized_message;            // serialized control-plane message (if uploading)
-   struct curl_httppost* form_begin;    // curl forms (if uploading)
-   char* url;                           // target URL
+   uint64_t chunk_id;                   ///< ID of the chunk we're transfering
+   SG_messages::Request* message;       ///< the original control-plane message (if uploading)
+   uint64_t dest_gateway_id;            ///< gateway that was supposed to receive the message
+   char* serialized_message;            ///< serialized control-plane message (if uploading)
+   struct curl_httppost* form_begin;    ///< curl forms (if uploading)
+   char* url;                           ///< target URL
 
-   void* cls;                           // user-given download state
-   void (*free_cls)( void* cls );       // cleanup handler for user-given download state
+   void* cls;                           ///< user-given download state
+   void (*free_cls)( void* cls );       ///< cleanup handler for user-given download state
 };
 
 
-// asynchronous upload state
+/**
+ * @brief Asynchronous upload state
+ */
 struct SG_client_request_async {
 
-   void* cls;
-   size_t len;
-   SG_client_read_callback_t read_callback;
+   void* cls;                           ///< known as the SG_request_data structure
+   size_t len;                          ///< length of request data structure
+   SG_client_read_callback_t read_callback; ///< input to curl_easy_setopt (CURLOPT_READFUNCTION)
 };
 
-// structure for synchronous uploads
+/**
+ * @brief Structure for synchronous uploads
+ */
 struct SG_client_request_sync_state {
-   struct SG_chunk dataplane_message;
-   off_t offset;
+   struct SG_chunk dataplane_message; ///< Message
+   off_t offset; ///< Offset
 };
 
-// allocate an asynchronous request
-// return NULL on OOM
+/**
+ * @brief Allocate an asynchronous request
+ * @retval 0 Success
+ * @retval NULL Out of memory
+ */
 struct SG_client_request_async* SG_client_request_async_new(void) {
    return SG_CALLOC( struct SG_client_request_async, 1 );
 }
 
 
-// get the user-given state from an async request
+/**
+ * @brief Get the user-given state from an async request
+ * @return datareq->cls, the request data structure
+ */
 void* SG_client_request_async_cls( struct SG_client_request_async* datareq ) {
    return datareq->cls;
 }
 
-// set up an asynchronous request
+/**
+ * @brief Set up an asynchronous request
+ */
 void SG_client_request_async_init( struct SG_client_request_async* req, SG_client_read_callback_t read_callback, size_t maxlen, void* cls ) {
    req->read_callback = read_callback;
    req->cls = cls;
@@ -103,8 +128,10 @@ void SG_client_request_async_init( struct SG_client_request_async* req, SG_clien
 }
 
 
-// default read callback for synchronous requests
-// returns number of bytes copied
+/**
+ * @brief Default read callback for synchronous requests
+ * @return Number of bytes copied
+ */
 static size_t SG_client_request_sync_read_callback( char* buf, size_t len, size_t nitems, void* cls ) {
 
    struct SG_client_request_async* datareq = (struct SG_client_request_async*)cls;
@@ -128,8 +155,10 @@ static size_t SG_client_request_sync_read_callback( char* buf, size_t len, size_
    return max_copy;
 }
 
-// make an async request closure for a RAM chunk
-// the chunk will be ref'ed, not copied
+/**
+ * @brief Make an async request closure for a RAM chunk
+ * @return Reference to the requested chunk of RAM
+ */
 static struct SG_client_request_async* SG_client_request_sync( struct SG_chunk* dataplane_message ) {
    struct SG_client_request_async* req = SG_client_request_async_new();
    if( req == NULL ) {
@@ -159,8 +188,10 @@ static struct SG_client_request_async* SG_client_request_sync( struct SG_chunk* 
 }
 
 
-// free an async request used for synchronous communication
-// the dataplane message chunk will not be touched.
+/**
+ * @brief Free an asynchronous request used for synchronous communication
+ * @note the dataplane message chunk will not be touched.
+ */
 static void SG_client_request_sync_free( struct SG_client_request_async* datareq ) {
    if( datareq->cls != NULL ) {
       struct SG_client_request_sync_state* sync_state = (struct SG_client_request_sync_state*)datareq->cls;
@@ -170,7 +201,10 @@ static void SG_client_request_sync_free( struct SG_client_request_async* datareq
 }
 
 
-// free a request cls.  always succeeds
+/**
+ * @brief Free a request cls
+ * @note Always succeeds
+ */
 void SG_client_request_cls_free( struct SG_client_request_cls* cls ) {
 
    SG_safe_free( cls->url );
@@ -184,11 +218,13 @@ void SG_client_request_cls_free( struct SG_client_request_cls* cls ) {
 }
 
 
-// verify and load a manifest from a chunk
-// return 0 on success
-// return -EPERM if the data is invalid
-// return -EINVAL if the args are invalid
-// return -ENOMEM on OOM
+/**
+ * @brief Verify and load a manifest from a chunk
+ * @retval 0 Success
+ * @retval -EPERM Data is invalid
+ * @retval -EINVAL Args are invalid
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_parse_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_gateway_id, struct SG_chunk* serialized_manifest_chunk, struct SG_manifest* manifest ) {
 
    int rc = 0;
@@ -251,19 +287,23 @@ int SG_client_parse_manifest( struct SG_gateway* gateway, struct SG_request_data
    return rc;
 }
 
-// download a manifest (from the caches) using an initialized curl handle.  verify it came from coordinator_gateway_id.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EAGAIN if the remote gateway is not known to us (i.e. we can't make a manifest url, and we should reload)
-// return -EINVAL if we failed to parse the message
-// return -ETIMEDOUT if the request timed out
-// return -EREMOTEIO if the request failed with HTTP 500 or higher
-// return -ENOENT on HTTP 404
-// return -EPERM on HTTP 400
-// return -EACCES on HTTP 401 or 403
-// return -ESTALE on HTTP 410
-// return -EPROTO on any other HTTP 400-level error
-// return -errno on socket- and recv-related errors
+/**
+ * @brief Download a manifest using curl
+ *
+ * Download a manifest (from the caches) using an initialized curl handle.  Verify it came from coordinator_gateway_id.
+ * @return 0 Success
+ * @return -ENOMEM Out of Memory
+ * @return -EAGAIN The remote gateway is not known to us (i.e. we can't make a manifest url, and we should reload)
+ * @return -EINVAL Failed to parse the message
+ * @return -ETIMEDOUT The request timed out
+ * @return -EREMOTEIO The request failed with HTTP 500 or higher
+ * @return -ENOENT HTTP 404
+ * @return -EPERM HTTP 400
+ * @return -EACCES HTTP 401 or 403
+ * @return -ESTALE HTTP 410
+ * @return -EPROTO Any other HTTP 400-level error
+ * @return -errno on socket- and recv-related errors
+ */
 static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_request_data* reqdat, CURL* curl, uint64_t coordinator_gateway_id, struct SG_manifest* manifest ) {
 
    int rc = 0;
@@ -327,19 +367,23 @@ static int SG_client_get_manifest_curl( struct SG_gateway* gateway, struct SG_re
    return rc;
 }
 
-
-// download a manifest (from the caches) from remote_gateway_id; verify it came from coordinator_gateway_id; parse it
-// return 0 on success, and popuilate *manifest
-// return -ENOMEM on OOM
-// return -EINVAL if reqdat doesn't refer to a manifest
-// return -EINVAL if we failed to parse the message
-// return -EBADMSG if the manifest timestamp, volume, file version, or file ID doesn't match the received manifest
-// return -EAGAIN if the remote gateway is not known to us (i.e. we can't make a manifest url, and we should reload)
-// return -ETIMEDOUT if the request timed out
-// return -EREMOTEIO if the request failed with HTTP 500 or higher
-// return -EPROTO on HTTP 400-level message
-// return -errno on socket- and recv-related errors
-// return non-zero if the gateway's driver method to connect to the cache fails
+/**
+ * @brief Download a manifest from the remote gateway ID
+ *
+ * Download a manifest (from the caches) from remote_gateway_id; verify it came from coordinator_gateway_id; parse it
+ * @return 0 Success, populate *manifest
+ * @return -ENOMEM Out of Memory
+ * @return -EAGAIN The remote gateway is not known to us (i.e. we can't make a manifest url, and we should reload)
+ * @return -EINVAL Failed to parse the message and reqdat doesn't refer to a manifest
+ * @return -ETIMEDOUT The request timed out
+ * @return -EREMOTEIO The request failed with HTTP 500 or higher
+ * @return -ENOENT HTTP 404
+ * @return -EPERM HTTP 400
+ * @return -EACCES HTTP 401 or 403
+ * @return -ESTALE HTTP 410
+ * @return -EPROTO Any other HTTP 400-level error
+ * @return -errno on socket- and recv-related errors
+ */
 int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_gateway_id, uint64_t remote_gateway_id, struct SG_manifest* manifest ) {
 
    int rc = 0;
@@ -449,14 +493,16 @@ int SG_client_get_manifest( struct SG_gateway* gateway, struct SG_request_data* 
    return rc;
 }
 
-
-// set up and start a download context used for transferring data asynchronously
-// This will ref the download context once more than it needs to; the caller must
-// call SG_client_download_async_cleanup() and then md_download_unref_free.
-// This is meant to allow the caller to inspect the dlctx state once we're done
-// processing the block download.
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Set up and start a download context used for transferring data asynchronously
+ *
+ * This will ref the download context once more than it needs to; the caller must
+ * call SG_client_download_async_cleanup() and then md_download_unref_free.
+ * This is meant to allow the caller to inspect the dlctx state once we're done
+ * processing the block download.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_download_async_start( struct SG_gateway* gateway, struct md_download_loop* dlloop, struct md_download_context* dlctx, uint64_t chunk_id, char* url, off_t max_size, void* cls, void (*free_cls)(void*) ) {
 
    int rc = 0;
@@ -556,7 +602,9 @@ int SG_client_download_async_start( struct SG_gateway* gateway, struct md_downlo
 }
 
 
-// clean up a request data context
+/**
+ * @brief Clean up a request data context
+ */
 void SG_client_request_cls_cleanup_and_free( struct SG_client_request_cls* reqcls ) {
 
    if( reqcls != NULL ) {
@@ -570,7 +618,9 @@ void SG_client_request_cls_cleanup_and_free( struct SG_client_request_cls* reqcl
    }
 }
 
-// clean up a download context used for transfering data asynchronously, including the associated state
+/**
+ * @brief Clean up a download context used for transfering data asynchronously, including the associated state
+ */
 void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
 
    CURL* curl = NULL;
@@ -593,9 +643,10 @@ void SG_client_download_async_cleanup( struct md_download_context* dlctx ) {
 }
 
 
-// clean up the state for each download in an (aborted) download loop
-// NOTE: only use this in conjunction with SG_client_download_async_start
-// always succeeds
+/**
+ * @brief Clean up the state for each download in an (aborted) download loop
+ * @note Only use this in conjunction with SG_client_download_async_start, always succeeds
+ */
 void SG_client_download_async_cleanup_loop( struct md_download_loop* dlloop ) {
 
    struct md_download_context* dlctx = NULL;
@@ -613,11 +664,13 @@ void SG_client_download_async_cleanup_loop( struct md_download_loop* dlloop ) {
 }
 
 
-// wait for a download to finish, get the buffer, and free the download handle
-// return 0 on success
-// return -ENODATA if the download did not suceeed with HTTP 200
-// return -errno if we failed to wait for the download, somehow
-// return -ENOMEM on OOM
+/**
+ * @brief Wait for a download to finish, get the buffer, and free the download handle
+ * retval 0 Success
+ * retval -ENODATA If the download did not suceeed with HTTP 200
+ * retval -errno If we failed to wait for the download, somehow
+ * retval -ENOMEM Out of Memory
+ */
 int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* chunk_id, char** chunk_buf, off_t* chunk_len, void** cls ) {
 
    int rc = 0;
@@ -692,7 +745,9 @@ int SG_client_download_async_wait( struct md_download_context* dlctx, uint64_t* 
 }
 
 
-// clean-up callback for get-block state
+/**
+ * @brief clean-up callback for get-block state
+ */
 static void SG_client_get_block_async_cleanup( void* cls ) {
 
    struct SG_request_data* reqdat = (struct SG_request_data*)cls;
@@ -704,12 +759,14 @@ static void SG_client_get_block_async_cleanup( void* cls ) {
 }
 
 
-// begin downloading a block via he given download loop.
-// NOTE: reqdat must be a block request
-// return 0 on success, and set up *dlctx to refer to the downloading context
-// return -ENOMEM if OOM
-// return -ENOMEM if reqdat isn't a block request
-// return -ENOENT if the remote gateway cannot be looked up
+/**
+ * @brief Begin downloading a block via the given download loop.
+ * @note reqdat must be a block request
+ * @retval 0 Success, and set up *dlctx to refer to the downloading context
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOMEM reqdat isn't a block request
+ * @retval -ENOENT The remote gateway cannot be looked up
+ */
 int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t remote_gateway_id, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
 
    int rc = 0;
@@ -761,8 +818,10 @@ int SG_client_get_block_async( struct SG_gateway* gateway, struct SG_request_dat
 }
 
 
-// log a hash mismatch
-// always succeeds
+/**
+ * @brief Log a hash mismatch
+ * @note Always succeeds
+ */
 static void SG_client_log_hash_mismatch( unsigned char* expected_block_hash, unsigned char* block_hash ) {
 
    char* expected_block_hash_str = NULL;
@@ -789,8 +848,10 @@ static void SG_client_log_hash_mismatch( unsigned char* expected_block_hash, uns
 }
 
 
-// log a block hash mismatch from a manifest
-// always succeeds
+/**
+ * @brief Log a block hash mismatch from a manifest
+ * @note Always succeeds
+ */
 static void SG_client_get_block_log_hash_mismatch( struct SG_manifest* manifest, uint64_t block_id, unsigned char* block_hash ) {
 
    // log it (takes a bit of effort to convert the hashes to printable strings...)
@@ -812,11 +873,13 @@ static void SG_client_get_block_log_hash_mismatch( struct SG_manifest* manifest,
 }
 
 
-// sign a serialized block: prepend a serialized signed block header
-// return 0 on success, and set *signed_chunk
-// return -ENOMEM on OOM
-// return -EINVAL if reqdat is not for a block
-// return -EPERM on signature failure
+/**
+ * @brief Sign a serialized block: prepend a serialized signed block header
+ * @retval 0 Success, and set *signed_chunk
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL reqdat is not for a block
+ * @retval -EPERM Signature failure
+ */
 int SG_client_block_sign( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block_data, struct SG_chunk* signed_block_data ) {
 
    int rc = 0;
@@ -886,12 +949,14 @@ int SG_client_block_sign( struct SG_gateway* gateway, struct SG_request_data* re
 }
 
 
-// verify the authenticity of a block that has a signed block header
-// return 0 on success, and set *ret_data_offset to refer to the offset the signed block's buffer where the block data begins
-// return -ENOMEM on OOM
-// return -EPERM on signature verification failure, or if the block didn't come from the coordinator we exected
-// return -EBADMSG if the block doesn't have enough data
-// return -EAGAIN if the cert was not found
+/**
+ * @brief Verify the authenticity of a block that has a signed block header
+ * @retval 0 Success, and set *ret_data_offset to refer to the offset the signed block's buffer where the block data begins
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM Signature verification failure, or if the block didn't come from the coordinator we exected
+ * @retval -EBADMSG The block doesn't have enough data
+ * @retval -EAGAIN The cert was not found
+ */
 int SG_client_block_verify( struct SG_gateway* gateway, uint64_t coordinator_id, struct SG_chunk* signed_block, uint64_t* ret_data_offset ) {
 
    int rc = 0;
@@ -979,13 +1044,17 @@ int SG_client_block_verify( struct SG_gateway* gateway, uint64_t coordinator_id,
    return 0;
 }
 
-// authenticate a block's content, in one of two ways:
-// * if the manifest has a hash for the block, then use the hash
-// * otherwise, if the block has a signed block header, use the signed block header
-// authentication fails if there is a hash mismatch, signature mismatch, or missing data.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EPERM if the data could not be authenticated (block not present, hash mismatch, etc.)
+/**
+ * @brief Authenticate a block's content
+ *
+ * Authentication is done in one of two ways:
+ * If the manifest has a hash for the block, then use the hash
+ * Otherwise, if the block has a signed block header, use the signed block header
+ * Authentication fails if there is a hash mismatch, signature mismatch, or missing data.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM The data could not be authenticated (block not present, hash mismatch, etc.)
+ */
 static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_manifest* manifest, uint64_t block_id, struct SG_chunk* block_data, uint64_t* block_data_offset ) {
 
    int rc = 0;
@@ -1046,14 +1115,17 @@ static int SG_client_block_authenticate( struct SG_gateway* gateway, struct SG_m
    return 0;
 }
 
-// parse a block from a download context, and use the manifest to verify it's integrity
-// if the block is still downloading, wait for it to finish (indefinitely). Otherwise, load right away.
-// deserialize the block once we have it.
-// return 0 on success, and populate *block with its contents
-// return -ENOMEM on OOM
-// return -EINVAL if the request is not for a block
-// return -ENODATA if the download context did not successfully finish
-// return -EBADMSG if the block's authenticity could not be verified with the manifest
+/**
+ * @brief Parse a block from a download context, and use the manifest to verify it's integrity
+ *
+ * If the block is still downloading, wait for it to finish (indefinitely). Otherwise, load right away.
+ * Deserialize the block once we have it.
+ * @retval 0 Success, and populate *block with its contents
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL if the request is not for a block
+ * @retval -ENODATA if the download context did not successfully finish
+ * @retval -EBADMSG if the block's authenticity could not be verified with the manifest
+ */
 int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* manifest, struct md_download_context* dlctx, uint64_t* block_id, struct SG_chunk* deserialized_block ) {
 
    int rc = 0;
@@ -1140,18 +1212,19 @@ int SG_client_get_block_finish( struct SG_gateway* gateway, struct SG_manifest* 
 }
 
 
-// get an xattr by name
-// return 0 on success, and set *xattr_value and *xattr_value_len
-// return -ENOMEM on OOM
-// return -ENOMEM on OOM
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request, or if we don't know about gateway_id
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -ENOATTR on HTTP 404
-// return -EACCES on HTTP 401 or 403
-// return -EPERM on HTTP 400
-// return -ESTALE on HTTP 410
-// return -EPROTO for any other HTTP 400-level error
+/**
+ * @brief Get an xattr by name
+ * @retval 0 Success, and set *xattr_value and *xattr_value_len
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request, or don't know about gateway_id
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -ENOATTR HTTP 404
+ * @retval -EACCES HTTP 401 or 403
+ * @retval -EPERM HTTP 400
+ * @retval -ESTALE HTTP 410
+ * @retval -EPROTO Any other HTTP 400-level error
+ */
 int SG_client_getxattr( struct SG_gateway* gateway, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, char const* xattr_name, uint64_t xattr_nonce, char** xattr_value, size_t* xattr_len ) {
 
     int rc = 0;
@@ -1272,18 +1345,19 @@ int SG_client_getxattr( struct SG_gateway* gateway, uint64_t gateway_id, char co
 }
 
 
-// get a list of xattrs by name
-// return 0 on success, and set *xattr_value and *xattr_value_len
-// return -ENOMEM on OOM
-// return -ENOMEM on OOM
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPERM on HTTP 400
-// return -EACCES if the HTTP error is 401 or 403
-// return _ENOATTR on HTTP 404
-// return -ESTALE on HTTP 410
-// return -EPROTO for any other HTTP 400-level error
+/**
+ * @brief Get a list of xattrs by name
+ * @retval 0 Success, and set *xattr_value and *xattr_value_len
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO HTTP error is >= 500
+ * @retval -EPERM HTTP 400
+ * @retval -EACCES The HTTP error is 401 or 403
+ * @retval _ENOATTR HTTP 404
+ * @retval -ESTALE HTTP 410
+ * @retval -EPROTO Any other HTTP 400-level error
+ */
 int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t xattr_nonce, char** xattr_list, size_t* xattr_list_len ) {
 
     int rc = 0;
@@ -1413,12 +1487,15 @@ int SG_client_listxattrs( struct SG_gateway* gateway, uint64_t gateway_id, char 
 }
 
 
-// create a signed block
-// the wire format for which is:
-// [ 0: 4 bytes $HEADER_SIZE ][ 4: $HEADER_SIZE block header ][ $HEADER_SIZE + 4: block data ]
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if reqdat isn't a block request, or if we failed to serialize and sign
+/**
+ * @brief Create a signed block
+ *
+ * The wire format for which is:
+ * [ 0: 4 bytes $HEADER_SIZE ][ 4: $HEADER_SIZE block header ][ $HEADER_SIZE + 4: block data ]
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL reqdat isn't a block request, or we failed to serialize and sign
+ */
 int SG_client_serialize_signed_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block_in, struct SG_chunk* block_out ) {
 
    int rc = 0;
@@ -1512,12 +1589,14 @@ int SG_client_serialize_signed_block( struct SG_gateway* gateway, struct SG_requ
 }
 
 
-// parse a signed block.
-// return 0 on success, and put the block data into *block_out
-// return -EINVAL if the reqdat isn't a block request, or if we failed to deserialize due to a malformatted block_in
-// return -EBADMSG if the block didn't come from remote_gateway_id (i.e. the id or signature didn't match)
-// return -ENOMEM if OOM
-// return -EAGAIN if we don't know the gateway's public key (yet)
+/**
+ * @brief Parse a signed block.
+ * @retval 0 Success, and put the block data into *block_out
+ * @retval -EINVAL The reqdat isn't a block request, or if we failed to deserialize due to a malformatted block_in
+ * @retval -EBADMSG The block didn't come from remote_gateway_id (i.e. the id or signature didn't match)
+ * @retval -ENOMEM Out of Memory
+ * @retval -EAGAIN Don't know the gateway's public key (yet)
+ */
 int SG_client_deserialize_signed_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t remote_gateway_id, struct SG_chunk* block_in, struct SG_chunk* block_out ) {
 
    int rc = 0;
@@ -1626,9 +1705,11 @@ int SG_client_deserialize_signed_block( struct SG_gateway* gateway, struct SG_re
 }
 
 
-// set up the common fields of a Request
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Set up the common fields of a Request
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_client_request_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat ) {
 
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -1668,54 +1749,80 @@ static int SG_client_request_setup( struct SG_gateway* gateway, SG_messages::Req
 }
 
 
-// allocate a write request
+/**
+ * @brief Allocate a write request
+ */
 struct SG_client_WRITE_data* SG_client_WRITE_data_new(void) {
     return SG_CALLOC( struct SG_client_WRITE_data, 1 );
 }
 
-// set up a write reqeust
+/**
+ * @brief Set up a write reqeust
+ */
 int SG_client_WRITE_data_init( struct SG_client_WRITE_data* dat ) {
     memset( dat, 0, sizeof(struct SG_client_WRITE_data) );
     return 0;
 }
 
-// set write data manifest.
-// NOTE: shallow copy
+/**
+ * @brief Set write data manifest.
+ * @note Shallow copy
+ */
 int SG_client_WRITE_data_set_write_delta( struct SG_client_WRITE_data* dat, struct SG_manifest* write_delta ) {
     dat->write_delta = write_delta;
     dat->has_write_delta = true;
     return 0;
 }
 
-// set the size
+/**
+ * @brief Set the write data size
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_size( struct SG_client_WRITE_data* dat, uint64_t size ) {
     dat->has_new_size = true;
     dat->new_size = size;
     return 0;
 }
 
-// set write data mtime
+/**
+ * @brief Set write data mtime
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_mtime( struct SG_client_WRITE_data* dat, struct timespec* mtime ) {
     dat->mtime = *mtime;
     dat->has_mtime = true;
     return 0;
 }
 
-// set write data mode
+/**
+ * @brief Set write data mode
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_mode( struct SG_client_WRITE_data* dat, mode_t mode ) {
     dat->mode = mode;
     dat->has_mode = true;
     return 0;
 }
 
-// set write data owner ID
+/**
+ * @brief Set write data owner ID
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_owner_id( struct SG_client_WRITE_data* dat, uint64_t owner_id ) {
     dat->owner_id = owner_id;
     dat->has_owner_id = true;
     return 0;
 }
 
-// set refresh info
+/**
+ * @brief Set write data refresh info
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_refresh( struct SG_client_WRITE_data* dat, int32_t read_freshness, int32_t write_freshness ) {
    dat->has_consistency = true;
    dat->max_read_freshness = read_freshness;
@@ -1723,7 +1830,11 @@ int SG_client_WRITE_data_set_refresh( struct SG_client_WRITE_data* dat, int32_t 
    return 0;
 }
 
-// set routing info
+/**
+ * @brief Set write data routing info
+ * @note Always success
+ * @return 0
+ */
 int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uint64_t volume_id, uint64_t coordinator_id, uint64_t file_id, int64_t file_version ) {
 
     dat->coordinator_id = coordinator_id;
@@ -1734,8 +1845,11 @@ int SG_client_WRITE_data_set_routing_info( struct SG_client_WRITE_data* dat, uin
     return 0;
 }
 
-// merge data into an md_entry from a WRITE data struct
-// return -EINVAL on conflicting information
+/**
+ * @brief Merge data into an md_entry from a WRITE data struct
+ * @retval 0 Success
+ * @retval -EINVAL on conflicting information
+ */
 int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entry* ent ) {
 
     if( dat->has_write_delta && dat->has_new_size ) {
@@ -1770,13 +1884,17 @@ int SG_client_WRITE_data_merge( struct SG_client_WRITE_data* dat, struct md_entr
     return 0;
 }
 
-// make a signed WRITE message--that is, send over new block information for a file, encoded as a manifest.
-// the destination gateway is the coordinator ID in the manifest.
-// write-delta must be non-NULL
-// if new_owner and/or new_mode are non-NULL, they will be filled in as well
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if we don't have any routing information set in dat, or if dat has conflicting size informaiton
+/**
+ * @brief Make a signed WRITE message
+ *
+ * Send over new block information for a file, encoded as a manifest.
+ * The destination gateway is the coordinator ID in the manifest.
+ * write-delta must be non-NULL
+ * if new_owner and/or new_mode are non-NULL, they will be filled in as well
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Don't have any routing information set in dat, or if dat has conflicting size informaiton
+ */
 int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Request* request, char const* fs_path, struct SG_client_WRITE_data* dat ) {
 
    int rc = 0;
@@ -1858,11 +1976,14 @@ int SG_client_request_WRITE_setup( struct SG_gateway* gateway, SG_messages::Requ
 }
 
 
-// make a signed TRUNCATE message, from an initialized reqdat.
-// the reqdat must be for a manifest
-// return 0 on success
-// return -EINVAL if the reqdat is not for a manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed TRUNCATE message from an initialized reqdat.
+ *
+ * @note The reqdat must be for a manifest
+ * @retval 0 Success
+ * @retval -EINVAL The reqdat is not for a manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, off_t new_size ) {
 
    int rc = 0;
@@ -1899,11 +2020,14 @@ int SG_client_request_TRUNCATE_setup( struct SG_gateway* gateway, SG_messages::R
 }
 
 
-// make a signed RENAME request, from an initialized reqdat.
-// the reqdat must be for a manifest
-// return 0 on success
-// return -EINVAL if teh reqdat is not for a manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed RENAME request from an initialized reqdat.
+ * 
+ * @note The reqdat must be for a manifest
+ * @retval 0 Success
+ * @retval -EINVAL The reqdat is not for a manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* new_path ) {
 
    int rc = 0;
@@ -1944,11 +2068,13 @@ int SG_client_request_RENAME_setup( struct SG_gateway* gateway, SG_messages::Req
 }
 
 
-// make a signed RENAME_HINT request, from an initialized reqdat.
-// the reqdat must be for a manifest
-// return 0 on success
-// return -EINVAL if teh reqdat is not for a manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed RENAME_HINT request from an initialized reqdat.
+ * @note The reqdat must be for a manifest
+ * @retval 0 Success
+ * @retval -EINVAL The reqdat is not for a manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_RENAME_HINT_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* manifest_info, char const* new_path ) {
 
    int rc = 0;
@@ -2004,11 +2130,13 @@ int SG_client_request_RENAME_HINT_setup( struct SG_gateway* gateway, SG_messages
 }
 
 
-// make a signed DETACH request from an initialized reqdat
-// the reqdat must be for a manifest
-// return 0 on success
-// return -EINVAL if the reqdat is not for a manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed DETACH request from an initialized reqdat
+ * @note The reqdat must be for a manifest
+ * @retval 0 Success
+ * @retval -EINVAL The reqdat is not for a manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id ) {
 
    int rc = 0;
@@ -2041,11 +2169,13 @@ int SG_client_request_DETACH_setup( struct SG_gateway* gateway, SG_messages::Req
 }
 
 
-// make a signed REFRESH request from an initialized reqdat
-// the reqdat must be for a manifest
-// return 0 on success
-// return -EINVAL if the reqdat is not for a manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed REFRESH request from an initialized reqdat
+ * @note The reqdat must be for a manifest
+ * @retval 0 Success
+ * @retval -EINVAL The reqdat is not for a manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_REFRESH_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id ) {
 
    int rc = 0;
@@ -2078,9 +2208,11 @@ int SG_client_request_REFRESH_setup( struct SG_gateway* gateway, SG_messages::Re
 }
 
 
-// make a PUTCHUNKS request, optionally signing it
-// return 0 on sucess
-// return -ENOMEM on OOM
+/**
+ * @brief Make a PUTCHUNKS request, optionally signing it
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
 
    int rc = 0;
@@ -2130,15 +2262,19 @@ int SG_client_request_PUTCHUNKS_setup_ex( struct SG_gateway* gateway, SG_message
    return rc;
 }
 
-// make a signed PUTCHUNKS request
+/**
+ * @brief Make a signed PUTCHUNKS request
+ */
 int SG_client_request_PUTCHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
    return SG_client_request_PUTCHUNKS_setup_ex( gateway, request, reqdat, coordinator_id, chunk_info, num_chunk_info, true );
 }
 
 
-// make a DELETECHUNKS request, optionally signing it
-// return 0 on sucess
-// return -ENOMEM on OOM
+/**
+ * @brief Make a DELETECHUNKS request, optionally signing it
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info, bool sign ) {
 
    int rc = 0;
@@ -2186,14 +2322,18 @@ int SG_client_request_DELETECHUNKS_setup_ex( struct SG_gateway* gateway, SG_mess
    return rc;
 }
 
-// make a signed DELETECHUNKS request
+/**
+ * @brief Make a signed DELETECHUNKS request
+ */
 int SG_client_request_DELETECHUNKS_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, struct SG_manifest_block* chunk_info, size_t num_chunk_info ) {
    return SG_client_request_DELETECHUNKS_setup_ex( gateway, request, reqdat, coordinator_id, chunk_info, num_chunk_info, true );
 }
 
-// make a signed SETXATTR request
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed SETXATTR request
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name, char const* xattr_value, size_t xattr_value_len, int flags ) {
 
     int rc = 0;
@@ -2229,9 +2369,11 @@ int SG_client_request_SETXATTR_setup( struct SG_gateway* gateway, SG_messages::R
 }
 
 
-// make a signed REMOVEXATTR request
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Make a signed REMOVEXATTR request
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages::Request* request, struct SG_request_data* reqdat, uint64_t coordinator_id, char const* xattr_name ) {
 
     int rc = 0;
@@ -2265,13 +2407,16 @@ int SG_client_request_REMOVEXATTR_setup( struct SG_gateway* gateway, SG_messages
 }
 
 
-// begin sending a request
-// serialize the given message, and set up a request cls.
-// NOTE: the download takes ownership of control_plane--the caller should not manipulate it in any way while the download is proceeding
-// NOTE: control_plane should be signed beforehand
-// return 0 on success, and set up *reqcls
-// return -ENOMEM on OOM
-// return -EAGAIN if the destination gateway is not known to us, but could become known if we reloaded our volumeconfiguration
+/**
+ * @brief Begin sending a request
+ *
+ * Serialize the given message, and set up a request cls.
+ * @note The download takes ownership of control_plane, the caller should not manipulate it in any way while the download is proceeding
+ * @note control_plane should be signed beforehand
+ * @retval 0 Success, and set up *reqcls
+ * @retval -ENOMEM Out of Memory
+ * @retval -EAGAIN The destination gateway is not known to us, but could become known if we reloaded our volume configuration
+ */
 static int SG_client_request_begin( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct SG_client_request_cls* reqcls ) {
 
    int rc = 0;
@@ -2356,9 +2501,11 @@ static int SG_client_request_begin( struct SG_gateway* gateway, uint64_t dest_ga
 }
 
 
-// finish processing a request
-// return 0 on success, and populate *reply
-// return -EBADMSG if the reply could not be validated
+/**
+ * @brief Finish processing a request
+ * @retval 0 Success, and populate *reply
+ * @retval -EBADMSG The reply could not be validated
+ */
 static int SG_client_request_end( struct SG_gateway* gateway, struct SG_chunk* serialized_reply, struct SG_client_request_cls* reqcls, SG_messages::Reply* reply ) {
 
    int rc = 0;
@@ -2401,26 +2548,29 @@ static int SG_client_request_end( struct SG_gateway* gateway, struct SG_chunk* s
 }
 
 
-// determine whether or not a call to SG_client_request_send or SG_client_request_send_finish indicates
-// that the remote gateway is down.  That is, the error is one of the following:
-// -EBADMSG, -EPROTO, -ETIMEDOUT
+/**
+ * @brief Determine whether or not a call to SG_client_request_send or SG_client_request_send_finish indicates that the remote gateway is down.
+ * @return -EBADMSG, -EPROTO, -ETIMEDOUT
+ */
 bool SG_client_request_is_remote_unavailable( int error ) {
 
    return (error == -EBADMSG || error == -ETIMEDOUT || error == -EPROTO);
 }
 
-// send a message as a (control plane, data plane) pair, synchronously, to another gateway
-// return 0 on success
-// return -ENOMEM if OOM
-// return -EAGAIN if the request should be retried.  This could be because dest_gateway_id is not known to us, but could become known if we refreshed the volume config.
-// return -ETIMEDOUT on connection timeout
-// return -EREMOTEIO if the HTTP status was >= 500 (indicates server-side I/O error)
-// return -EACCES if HTTP status was 401 or 403
-// return -EPERM on HTTP 400
-// return -ESTALE on HTTP 410
-// return -ENOENT on HTTP 404
-// return -EPROTO if HTTP status was between 400 or 499, and not 401 or 403 (indicates a misconfiguration--they should never happen)
-// return -errno on socket- and recv-related errors
+/**
+ * @brief Send a message as a (control plane, data plane) pair, synchronously, to another gateway
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EAGAIN The request should be retried.  This could be because dest_gateway_id is not known to us, but could become known if we refreshed the volume config.
+ * @retval -ETIMEDOUT Connection timeout
+ * @retval -EREMOTEIO The HTTP status was >= 500 (indicates server-side I/O error)
+ * @retval -EACCES HTTP status was 401 or 403
+ * @retval -EPERM HTTP 400
+ * @retval -ESTALE HTTP 410
+ * @retval -ENOENT HTTP 404
+ * @retval -EPROTO HTTP status was between 400 or 499, and not 401 or 403 (indicates a misconfiguration--they should never happen)
+ * @retval -errno socket- and recv-related errors
+ */
 int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_chunk* data_plane, SG_messages::Reply* reply ) {
 
    int rc = 0;
@@ -2522,11 +2672,13 @@ int SG_client_request_send( struct SG_gateway* gateway, uint64_t dest_gateway_id
 }
 
 
-// send a message asynchronously to another gateway
-// NOTE: the caller must NOT free *datareq until freeing the download context!
-// NOTE: the download context takes ownership of control_plane for the duration of the download!
-// return 0 on success, and set up *dlctx as an upload future
-// return -ENOMEM on OOM
+/**
+ * @brief Send a message asynchronously to another gateway
+ * @note The caller must NOT free *datareq until freeing the download context!
+ * @note The download context takes ownership of control_plane for the duration of the download!
+ * @retval 0 Success, and set up *dlctx as an upload future
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gateway_id, SG_messages::Request* control_plane, struct SG_client_request_async* datareq, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
 
    int rc = 0;
@@ -2613,13 +2765,15 @@ int SG_client_request_send_async( struct SG_gateway* gateway, uint64_t dest_gate
 }
 
 
-// finish sending a message to another gateway
-// return 0 on success, and set up *reply with the validated reply
-// return -EINVAL if the download context was not used in a previous call to SG_client_request_send_async
-// return -EBADMSG if the reply was invalid
-// return -ENODATA if the download did not succeed with HTTP 200
-// return -ETIMEDOUT if the transfer did not complete in time
-// NOTE: this frees up dlctx
+/**
+ * @brief Finish sending a message to another gateway
+ * @note This frees up dlctx
+ * @retval 0 Success, and set up *reply with the validated reply
+ * @retval -EINVAL The download context was not used in a previous call to SG_client_request_send_async
+ * @retval -EBADMSG The reply was invalid
+ * @retval -ENODATA The download did not succeed with HTTP 200
+ * @retval -ETIMEDOUT The transfer did not complete in time
+ */
 int SG_client_request_send_finish( struct SG_gateway* gateway, struct md_download_context* dlctx, SG_messages::Reply* reply ) {
 
    int rc = 0;

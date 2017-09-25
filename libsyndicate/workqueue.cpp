@@ -14,10 +14,22 @@
    limitations under the License.
 */
 
+/**
+ * @file workqueue.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Work queue functions
+ *
+ * @see libsyndicate/workqueue.h
+ */
+
 #include "workqueue.h"
 #include "util.h"
 
-// work queue main method 
+/**
+ * @brief Work queue main method
+ */
 static void* md_wq_main( void* cls ) {
    
    struct md_wq* wq = (struct md_wq*)cls;
@@ -82,15 +94,19 @@ static void* md_wq_main( void* cls ) {
 }
 
 
-// alloc work queues
+/**
+ * @brief Alloc work queues
+ */
 struct md_wq* md_wq_new( int count ) {
    return SG_CALLOC( struct md_wq, count );
 }
 
-// set up a work queue, but don't start it.
-// return 0 on success
-// return negative on failure:
-// * -ENOMEM if OOM
+/**
+ * @brief Set up a work queue, but don't start it.
+ * @retval 0 Success
+ * @retval <0 Failure
+ * @retval -ENOMEM Out of Memory
+ */
 int md_wq_init( struct md_wq* wq, void* cls ) {
    
    int rc = 0;
@@ -124,11 +140,13 @@ int md_wq_init( struct md_wq* wq, void* cls ) {
 }
 
 
-// start a work queue 
-// return 0 on success
-// return negative on error:
-// * -EINVAL if already started
-// * whatever pthread_create errors on
+/**
+ * @brief Start a work queue 
+ * @retval 0 Success
+ * @retval <0 Error:
+ * @retval -EINVAL Already started
+ * @retval Other Whatever pthread_create errors on
+ */
 int md_wq_start( struct md_wq* wq ) {
    
    if( wq->running ) {
@@ -156,10 +174,12 @@ int md_wq_start( struct md_wq* wq ) {
    return 0;
 }
 
-// stop a work queue 
-// return 0 on success
-// return negative on error:
-// * -EINVAL if not running
+/**
+ * @brief Stop a work queue 
+ * @retval 0 Success
+ * @retval <0 Error
+ * @retval -EINVAL Not running
+ */
 int md_wq_stop( struct md_wq* wq ) {
    
    if( !wq->running ) {
@@ -177,8 +197,9 @@ int md_wq_stop( struct md_wq* wq ) {
    return 0;
 }
 
-
-// free a work request queue 
+/**
+ * @brief Free a work request queue
+ */
 static int md_wq_queue_free( md_wq_queue_t* wqueue ) {
    
    while( wqueue->size() > 0 ) {
@@ -192,10 +213,14 @@ static int md_wq_queue_free( md_wq_queue_t* wqueue ) {
    return 0;
 }
 
-// free up a work queue.  put its caller-specified state in ret_cls
-// return 0 on success
-// return negative on error:
-// * -EINVAL if running 
+/**
+ * @brief Free up a work queue.
+ *
+ * Put its caller-specified state in ret_cls
+ * @retval 0 Success
+ * @retval <0 Error
+ * @retval -EINVAL Running
+ */
 int md_wq_free( struct md_wq* wq, void** ret_cls ) {
    
    if( wq->running ) {
@@ -227,7 +252,9 @@ int md_wq_free( struct md_wq* wq, void** ret_cls ) {
    return 0;
 }
 
-// create a work request 
+/**
+ * @brief Create a work request
+ */
 int md_wreq_init( struct md_wreq* wreq, md_wq_func_t work, void* work_data, int flags ) {
 
    memset( wreq, 0, sizeof(struct md_wreq) );
@@ -245,7 +272,9 @@ int md_wreq_init( struct md_wreq* wreq, md_wq_func_t work, void* work_data, int 
    return 0;
 }
 
-// free a work request
+/**
+ * @brief Free a work request
+ */
 int md_wreq_free( struct md_wreq* wreq ) {
    
    if( wreq->flags & MD_WQ_PROMISE ) {
@@ -257,10 +286,12 @@ int md_wreq_free( struct md_wreq* wreq ) {
    return 0;
 }
    
-// wait for a work request (promise) to complete
-// return 0 on success
-// return negative on error;
-// * -EINVAL if the work request was not initialized with MD_WQ_PROMISE
+/**
+ * @brief Wait for a work request (promise) to complete
+ * @retval 0 Success
+ * @retval <0 Error
+ * @retval -EINVAL The work request was not initialized with MD_WQ_PROMISE
+ */
 int md_wreq_promise_wait( struct md_wreq* wreq ) {
    
    if( (wreq->flags & MD_WQ_PROMISE) == 0 ) {
@@ -272,8 +303,10 @@ int md_wreq_promise_wait( struct md_wreq* wreq ) {
    return 0;
 }
 
-// get the result of a work request (promise)
-// return -EINVAL if this isn't a promise
+/**
+ * @brief Get the result of a work request (promise)
+ * @retval -EINVAL This isn't a promise
+ */
 int md_wreq_promise_ret( struct md_wreq* wreq ) {
    
    if( (wreq->flags & MD_WQ_PROMISE) == 0 ) {
@@ -283,11 +316,14 @@ int md_wreq_promise_ret( struct md_wreq* wreq ) {
    return wreq->promise_ret;
 }
 
-// enqueue work
-// the data within wreq must remain accessible until the work request is handled,
-// but a copy of the wreq struct will be made. 
-// return 0 on success
-// return -EINVAL if the work queue thread isn't running
+/**
+ * @brief Enqueue work
+ *
+ * The data within wreq must remain accessible until the work request is handled,
+ * but a copy of the wreq struct will be made. 
+ * @retval 0 Success
+ * @retval -EINVAL The work queue thread isn't running
+ */
 int md_wq_add( struct md_wq* wq, struct md_wreq* wreq ) {
    
    int rc = 0;
@@ -311,12 +347,16 @@ int md_wq_add( struct md_wq* wq, struct md_wreq* wreq ) {
    return rc;
 }
 
-// wake up the work queue 
+/**
+ * @brief Wake up the work queue
+ */
 int md_wq_wakeup( struct md_wq* wq ) {
    return sem_post( &wq->work_sem );
 }
 
-// get caller-specified data from the wq 
+/**
+ * @brief Get caller-specified data from the wq
+ */
 void* md_wq_cls( struct md_wq* wq ) {
    return wq->cls;
 }

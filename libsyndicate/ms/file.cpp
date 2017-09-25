@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/file.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific file related functionality
+ *
+ * @see libsyndicate/ms/file.h
+ */
+
 #include "libsyndicate/ms/file.h"
 #include "libsyndicate/ms/benchmark.h"
 #include "libsyndicate/ms/cert.h"
@@ -23,10 +33,12 @@
 #include "libsyndicate/ms/vacuum.h"
 #include "libsyndicate/ms/xattr.h"
 
-// convert a list of requests into a protobuf
-// return 0 on success
-// return -EINVAL if the an update in updates is invalid
-// return -ENOMEM if we're out of memory
+/**
+ * @brief Convert a list of requests into a protobuf
+ * @retval 0 Success
+ * @retval -EINVAL The an update in updates is invalid
+ * @retval -ENOMEM Out of Memory
+ */
 static int ms_client_requests_protobuf( ms_client_request_list* requests, ms::ms_request_multi* ms_requests ) {
    
    try {
@@ -119,10 +131,12 @@ static int ms_client_requests_protobuf( ms_client_request_list* requests, ms::ms
 }
 
 
-// convert an update set to a string
-// return the number of bytes on success, and set *update_text 
-// return -EINVAL if we failed to serialize
-// return -ENOMEM if OOM
+/**
+ * @brief Convert an update set to a string
+ * @return The number of bytes on success, and set *update_text 
+ * @retval -EINVAL Failed to serialize
+ * @retval -ENOMEM Out of Memory
+ */
 ssize_t ms_client_update_set_to_string( ms::ms_request_multi* ms_requests, char** update_text ) {
    
    string update_bits;
@@ -151,11 +165,13 @@ ssize_t ms_client_update_set_to_string( ms::ms_request_multi* ms_requests, char*
 }
 
 
-// sign a sequence of requests, to show that they come from the same origin
-// return 0 on success
-// return -EINVAL if pkey or ms_requests is NULL
-// return -EINVAL if we can't sign 
-// return -ENOMEM if OOM
+/**
+ * @brief Sign a sequence of requests, to show that they come from the same origin
+ * @retval 0 Success
+ * @retval -EINVAL pkey or ms_requests is NULL
+ * @retval -EINVAL Can't sign 
+ * @retval -ENOMEM Out of Memory
+ */
 static int ms_client_sign_requests( EVP_PKEY* pkey, ms::ms_request_multi* ms_requests ) {
    if( pkey == NULL || ms_requests == NULL ) {
       return -EINVAL;
@@ -164,15 +180,20 @@ static int ms_client_sign_requests( EVP_PKEY* pkey, ms::ms_request_multi* ms_req
 }
 
 
-// generate the next file ID
+/**
+ * @brief Generate the next file ID
+ * @return Result of md_random64
+ */
 uint64_t ms_client_make_file_id() {
    return (uint64_t)md_random64();
 }
 
 
-// allocate a multi-result
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Allocate a multi-result
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_multi_result_init( struct ms_client_multi_result* result, size_t num_ents ) {
    
    memset( result, 0, sizeof(struct ms_client_multi_result) );
@@ -187,7 +208,10 @@ int ms_client_multi_result_init( struct ms_client_multi_result* result, size_t n
    return 0;
 }
 
-// free a multi-result 
+/**
+ * @brief Free a multi-result
+ * @return 0
+ */ 
 int ms_client_multi_result_free( struct ms_client_multi_result* result ) {
    
    if( result->ents != NULL ) {
@@ -205,11 +229,13 @@ int ms_client_multi_result_free( struct ms_client_multi_result* result ) {
    return 0;
 }
 
-// handle errors from a download 
-// return 0 if there was no error
-// return -EPERM if the download was cancelled, or is not finalized
-// return -EAGAIN if the download should be retried 
-// return negative if the download encountered a fatal error
+/**
+ * @brief Handle errors from a download 
+ * @retval 0 Success
+ * @retval -EPERM The download was cancelled, or is not finalized
+ * @retval -EAGAIN The download should be retried 
+ * @retval <0 The download encountered a fatal error
+ */
 int ms_client_download_parse_errors( struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -232,11 +258,16 @@ int ms_client_download_parse_errors( struct md_download_context* dlctx ) {
    return rc;
 }
 
-// generate data to upload and HTTP forms wrapping it.
-// return 0 on success, and set *serialized_text and *serialized_text_len to the serialized buffer holding all of the updates, and set *ret_post and *ret_last to a CURL form structure 
-//   that maps the 'ms-metadata-updates' field to the serialized data.
-// return positive error if we failed to generate forms (see curl error codes)
-// return negative on error (result of either ms_client_update_set_serialize, ms_client_sign_requests, ms_client_update_set_to_string)
+/**
+ * @brief Generate data to upload and HTTP forms wrapping it.
+ * @param[out] *serialized_text Serialized buffer holding all of the updates
+ * @param[out] *serialized_text_len Length of the buffer
+ * @param[out] *ret_post Curl structure that maps the 'ms-metadata-updates' field to the serialized data
+ * @param[out] *ret_last Curl structure that maps the 'ms-metadata-updates' field to the serialized data
+ * @retval 0 Success
+ * @retval >0 Error Failed to generate forms (see curl error codes)
+ * @retval <0 Error (result of either ms_client_update_set_serialize, ms_client_sign_requests, ms_client_update_set_to_string)
+ */
 static int ms_client_requests_serialize( struct ms_client* client, ms_client_request_list* requests, char** serialized_text, size_t* serialized_text_len, struct curl_httppost** ret_post, struct curl_httppost** ret_last ) {
    
    int rc = 0;
@@ -287,9 +318,11 @@ static int ms_client_requests_serialize( struct ms_client* client, ms_client_req
 }
 
 
-// initialize a create request.
-// NOTE: this shallow-copies the data; do not free ent
-// always succeeds
+/**
+ * @brief Initialize a create request.
+ * @note This shallow-copies the data; do not free ent
+ * @return 0
+ */
 int ms_client_create_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -300,9 +333,11 @@ int ms_client_create_request( struct ms_client* client, struct md_entry* ent, st
    return 0;
 }
 
-// initialize a create-async request.
-// NOTE: this shallow-copies the data; do not free ent
-// always succeeds
+/**
+ * @brief Initialize a create-async request.
+ * @note This shallow-copies the data; do not free ent
+ * @return 0
+ */
 int ms_client_create_async_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -313,30 +348,38 @@ int ms_client_create_async_request( struct ms_client* client, struct md_entry* e
    return 0;
 }
 
-// initialize a mkdir request 
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize a mkdir request 
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_mkdir_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    return ms_client_create_request( client, ent, request );
 }
 
-// initialize a mkdir-async request 
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize a mkdir-async request 
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_mkdir_async_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    return ms_client_create_async_request( client, ent, request );
 }
 
-// initialize an update request (but not one for writes)
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize an update request (but not one for writes)
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_update_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    return ms_client_update_write_request( client, ent, NULL, 0, NULL, 0, request );
 }
 
-// initialize an update-async request (but not one for writes)
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize an update-async request (but not one for writes)
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_update_async_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -349,9 +392,11 @@ int ms_client_update_async_request( struct ms_client* client, struct md_entry* e
    return 0;
 }
 
-// initialize an update request for a write 
-// NOTE: this shallow-copies the data; do not free ent, affected_blocks
-// always succeeds
+/**
+ * @brief Initialize an update request for a write 
+ * @note This shallow-copies the data; do not free ent, affected_blocks
+ * @return 0
+ */
 int ms_client_update_write_request( struct ms_client* client, struct md_entry* ent, uint64_t* affected_blocks, size_t num_affected_blocks,
                                     unsigned char* vacuum_signature, size_t vacuum_signature_len, struct ms_client_request* request ) {
    
@@ -368,9 +413,11 @@ int ms_client_update_write_request( struct ms_client* client, struct md_entry* e
 }
 
 
-// initialize a coordinate request
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize a coordinate request
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_coordinate_request( struct ms_client* client, struct md_entry* ent, unsigned char* xattr_hash, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -383,9 +430,11 @@ int ms_client_coordinate_request( struct ms_client* client, struct md_entry* ent
 }
 
 
-// initialize a rename request 
-// NOTE: this shallow-copies the data; do not free src or dest 
-// always succeeds
+/**
+ * @brief Initialize a rename request 
+ * @note This shallow-copies the data; do not free src or dest 
+ * @return 0
+ */
 int ms_client_rename_request( struct ms_client* client, struct md_entry* src, struct md_entry* dest, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -397,9 +446,11 @@ int ms_client_rename_request( struct ms_client* client, struct md_entry* src, st
    return 0;
 }
 
-// initialize a delete request 
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize a delete request 
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_delete_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -410,9 +461,11 @@ int ms_client_delete_request( struct ms_client* client, struct md_entry* ent, st
    return 0;
 }
 
-// initialize a delete-async request
-// NOTE: this shallow-copies the data; do not free ent 
-// always succeeds
+/**
+ * @brief Initialize a delete-async request
+ * @note This shallow-copies the data; do not free ent 
+ * @return 0
+ */
 int ms_client_delete_async_request( struct ms_client* client, struct md_entry* ent, struct ms_client_request* request ) {
    
    memset( request, 0, sizeof(struct ms_client_request) );
@@ -423,16 +476,20 @@ int ms_client_delete_async_request( struct ms_client* client, struct md_entry* e
    return 0;
 }
 
-// set the cls for a request 
-// always succeeds
+/**
+ * @brief Set the cls for a request 
+ * @return 0
+ */
 int ms_client_request_set_cls( struct ms_client_request* request, void* cls ) {
  
    request->cls = cls;
    return 0;
 }
 
-// free a single request result
-// always succeeds
+/**
+ * @brief Free a single request result
+ * @return 0
+ */
 int ms_client_request_result_free( struct ms_client_request_result* result ) {
    
    if( result->ent != NULL ) {
@@ -445,8 +502,10 @@ int ms_client_request_result_free( struct ms_client_request_result* result ) {
    return 0;
 }
 
-// free a list of results, as well as the list itself
-// always succeeds
+/**
+ * @brief Free a list of results, as well as the list itself
+ * @return 0
+ */
 int ms_client_request_result_free_all( struct ms_client_request_result* results, size_t num_results ) {
    
    for( unsigned int i = 0; i < num_results; i++ ) {
@@ -457,11 +516,17 @@ int ms_client_request_result_free_all( struct ms_client_request_result* results,
    return 0;
 }
 
-// perform a single operation on the MS, synchronously, given the single update to send
-// return 0 on success, which means that we successfully got a response from the MS.  The response will be stored to result (which can encode an error from the MS, albeit successfully transferred).
-// return -EBADMSG if the reply was improperly structured, or contained an entry whose authenticity could not be verified
-// return negative on lower-level errors, like protocol, transport, marshalling problems. (TODO: better documentation)
-// return -ENOMEM on OOM
+/**
+ * @brief Perform a single operation on the MS, synchronously, given the single update to send
+ *
+ * Upon success, we successfully got a response from the MS.  The response will be stored to result (which can encode an error from the MS, albeit successfully transferred).
+ * @param[out] *result The resonse
+ * @retval 0 Success
+ * @retval -EBADMSG The reply was improperly structured, or contained an entry whose authenticity could not be verified
+ * @retval <0 On lower-level errors, like protocol, transport, marshalling problems.
+ * @retval -ENOMEM Out of Memory
+ * @todo Produce further documention on lower level errors such as, protocol, transport, marshalling problems, etc.
+ */
 int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* request, struct ms_client_request_result* result ) {
    
    int rc = 0;
@@ -633,8 +698,10 @@ int ms_client_single_rpc( struct ms_client* client, struct ms_client_request* re
 }
 
 
-// set the initial fields in an md_entry 
-// always succeeds 
+/**
+ * @brief Set the initial fields in an md_entry 
+ * @return 0 
+ */
 void ms_client_create_initial_fields( struct md_entry* ent ) {
    ent->version = 1;
    ent->write_nonce = 1;        // initial version; will be regenerated by the MS as needed
@@ -644,12 +711,16 @@ void ms_client_create_initial_fields( struct md_entry* ent ) {
    ent->xattr_nonce = 0;        // initial version
 }
 
-// create a single file or directory record on the MS, synchronously
-// Sign the entry if we haven't already.
-// NOTE: ent will be modified internally, so don't call this method or access this ent while this method is running
-// return 0 on success
-// return negative on error
-// TODO: better documentation
+/**
+ * @brief Create a single file or directory record on the MS, synchronously
+ *
+ * Sign the entry if we haven't already.
+ * @param[out] ent Entry
+ * @note ent will be modified internally, so don't call this method or access this ent while this method is running
+ * @retval 0 Success
+ * @retval <0 Error
+ * @todo Provide further documentation for ms_client_create_or_mkdir
+ */
 static int ms_client_create_or_mkdir( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent ) {
    
    int rc = 0;
@@ -754,30 +825,39 @@ ms_client_create_or_mkdir_out:
 }
 
 
-// create a single file on the MS, synchronously.
-// unlike ms_client_create_or_mkdir, this only works for files.
-// Sign the entry if we haven't already.
-// return 0 on success
-// return negative on error
+/**
+ * @brief Create a single file on the MS, synchronously.
+ *
+ * Sign the entry if we haven't already.
+ * @note Unlike ms_client_create_or_mkdir, this only works for files.
+ * @retval 0 Success
+ * @retval <0 Error
+ */
 int ms_client_create( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent ) {
    return ms_client_create_or_mkdir( client, ent_out, ent );
 }
 
-// create a single directory on the MS, synchronously 
-// unlike ms_client_create_or_mkdir, this only works for diretories 
-// Sign the entry if we haven't already.
-// return 0 on success 
-// return negative on error
+/**
+ * @brief Create a single directory on the MS, synchronously
+ *
+ * Sign the entry if we haven't already.
+ * @note Unlike ms_client_create_or_mkdir, this only works for directories 
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int ms_client_mkdir( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent ) {
    return ms_client_create_or_mkdir( client, ent_out, ent );
 }
 
 
-// delete a record from the MS, synchronously
-// Sign the entry if we haven't already.
-// Only ent's coordinator should call this.
-// return 0 on success 
-// return negative on error
+/**
+ * @brief Delete a record from the MS, synchronously
+ *
+ * Sign the entry if we haven't already.
+ * @note Only ent's coordinator should call this.
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int ms_client_delete( struct ms_client* client, struct md_entry* ent ) {
    
    int rc = 0;
@@ -832,11 +912,14 @@ int ms_client_delete( struct ms_client* client, struct md_entry* ent ) {
 }
 
 
-// update a record on the MS, synchronously.
-// Sign the entry if we haven't already.
-// only ent's coordinator should call this.
-// return 0 on success 
-// return negative on error
+/**
+ * @brief Update a record on the MS, synchronously.
+ *
+ * Sign the entry if we haven't already.
+ * @note Only ent's coordinator should call this.
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent ) {
    
    int rc = 0;
@@ -926,12 +1009,15 @@ int ms_client_update( struct ms_client* client, struct md_entry* ent_out, struct
 }
 
 
-// change coordinator ownership of a file on the MS, synchronously
-// Sign the entry if we haven't already.
-// Populate *ent_out with the data on the MS.  The caller must free it.  It will include the latest version and write nonce
-// return 0 on success, and give back the write nonce and new coordinator ID of the file
-// return -EINVAL if the xattr hash is missing from ent
-// return negative on error
+/**
+ * @brief Change coordinator ownership of a file on the MS, synchronously
+ *
+ * Sign the entry if we haven't already.
+ * @note Populate *ent_out with the data on the MS.  The caller must free it.  It will include the latest version and write nonce
+ * @retval 0 Success, and give back the write nonce and new coordinator ID of the file
+ * @retval -EINVAL The xattr hash is missing from ent
+ * @retval <0 Error
+ */
 int ms_client_coordinate( struct ms_client* client, struct md_entry* ent_out, struct md_entry* ent, unsigned char* xattr_hash ) {
    
    int rc = 0;
@@ -1022,12 +1108,15 @@ int ms_client_coordinate( struct ms_client* client, struct md_entry* ent_out, st
    return rc;
 }
 
-// rename from src to dest, synchronously
-// Sign the src entry if we haven't already.
-// return 0 on success
-// return -EXDEV if the volumes do not agree between src and dest 
-// return -EINVAL if dest is NULL
-// return negative on error 
+/**
+ * @brief Rename from src to dest, synchronously
+ *
+ * Sign the src entry if we haven't already.
+ * @retval 0 Success
+ * @retval -EXDEV The volumes do not agree between src and dest 
+ * @retval -EINVAL dest is NULL
+ * @retval <0 Error 
+ */
 int ms_client_rename( struct ms_client* client, struct md_entry* src, struct md_entry* dest ) {
    
    // sanity check
@@ -1134,10 +1223,12 @@ int ms_client_rename( struct ms_client* client, struct md_entry* src, struct md_
    return rc;
 }
 
-// parse an MS reply
-// NOTE: the MS client cannot be config-locked
-// return 0 on success
-// return negative on error
+/**
+ * @brief Parse an MS reply
+ * @note The MS client cannot be config-locked
+ * @retval 0 Success
+ * @retval <0 Error
+ */
 int ms_client_parse_reply( struct ms_client* client, ms::ms_reply* reply, char const* buf, size_t buf_len ) {
 
    int rc = md_parse< ms::ms_reply >( reply, buf, buf_len );

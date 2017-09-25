@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/url.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief url header file
+ *
+ * @see libsyndicate/url.cpp
+ */
+
 #ifndef _LIBSYNDICATE_URL_H_
 #define _LIBSYNDICATE_URL_H_
 

@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/gateway.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Functions to support gateway operations
+ *
+ * @see libsyndicate/gateway.h
+ */
+
 #include "libsyndicate/gateway.h"
 #include "libsyndicate/server.h"
 #include "libsyndicate/opts.h"
@@ -25,15 +35,18 @@
 #include "libsyndicate/ms/core.h"
 #include "libsyndicate/ms/cert.h"
 
-// gateway for which we are running the main() loop
+/// gateway for which we are running the main() loop
 static struct SG_gateway* g_main_gateway = NULL;
 
-// alloc a gateway 
+/// alloc a gateway 
 struct SG_gateway* SG_gateway_new(void) {
    return SG_CALLOC( struct SG_gateway, 1 );
 }
 
-// initialize SG IO hints 
+/**
+ * @brief Initialize SG IO hints
+ * @retval 0
+ */
 int SG_IO_hints_init( struct SG_IO_hints* io_hints, int io_type, uint64_t offset, uint64_t len ) {
 
    memset( io_hints, 0, sizeof(struct SG_IO_hints));
@@ -45,35 +58,49 @@ int SG_IO_hints_init( struct SG_IO_hints* io_hints, int io_type, uint64_t offset
    return 0;
 }
 
-// set io context
+/**
+ * @brief Set IO context
+ * @retval 0
+ */
 int SG_IO_hints_set_context( struct SG_IO_hints* io_hints, int context ) {
    io_hints->io_context = context;
    return 0;
 }
 
-// set block vector
-// NOTE: not copied
+/**
+ * @brief Set block vector
+ * @note Not copied
+ */
 int SG_IO_hints_set_block_vec( struct SG_IO_hints* io_hints, uint64_t* block_vec, int num_blocks ) {
    io_hints->block_vec = block_vec;
    io_hints->num_blocks = num_blocks;
    return 0;
 }
 
-// set the block size
+/**
+ * @brief Set the block size
+ * @retval 0
+ */
 int SG_IO_hints_set_block_size( struct SG_IO_hints* io_hints, int64_t block_size ) {
    io_hints->block_size = block_size;
    return 0;
 }
 
-// get a reference to the block vector
-// NOTE: caller must not modify
+/**
+ * @brief Get a reference to the block vector
+ * @note Caller must not modify
+ * @return Ptr to block vector
+ */
 uint64_t* SG_IO_hints_get_block_vec( struct SG_IO_hints* io_hints, int* num_blocks ) {
    *num_blocks = io_hints->num_blocks;
    return io_hints->block_vec;
 }
 
-// initialize an empty request data structure 
-// always succeeds 
+/**
+ * @brief Initialize an empty request data structure 
+ * @note Always succeeds
+ * @retval 0
+ */
 int SG_request_data_init( struct SG_request_data* reqdat ) {
    
    memset( reqdat, 0, sizeof( struct SG_request_data) );
@@ -93,9 +120,11 @@ int SG_request_data_init( struct SG_request_data* reqdat ) {
 }
 
 
-// init common fields of a request data 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Init common fields of a request data 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_request_data_init_common( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, struct SG_request_data* reqdat ) {
 
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -120,9 +149,11 @@ int SG_request_data_init_common( struct SG_gateway* gateway, char const* fs_path
 }
 
 
-// initialize a request data structure for a block 
-// return 0 on success 
-// return -ENOMEM on OOM
+/**
+ * @brief Initialize a request data structure for a block 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_request_data_init_block( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, struct SG_request_data* reqdat ) {
 
    int rc = SG_request_data_init_common( gateway, fs_path, file_id, file_version, reqdat );
@@ -137,9 +168,11 @@ int SG_request_data_init_block( struct SG_gateway* gateway, char const* fs_path,
 }
 
 
-// initialize a reqeust data structure for a manifest 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a reqeust data structure for a manifest 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_request_data_init_manifest( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, int64_t manifest_mtime_sec, int32_t manifest_mtime_nsec, struct SG_request_data* reqdat ) {
 
    int rc = SG_request_data_init_common( gateway, fs_path, file_id, file_version, reqdat );
@@ -154,9 +187,11 @@ int SG_request_data_init_manifest( struct SG_gateway* gateway, char const* fs_pa
 }
 
 
-// initialize a request data structure for setting an xattr 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a request data structure for setting an xattr 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_request_data_init_setxattr( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, int64_t xattr_nonce, char const* name, char const* value, size_t value_len, struct SG_request_data* reqdat ) {
 
    if( name == NULL || value == NULL ) {
@@ -190,10 +225,11 @@ int SG_request_data_init_setxattr( struct SG_gateway* gateway, char const* fs_pa
 }
 
 
-
-// initialize a request data structure for removing an xattr 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a request data structure for removing an xattr 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_request_data_init_removexattr( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, int64_t xattr_nonce, char const* name, struct SG_request_data* reqdat ) {
 
    if( name == NULL ) {
@@ -218,10 +254,12 @@ int SG_request_data_init_removexattr( struct SG_gateway* gateway, char const* fs
 }
 
 
-// parse an SG request from a URL.
-// return 0 on success
-// return -EINVAL if the URL is malformed 
-// return -ENOMEM if OOM
+/**
+ * @brief Parse an SG request from a URL.
+ * @retval 0 Success
+ * @retval -EINVAL The URL is malformed 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_request_data_parse( struct SG_request_data* reqdat, char const* _url_path ) {
    
    memset( reqdat, 0, sizeof(struct SG_request_data) );
@@ -481,9 +519,11 @@ SG_request_data_parse_end:
 }
 
 
-// duplicate an SG_request_data's fields 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Duplicate an SG_request_data's fields 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_request_data_dup( struct SG_request_data* dest, struct SG_request_data* src ) {
    
    SG_request_data_init( dest );
@@ -510,17 +550,21 @@ int SG_request_data_dup( struct SG_request_data* dest, struct SG_request_data* s
 }
 
 
-// is this a request for a block?
-// return true if so
-// return false if not 
+/**
+ * @brief Check if this is a request for a block
+ * @retval True Request for a block
+ * @retval False Not a request for a block
+ */
 bool SG_request_is_block( struct SG_request_data* reqdat ) {
   
    return (reqdat->block_id != SG_INVALID_BLOCK_ID);
 }
 
-// is this a request for a manifest?  can also mean a request for a RENAME_HINT
-// return true if so 
-// return false if not 
+/**
+ * @brief Check if this is a request for a manifest.  Can also mean a request for a RENAME_HINT
+ * @retval True Request for manifest or RENAME_HINT 
+ * @retval False Not request for manifest or RENAME_HINT
+ */
 bool SG_request_is_manifest( struct SG_request_data* reqdat ) {
    
    return (reqdat->block_id == SG_INVALID_BLOCK_ID && !reqdat->getxattr && !reqdat->listxattr &&
@@ -528,33 +572,42 @@ bool SG_request_is_manifest( struct SG_request_data* reqdat ) {
 }
 
 
-// is this a request for a rename hint?
-// return true if so
-// return false if not 
+/**
+ * @brief Check if this is a request for a rename hint
+ * @retval True A request for a rename hint
+ * @retval False Not a request for a rename hint
+ */
 bool SG_request_is_rename_hint( struct SG_request_data* reqdat ) {
 
    return SG_request_is_manifest( reqdat ) && reqdat->new_path != NULL;
 }
 
 
-// is this a request for an xattr?
-// return true if so 
-// return false if not 
+/**
+ * @brief Check if this is a request for an xattr
+ * @retval True Request for an xattr
+ * @retval False Not a request for an xattr
+ */
 bool SG_request_is_getxattr( struct SG_request_data* reqdat ) {
 
    return reqdat->getxattr;
 }
 
-// is this a request for an xattr list?
-// return true if so 
-// return false if not 
+/**
+ * @brief Check if this is a request for an xattr list
+ * @retval True Request for an xattr list
+ * @retval False Not a request for an xattr list
+ */
 bool SG_request_is_listxattr( struct SG_request_data* reqdat ) {
    
    return reqdat->listxattr;
 }
 
 
-// free a gateway_request_data
+/**
+ * @brief Free a gateway request data
+ * @see SG_request_data
+ */
 void SG_request_data_free( struct SG_request_data* reqdat ) {
    if( reqdat->fs_path != NULL ) {
       SG_safe_free( reqdat->fs_path );
@@ -571,26 +624,34 @@ void SG_request_data_free( struct SG_request_data* reqdat ) {
    memset( reqdat, 0, sizeof(struct SG_request_data) );
 }
 
-// get IO hints
+/**
+ * @brief Get IO hints
+ * @param[out] hints Point to reqdat->io_hints
+ * @retval 0
+ */
 int SG_request_data_get_IO_hints( struct SG_request_data* reqdat, struct SG_IO_hints* hints ) {
    *hints = reqdat->io_hints;
    return 0;
 }
 
-
-// set IO hints
+/**
+ * @brief Set IO hints
+ * @retval 0
+ */
 int SG_request_data_set_IO_hints( struct SG_request_data* reqdat, struct SG_IO_hints* hints ) {
    reqdat->io_hints = *hints;
    return 0;
 }
 
 
-// merge opts and config--opts overriding the config
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Merge opts and config, opts overriding the config
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ */
 static int SG_config_merge_opts( struct md_syndicate_conf* conf, struct md_opts* opts ) {
    
-   // set maximum of command-line and file-given debug levels
+   // Set maximum of command-line and file-given debug levels
    md_set_debug_level( MAX( opts->debug_level, md_get_debug_level() ) );
    conf->is_client = opts->client;
 
@@ -601,12 +662,15 @@ static int SG_config_merge_opts( struct md_syndicate_conf* conf, struct md_opts*
 }
 
 
-// initialize the gateway's internal driver, common to all gateways
-// if this fails due to there being no driver for this gateway, a dummy driver will be used instead
-// return 0 on success, and set *_ret to a newly-allocated driver
-// return -ENOENT if there is no driver for this gateway
-// return -ENOMEM on OOM
-// return -errno on failure to initialize the driver
+/**
+ * @brief Initialize the gateway's internal driver, common to all gateways
+ * @note If this fails due to there being no driver for this gateway, a dummy driver will be used instead
+ * @retval 0 Success, and set *_ret to a newly-allocated driver
+ * @retval -ENOENT There is no driver for this gateway
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Failure to initialize the driver
+ * @todo Use of anonymous gateway drivers 
+ */
 static int SG_gateway_driver_init_internal( struct ms_client* ms, struct md_syndicate_conf* conf, struct SG_driver* driver, int num_instances ) {
    
    // get the driver text 
@@ -647,10 +711,12 @@ static int SG_gateway_driver_init_internal( struct ms_client* ms, struct md_synd
 }
 
 
-// get driver data for this gateway 
-// return 0 on success, and populate driver_data with the raw text of the given field
-// return -ENONET if the data requested is not available 
-// return -ENOMEM on OOM 
+/**
+ * @brief Get driver data for this gateway 
+ * @retval 0 Success, and populate driver_data with the raw text of the given field
+ * @retval -ENONET The data requested is not available 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_gateway_driver_get_data( struct SG_gateway* gateway, char const* data_name, struct SG_chunk* driver_data ) {
    
    int rc = 0;
@@ -682,10 +748,12 @@ int SG_gateway_driver_get_data( struct SG_gateway* gateway, char const* data_nam
 }
 
 
-// get the base64-decoded configuration text for this gateway.
-// return 0 on success, and populate the given config_data with the decoded configuration text 
-// return -ENOENT if there is no config 
-// return -ENOMEM on OOM 
+/**
+ * @brief Get the base64-decoded configuration text for this gateway.
+ * @retval 0 Success, and populate the given config_data with the decoded configuration text 
+ * @retval -ENOENT There is no config 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_gateway_driver_get_config_text( struct SG_gateway* gateway, struct SG_chunk* config_data ) {
   
    int rc = 0;
@@ -720,10 +788,12 @@ int SG_gateway_driver_get_config_text( struct SG_gateway* gateway, struct SG_chu
 }
 
 
-// get the decrypted, decoded, mlock'ed secrets text for this gateway.
-// return 0 on success, and populate the given secrets_data with the decoded secrets text 
-// return -ENOENT if there are no secrets 
-// return -ENOMEM on OOM 
+/**
+ * @brief Get the decrypted, decoded, mlock'ed secrets text for this gateway.
+ * @retval 0 Success, and populate the given secrets_data with the decoded secrets text 
+ * @retval -ENOENT There are no secrets 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_gateway_driver_get_mlocked_secrets_text( struct SG_gateway* gateway, struct SG_chunk* secrets_data ) {
    
    int rc = 0;
@@ -754,10 +824,12 @@ int SG_gateway_driver_get_mlocked_secrets_text( struct SG_gateway* gateway, stru
 }
 
 
-// get the decoded driver text for this gateway.
-// return 0 on success, and populate the given driver_data with the decoded driver image 
-// return -ENOENT if there is no driver file 
-// return -ENOMEM on OOM 
+/**
+ * @brief Get the decoded driver text for this gateway.
+ * @retval 0 Success, and populate the given driver_data with the decoded driver image 
+ * @retval -ENOENT There is no driver file 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_gateway_driver_get_driver_text( struct SG_gateway* gateway, struct SG_chunk* driver_data ) {
    
    int rc = 0;
@@ -792,11 +864,13 @@ int SG_gateway_driver_get_driver_text( struct SG_gateway* gateway, struct SG_chu
 }
 
 
-// initialize and start the gateway, using a parsed options structure 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -ENOENT if a file was not found 
-// return negative if libsyndicate fails to initialize 
+/**
+ * @brief Initialize and start the gateway, using a parsed options structure 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOENT if a file was not found 
+ * @retval <0 libsyndicate fails to initialize
+ */ 
 int SG_gateway_init_opts( struct SG_gateway* gateway, struct md_opts* opts ) {
    
    int rc = 0;
@@ -1179,14 +1253,17 @@ SG_gateway_init_error:
 }
 
 
-// initialize and start the gateway, parsing argc and argv in the process.
-// forwards on to SG_gateway_init_opts from the parsed options.
-// loads and initializes the driver, starts up the cache, reloads the certificates, starts up the HTTP server, starts up the download infrastructure
-// return 0 on success
-// return -ENOMEM of OOM
-// return -ENOENT if a file was not found 
-// return negative if libsyndicate fails to initialize
-// return 1 if the user wanted help
+/**
+ * @brief Initialize and start the gateway, parsing argc and argv in the process.
+ *
+ * Forwards on to SG_gateway_init_opts from the parsed options.
+ * Loads and initializes the driver, starts up the cache, reloads the certificates, starts up the HTTP server, starts up the download infrastructure
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT File was not found 
+ * @retval <0 libsyndicate fails to initialize
+ * @retval 1 The user wanted help
+ */
 int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc, char** argv, struct md_opts* overrides ) {
    
    int rc = 0;
@@ -1239,15 +1316,19 @@ int SG_gateway_init( struct SG_gateway* gateway, uint64_t gateway_type, int argc
 }
 
 
-// set the gateway's client-given state 
-// always succeeds 
+/**
+ * @brief Set the gateway's client-given state 
+ * @note Always succeeds
+ */
 void SG_gateway_set_cls( struct SG_gateway* gateway, void* cls ) {
    gateway->cls = cls;
 }
 
 
-// signal the main loop to exit 
-// always succeeds
+/**
+ * @brief Signal the main loop to exit 
+ * @note Always succeeds
+ */
 int SG_gateway_signal_main( struct SG_gateway* gateway ) {
  
    SG_debug("%s", "signaled\n");  
@@ -1258,9 +1339,11 @@ int SG_gateway_signal_main( struct SG_gateway* gateway ) {
 }
 
 
-// shut the gateway down 
-// return 0 on success
-// return -EINVAL if the gateway was already stopped
+/**
+ * @brief Shut the gateway down 
+ * @retval 0 Success
+ * @retval -EINVAL The gateway was already stopped
+ */
 int SG_gateway_shutdown( struct SG_gateway* gateway ) {
    
    gateway->running = false;
@@ -1327,16 +1410,21 @@ int SG_gateway_shutdown( struct SG_gateway* gateway ) {
 }
 
 
-// terminal signal handler to stop the gateway running.
-// shut down the running gateway at most once.
-// always succeeds 
+/**
+ * @brief Terminal signal handler to stop the gateway running.
+ *
+ * Shut down the running gateway at most once.
+ * @note Always succeeds
+ */
 static void SG_gateway_term( int signum, siginfo_t* siginfo, void* context ) {
    
    SG_gateway_signal_main( g_main_gateway );
 }
 
 
-// release config-waiters 
+/**
+ * @brief Release config-waiters
+ */
 static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int reload_rc ) {
 
    // signal anyone waiting that we're done
@@ -1365,15 +1453,21 @@ static void SG_gateway_wakeup_config_waiters( struct SG_gateway* gateway, int re
 }
 
 
-// set whether or not we should use default signal handlers
+/**
+ * @brief Set whether or not we should use default signal handlers
+ * @retval 0
+ */
 int SG_gateway_use_signal_handlers( struct SG_gateway* gateway, bool val ) {
    gateway->use_signal_handlers = val;
    return 0;
 }
 
-// main loop
-// periodically reload the volume and certificates
-// return 0 on success 
+/**
+ * @brief Main gateway loop
+ *
+ * Periodically reload the volume and certificates
+ * @retval 0 Success
+ */
 int SG_gateway_main( struct SG_gateway* gateway ) {
    
    int rc = 0;
@@ -1637,15 +1731,20 @@ int SG_gateway_main( struct SG_gateway* gateway ) {
 }
 
 
-
-// begin to reload--wake up the main loop 
+/**
+ * @brief Begin to reload gateway, wake up the main loop
+ * @retval 0
+ */ 
 int SG_gateway_start_reload( struct SG_gateway* gateway ) {
    
    sem_post( &gateway->config_sem );
    return 0;
 }
 
-// wait for the reload to be done 
+/**
+ * @brief Wait for the reload to be done
+ * @retval 0
+ */ 
 int SG_gateway_wait_reload( struct SG_gateway* gateway, int* mbox ) {
    
    int** new_mboxes = NULL;
@@ -1675,208 +1774,290 @@ int SG_gateway_wait_reload( struct SG_gateway* gateway, int* mbox ) {
    return 0;
 }
 
-// set the gateway implementation setup routine 
+/**
+ * @brief Set the gateway implementation setup routine
+ */ 
 void SG_impl_setup( struct SG_gateway* gateway, int (*impl_setup)( struct SG_gateway*, void** ) ) {
    gateway->impl_setup = impl_setup;
 }
 
-// set the gateway implementation shutdown routine 
+/**
+ * @brief Set the gateway implementation shutdown routine
+ */
 void SG_impl_shutdown( struct SG_gateway* gateway, void (*impl_shutdown)( struct SG_gateway*, void* ) ) {
    gateway->impl_shutdown = impl_shutdown;
 }
 
-// set the gateway implementation connect_cache routine 
+/**
+ * @brief Set the gateway implementation connect_cache routine
+ */ 
 void SG_impl_connect_cache( struct SG_gateway* gateway, int (*impl_connect_cache)( struct SG_gateway*, CURL*, char const*, void* ) ) {
    gateway->impl_connect_cache = impl_connect_cache;
 }
 
-// set the gateway implementation stat routine 
+/**
+ * @brief Set the gateway implementation stat routine
+ */
 void SG_impl_stat( struct SG_gateway* gateway, int (*impl_stat)( struct SG_gateway*, struct SG_request_data*, struct SG_request_data*, mode_t*, void* ) ) {
    gateway->impl_stat = impl_stat;
 }
 
-// set the gateway implementation stat-block routine 
+/**
+ * @brief Set the gateway implementation stat-block routine
+ */ 
 void SG_impl_stat_block( struct SG_gateway* gateway, int (*impl_stat_block)( struct SG_gateway*, struct SG_request_data*, struct SG_request_data*, mode_t*, void* ) ) {
    gateway->impl_stat_block = impl_stat_block;
 }
 
-// set the gateway implementation truncate routine 
+/**
+ * @brief Set the gateway implementation truncate routine
+ */ 
 void SG_impl_truncate( struct SG_gateway* gateway, int (*impl_truncate)( struct SG_gateway*, struct SG_request_data*, uint64_t, void* ) ) {
    gateway->impl_truncate = impl_truncate;
 }
 
-// set the gateway implementation rename routine 
+/**
+ * @brief Set the gateway implementation rename routine
+ */
 void SG_impl_rename( struct SG_gateway* gateway, int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
    gateway->impl_rename = impl_rename;
 }
 
-// set the gateway implementation rename routine 
+/**
+ * @brief Set the gateway implementation rename routine
+ */ 
 void SG_impl_rename_hint( struct SG_gateway* gateway, int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* ) ) {
    gateway->impl_rename_hint = impl_rename_hint;
 }
 
-// set the gateway implementation detach routine 
+/**
+ * @brief Set the gateway implementation detach routine
+ */ 
 void SG_impl_detach( struct SG_gateway* gateway, int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_detach = impl_detach;
 }
 
-// set the gateway implementation refresh routine
+/**
+ * @brief Set the gateway implementation refresh routine
+ */
 void SG_impl_refresh( struct SG_gateway* gateway, int (*impl_refresh)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_refresh = impl_refresh;
 }
 
-// set the gateway implementation to serialize a chunk 
+/**
+ * @brief Set the gateway implementation to serialize a chunk
+ */ 
 void SG_impl_serialize( struct SG_gateway* gateway, int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) ) {
    gateway->impl_serialize = impl_serialize;
 }
 
-// set the gateway implementation to deserialize a chunk 
+/**
+ * @brief Set the gateway implementation to deserialize a chunk
+ */ 
 void SG_impl_deserialize( struct SG_gateway* gateway, int (*impl_deserialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* ) ) {
    gateway->impl_deserialize = impl_deserialize;
 }
 
-// set the gateway implementation get_block routine 
+/**
+ * @brief Set the gateway implementation get_block routine
+ */ 
 void SG_impl_get_block( struct SG_gateway* gateway, int (*impl_get_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t, void* ) ) {
    gateway->impl_get_block = impl_get_block;
 }
 
-// set the gateway implementation put_block routine 
+/**
+ * @brief Set the gateway implementation put_block routine
+ */ 
 void SG_impl_put_block( struct SG_gateway* gateway, int (*impl_put_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t, void* ) ) {
    gateway->impl_put_block = impl_put_block;
 }
 
-// set the gateway implementation delete_block routine 
+/**
+ * @brief Set the gateway implementation delete_block routine
+ */
 void SG_impl_delete_block( struct SG_gateway* gateway, int (*impl_delete_block)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_delete_block = impl_delete_block;
 }
 
-// set the gateway implementation get_manifest routine
+/**
+ * @brief Set the gateway implementation get_manifest routine
+ */
 void SG_impl_get_manifest( struct SG_gateway* gateway, int (*impl_get_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_manifest*, uint64_t, void* ) ) {
    gateway->impl_get_manifest = impl_get_manifest;
 }
 
-// set the gateway implementation put_manifest routine 
+/**
+ * @brief Set the gateway implementation put_manifest routine
+ */
 void SG_impl_put_manifest( struct SG_gateway* gateway, int (*impl_put_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t, void* ) ) {
    gateway->impl_put_manifest = impl_put_manifest;
 }
 
-// set the gateway implementation patch_manifest routine 
+/**
+ * @brief Set the gateway implementation patch_manifest routine
+ */
 void SG_impl_patch_manifest( struct SG_gateway* gateway, int (*impl_patch_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_manifest*, void* ) ) {
    gateway->impl_patch_manifest = impl_patch_manifest;
 }
 
-// set the gateway implementation delete_manifest routine 
+/**
+ * @brief Set the gateway implementation delete_manifest routine
+ */
 void SG_impl_delete_manifest( struct SG_gateway* gateway, int (*impl_delete_manifest)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_delete_manifest = impl_delete_manifest;
 }
 
-// set the gateway implementation getxattr routine 
+/**
+ * @brief Set the gateway implementation getxattr routine
+ */ 
 void SG_impl_getxattr( struct SG_gateway* gateway, int (*impl_getxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, void* ) ) {
    gateway->impl_getxattr = impl_getxattr;
 }
 
-// set the gateway implementation listxattr routine 
+/**
+ * @brief Set the gateway implementation listxattr routine
+ */ 
 void SG_impl_listxattr( struct SG_gateway* gateway, int (*impl_listxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk**, size_t*, void* ) ) {
    gateway->impl_listxattr = impl_listxattr;
 }
 
-// set the gateway implementation setxattr routine 
+/**
+ * @brief Set the gateway implementation setxattr routine
+ */ 
 void SG_impl_setxattr( struct SG_gateway* gateway, int (*impl_setxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, void* ) ) {
    gateway->impl_setxattr = impl_setxattr;
 }
 
-// set the gateway implementatio removexattr routine 
+/**
+ * @brief Set the gateway implementatio removexattr routine
+ */ 
 void SG_impl_removexattr( struct SG_gateway* gateway, int (*impl_removexattr)( struct SG_gateway*, struct SG_request_data*, void* ) ) {
    gateway->impl_removexattr = impl_removexattr;
 }
 
-// set the gateway implementation config_change routine 
+/**
+ * @brief Set the gateway implementation config_change routine
+ */ 
 void SG_impl_config_change( struct SG_gateway* gateway, int (*impl_config_change)( struct SG_gateway*, int, void* ) ) {
    gateway->impl_config_change = impl_config_change;
 }
 
-// get the gateway's gatewa-specific driver 
+/**
+ * @brief Get the gateway's gatewa-specific driver 
+ */ 
 void* SG_gateway_cls( struct SG_gateway* gateway ) {
    return gateway->cls;
 }
 
-// get the gateway's config 
+/**
+ * @brief Get the gateway's config 
+ */ 
 struct md_syndicate_conf* SG_gateway_conf( struct SG_gateway* gateway ) {
    return gateway->conf;
 }
 
-// get the gateway's driver 
+/**
+ * @brief Get the gateway's driver
+ */ 
 struct SG_driver* SG_gateway_driver( struct SG_gateway* gateway ) {
    return gateway->driver;
 }
 
-// get the gateway's MS client 
+/**
+ * @brief Get the gateway's MS client
+ */ 
 struct ms_client* SG_gateway_ms( struct SG_gateway* gateway ) {
    return gateway->ms;
 }
 
-// get the gateway's cache 
+/**
+ * @brief Get the gateway's cache
+ */ 
 struct md_syndicate_cache* SG_gateway_cache( struct SG_gateway* gateway ) {
    return gateway->cache;
 }
 
-// get the gateway's HTTP server
+/**
+ * @brief Get the gateway's HTTP server
+ */
 struct md_HTTP* SG_gateway_HTTP( struct SG_gateway* gateway ) {
    return gateway->http;
 }
 
-// get the gateway's downloader 
+/**
+ * @brief Get the gateway's downloader
+ */ 
 struct md_downloader* SG_gateway_dl( struct SG_gateway* gateway ) {
    return gateway->dl;
 }
 
-// is the gateway running?
+/**
+ * @brief Check if the gateway is running
+ */
 bool SG_gateway_running( struct SG_gateway* gateway ) {
    return gateway->running;
 }
 
-// get gateway ID 
+/**
+ * @brief Get gateway ID
+ */ 
 uint64_t SG_gateway_id( struct SG_gateway* gateway ) {
    return gateway->ms->gateway_id;
 }
 
-// get gateway user ID 
+/**
+ * @brief Get gateway user ID
+ */
 uint64_t SG_gateway_user_id( struct SG_gateway* gateway ) {
    return gateway->ms->owner_id;
 }
 
-// get gateway private key 
+/**
+ * @brief Get gateway private key
+ */ 
 EVP_PKEY* SG_gateway_private_key( struct SG_gateway* gateway ) {
    return gateway->ms->gateway_key;
 }
 
-
-// get gateway public key 
+/**
+ * @brief Get gateway public key
+ */ 
 EVP_PKEY* SG_gateway_public_key( struct SG_gateway* gateway ) {
    return gateway->ms->gateway_pubkey;
 }
 
-// get the first non-opt argument index
+/**
+ * @brief Get the first non-opt argument index
+ */
 int SG_gateway_first_arg_optind( struct SG_gateway* gateway ) {
    return gateway->first_arg_optind;
 }
 
-// running in the foreground?
+/**
+ * @brief Check if running in the foreground
+ * @retval True Running in foreground
+ * @retval False Not running in foreground
+ */
 bool SG_gateway_foreground( struct SG_gateway* gateway ) {
    return gateway->foreground;
 }
 
-// set up a chunk
+/**
+ * @brief Set up a chunk
+ */
 void SG_chunk_init( struct SG_chunk* chunk, char* data, off_t len ) {
    chunk->data = data;
    chunk->len = len;
 }
 
-// duplicate a chunk
-// if dest's data is already allocated, try to expand it. 
-// return 0 on success 
-// return -ENOMEM on OOM
-// either way, set dest->len to the required size 
+/**
+ * @brief Duplicate a chunk
+ *
+ * If dest's data is already allocated, try to expand it. 
+ * either way, set dest->len to the required size 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_chunk_dup( struct SG_chunk* dest, struct SG_chunk* src ) {
   
    dest->data = SG_CALLOC( char, src->len );
@@ -1891,11 +2072,14 @@ int SG_chunk_dup( struct SG_chunk* dest, struct SG_chunk* src ) {
 }
 
 
-// copy or duplicate a chunk
-// only copy if we have space; otherwise duplicate
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ERANGE if there's not enough space to copy 
+/**
+ * @brief Copy or duplicate a chunk
+ *
+ * Only copy if we have space; otherwise duplicate
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ERANGE There's not enough space to copy
+ */
 int SG_chunk_copy_or_dup( struct SG_chunk* dest, struct SG_chunk* src ) {
    if( dest->data != NULL ) {
       if( dest->len < src->len ) {
@@ -1914,10 +2098,11 @@ int SG_chunk_copy_or_dup( struct SG_chunk* dest, struct SG_chunk* src ) {
 }
 
 
-
-// copy one chunk's data to another 
-// return 0 on success
-// return -EINVAL if dest isn't big enough
+/**
+ * @brief Copy one chunk's data to another 
+ * @retval 0 Success
+ * @retval -EINVAL Dest isn't big enough
+ */
 int SG_chunk_copy( struct SG_chunk* dest, struct SG_chunk* src ) {
    
    if( dest->len < src->len ) {
@@ -1930,18 +2115,21 @@ int SG_chunk_copy( struct SG_chunk* dest, struct SG_chunk* src ) {
    return 0;
 }
 
-// free a chunk 
+/**
+ * @brief Free a chunk
+ */
 void SG_chunk_free( struct SG_chunk* chunk ) {
    SG_safe_free( chunk->data );
    chunk->len = 0;
 }
 
-
-// fetch a block or serialized manifest from the on-disk cache 
-// return 0 on success, and set *buf and *buf_len to the contents of the cached chunk
-// return -ENOENT if not found 
-// return -ENOMEM if OOM 
-// return -errno if failed to read 
+/**
+ * @brief Fetch a block or serialized manifest from the on-disk cache 
+ * @retval 0 Success, and set *buf and *buf_len to the contents of the cached chunk
+ * @retval -ENOENT Not found 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failed to read
+ */ 
 static int SG_gateway_cache_get_raw( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t block_id_or_manifest_mtime_sec, int64_t block_version_or_manifest_mtime_nsec, struct SG_chunk* chunk ) {
    
    char* chunk_buf = NULL;
@@ -1994,11 +2182,14 @@ static int SG_gateway_cache_get_raw( struct SG_gateway* gateway, struct SG_reque
 }
 
 
-// asynchronously put a driver-transformed chunk of data directly into the cache.
-// chunk must persist until the future completes, unless the cache is going to get its own copy
-// (indicated with SG_GATEWAY_CACHE_UNSHARED) or the caller is gifting it (SG_GATEWAY_CACHE_DETACHED)
-// return 0 on success, and set *cache_fut to a newly-allocated future, which the caller can wait on
-// return negative on failure to begin writing the chunk.
+/**
+ * @brief Asynchronously put a driver-transformed chunk of data directly into the cache.
+ *
+ * Chunk must persist until the future completes, unless the cache is going to get its own copy
+ * (indicated with SG_GATEWAY_CACHE_UNSHARED) or the caller is gifting it (SG_GATEWAY_CACHE_DETACHED)
+ * @retval 0 Success, and set *cache_fut to a newly-allocated future, which the caller can wait on
+ * @retval <0 Failure to begin writing the chunk.
+ */
 static int SG_gateway_cache_put_raw_async( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t block_id_or_manifest_mtime_sec, int64_t block_version_or_manifest_mtime_nsec,
                                            struct SG_chunk* chunk, uint64_t cache_flags, struct md_cache_block_future** cache_fut ) {
    
@@ -2043,13 +2234,15 @@ static int SG_gateway_cache_put_raw_async( struct SG_gateway* gateway, struct SG
    return rc;
 }
 
-// read from the on-disk block cache.
-// do not apply the driver, since the caller may just want to deal with the data as-is
-// return 0 on success, and set *buf and *buf_len to the contents of the obtained block
-// return -ENOENT if not hit.
-// return -EINVAL if the request data structure isn't for a block.
-// return -ENOMEM if OOM
-// return negative on error
+/**
+ * @brief Read from the on-disk block cache.
+ * @note Do not apply the driver, since the caller may just want to deal with the data as-is
+ * @retval 0 Success, and set *buf and *buf_len to the contents of the obtained block
+ * @retval -ENOENT Not hit.
+ * @retval -EINVAL The request data structure isn't for a block.
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Error
+ */
 int SG_gateway_cached_block_get_raw( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* chunk ) {
    
    int rc = 0;
@@ -2078,10 +2271,12 @@ int SG_gateway_cached_block_get_raw( struct SG_gateway* gateway, struct SG_reque
    return rc;
 }
 
-// get a manifest from the cache, without processing it
-// return 0 on success, and set *manifest_buf and *manifest_buf_len to the allocated buffer and its length 
-// return -ENOMEM if OOM 
-// return negative on I/O error
+/**
+ * @brief Get a manifest from the cache, without processing it
+ * @retval 0 Success, and set *manifest_buf and *manifest_buf_len to the allocated buffer and its length 
+ * @retval -ENOMEM Out of Memory 
+ * @retval <0 I/O error
+ */
 int SG_gateway_cached_manifest_get_raw( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* raw_serialized_manifest ) {
    
    int rc = 0;
@@ -2119,10 +2314,12 @@ int SG_gateway_cached_manifest_get_raw( struct SG_gateway* gateway, struct SG_re
 }
 
 
-// Put a block directly into the cache 
-// return 0 on success, and set *cache_fut to the the future the caller can wait on 
-// return -EINVAL if this isn't a block request 
-// return negative on I/O error
+/**
+ * @brief Put a block directly into the cache 
+ * @retval 0 Success, and set *cache_fut to the the future the caller can wait on 
+ * @retval -EINVAL if this isn't a block request 
+ * @retval <0 on I/O error
+ */
 int SG_gateway_cached_block_put_raw_async( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block, uint64_t cache_flags, struct md_cache_block_future** cache_fut ) {
    
    if( !SG_request_is_block( reqdat ) ) {
@@ -2133,10 +2330,12 @@ int SG_gateway_cached_block_put_raw_async( struct SG_gateway* gateway, struct SG
 }
    
 
-// asynchronously put a serialized manifest directly into the cache 
-// return 0 on success, and set *manifest_fut to the newly-allocated cache future, which the caller can wait on to complete the write 
-// return -EINVAL if this isn't a manifest request 
-// return negative on I/O error 
+/**
+ * @brief Asynchronously put a serialized manifest directly into the cache 
+ * @retval 0 Success, and set *manifest_fut to the newly-allocated cache future, which the caller can wait on to complete the write 
+ * @retval -EINVAL if this isn't a manifest request 
+ * @retval <0 on I/O error
+ */
 int SG_gateway_cached_manifest_put_raw_async( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* raw_serialized_manifest, uint64_t cache_flags, struct md_cache_block_future** manifest_fut ) {
    
    if( !SG_request_is_manifest( reqdat ) ) {
@@ -2147,10 +2346,12 @@ int SG_gateway_cached_manifest_put_raw_async( struct SG_gateway* gateway, struct
 }
 
 
-// start an I/O request on one of the gateway's I/O work queues
-// return 0 on success 
-// return negative on error
-// NOTE: wreq and all of its data must be heap-allocated.  The gateway will take ownership.
+/**
+ * @brief Start an I/O request on one of the gateway's I/O work queues
+ * @note wreq and all of its data must be heap-allocated.  The gateway will take ownership.
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int SG_gateway_io_start( struct SG_gateway* gateway, struct md_wreq* wreq ) {
    
    int rc = 0;
@@ -2161,7 +2362,9 @@ int SG_gateway_io_start( struct SG_gateway* gateway, struct md_wreq* wreq ) {
 }
 
 
-// get thread worker ID
+/**
+ * @brief Get thread worker ID
+ */
 uint64_t SG_gateway_io_thread_id( struct SG_gateway* gateway ) {
    
    union {
@@ -2176,10 +2379,12 @@ uint64_t SG_gateway_io_thread_id( struct SG_gateway* gateway ) {
 }
 
 
-// connect to the network caches of this volume, given the URL to the requested chunk
-// return 0 on success, and program the CURL handle
-// return -ENOSYS if not defined
-// return non-zero on implementation error
+/**
+ * @brief Connect to the network caches of this volume, given the URL to the requested chunk
+ * @retval 0 Success, and program the CURL handle
+ * @retval -ENOSYS Not defined
+ * @retval !0 implementation error
+ */
 int SG_gateway_impl_connect_cache( struct SG_gateway* gateway, CURL* curl, char const* url ) {
 
    int rc = 0;
@@ -2201,10 +2406,12 @@ int SG_gateway_impl_connect_cache( struct SG_gateway* gateway, CURL* curl, char 
 }
 
 
-// stat a file, filling in what we know into the out_reqdat structure 
-// return 0 on success, populating *out_reqdat 
-// return -ENOSYS if not defined
-// return non-zero on implementation error 
+/**
+ * @brief Stat a file, filling in what we know into the out_reqdat structure 
+ * @retval 0 Success, populating *out_reqdat 
+ * @retval -ENOSYS Not defined
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_stat( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_request_data* out_reqdat, mode_t* out_mode ) {
    
    int rc = 0;
@@ -2228,10 +2435,12 @@ int SG_gateway_impl_stat( struct SG_gateway* gateway, struct SG_request_data* re
 }
 
 
-// stat a file's block, filling in what we know into the out_reqdat structure 
-// return 0 on success, populating *out_reqdat 
-// return -ENOSYS if not defined
-// return non-zero on implementation error 
+/**
+ * @brief Stat a file's block, filling in what we know into the out_reqdat structure 
+ * @retval 0 Success, populating *out_reqdat 
+ * @retval -ENOSYS Not defined
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_stat_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_request_data* out_reqdat, mode_t* out_mode ) {
    
    int rc = 0;
@@ -2255,11 +2464,14 @@ int SG_gateway_impl_stat_block( struct SG_gateway* gateway, struct SG_request_da
 }
 
 
-// truncate a file.
-// the implementation MUST reversion the file to complete the operation 
-// return 0 on success
-// return -ENOSYS if not defined 
-// return non-zero on implementation error 
+/**
+ * @brief Truncate a file.
+ *
+ * @note The implementation MUST reversion the file to complete the operation 
+ * @retval 0 Success
+ * @retval -ENOSYS Not defined 
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t new_size ) {
    
    int rc = 0;
@@ -2283,11 +2495,13 @@ int SG_gateway_impl_truncate( struct SG_gateway* gateway, struct SG_request_data
 }
 
 
-// rename a file 
-// the implementation MUST inform the MS of the rename
-// return 0 on success 
-// return -ENOSYS if not defined 
-// return non-zero on implementation error 
+/**
+ * @brief Rename a file
+ * @note The implementation MUST inform the MS of the rename
+ * @retval 0 Success 
+ * @retval -ENOSYS Not defined 
+ * @retval !0 Implementation error
+ */ 
 int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
    
    int rc = 0;
@@ -2311,11 +2525,13 @@ int SG_gateway_impl_rename( struct SG_gateway* gateway, struct SG_request_data* 
 }
 
 
-// hint that a file was renamed
-// the implementation does not need to take any action, unlike rename
-// return 0 on success 
-// return -ENOSYS if not defined 
-// return non-zero on implementation error 
+/**
+ * @brief Hint that a file was renamed
+ * @note The implementation does not need to take any action, unlike rename
+ * @retval 0 Success 
+ * @retval -ENOSYS Not defined 
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path ) {
    
    int rc = 0;
@@ -2339,11 +2555,13 @@ int SG_gateway_impl_rename_hint( struct SG_gateway* gateway, struct SG_request_d
 }
 
 
-// detach a file 
-// the implementation MUST inform the MS of the detach 
-// return 0 on success 
-// return -ENOSYS if not defined 
-// return non-zero on implementation error 
+/**
+ * @brief Detach a file 
+ * @note The implementation MUST inform the MS of the detach 
+ * @retval 0 Success 
+ * @retval -ENOSYS Not defined 
+ * @retval !0 Implementation error
+ */ 
 int SG_gateway_impl_detach( struct SG_gateway* gateway, struct SG_request_data* reqdat ) {
    
    int rc = 0;
@@ -2367,10 +2585,12 @@ int SG_gateway_impl_detach( struct SG_gateway* gateway, struct SG_request_data* 
 }
 
 
-// refresh a file 
-// return 0 on success 
-// return -ENOSYS if not defined 
-// return non-zero on implementation error 
+/**
+ * @brief Refresh a file 
+ * @retval 0 Success 
+ * @retval -ENOSYS Not defined 
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_refresh( struct SG_gateway* gateway, struct SG_request_data* reqdat ) {
    
    int rc = 0;
@@ -2394,10 +2614,12 @@ int SG_gateway_impl_refresh( struct SG_gateway* gateway, struct SG_request_data*
 }
 
 
-// serialize a chunk, making it suitable for storage and transmission
-// return 0 on success
-// return -ENOSYS if not defined
-// return non-zero on error 
+/**
+ * @brief Serialize a chunk, making it suitable for storage and transmission
+ * @retval 0 Success
+ * @retval -ENOSYS Not defined
+ * @retval !0 Error
+ */ 
 int SG_gateway_impl_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk ) {
 
    int rc = 0;
@@ -2419,11 +2641,13 @@ int SG_gateway_impl_serialize( struct SG_gateway* gateway, struct SG_request_dat
 }
 
 
-// deserialize a chunk, making it suitable for consumption by a client program
-// *out_chunk may be allocated already (i.e. if the chunk's length is known).  The implementation must accomodate this possibility.
-// return 0 on success
-// return -ENOSYS if not defined
-// return non-zero on error 
+/**
+ * @brief Deserialize a chunk, making it suitable for consumption by a client program
+ * @note *out_chunk may be allocated already (i.e. The chunk's length is known).  The implementation must accomodate this possibility.
+ * @retval 0 Success
+ * @retval -ENOSYS Not defined
+ * @retval !0 Error
+ */ 
 int SG_gateway_impl_deserialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk ) {
 
    int rc = 0;
@@ -2444,10 +2668,12 @@ int SG_gateway_impl_deserialize( struct SG_gateway* gateway, struct SG_request_d
 }
 
 
-// get a manifest from the implementation
-// return 0 on success, and populate *manifest 
-// return -ENOSYS if not defined
-// return non-zero on implementation-specific failure 
+/**
+ * @brief Get a manifest from the implementation
+ * @retval 0 Success, and populate *manifest 
+ * @retval -ENOSYS Not defined
+ * @retval !0 Implementation-specific failure
+ */ 
 int SG_gateway_impl_manifest_get( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_manifest* manifest, uint64_t hints ) {
    
    int rc = 0;
@@ -2472,10 +2698,12 @@ int SG_gateway_impl_manifest_get( struct SG_gateway* gateway, struct SG_request_
 }
 
 
-// put a protobuf'ed manifest into the implementation 
-// return 0 on success
-// return -ENOSYS if not implemented
-// return non-zero on implementation-specific error 
+/**
+ * @brief Put a protobuf'ed manifest into the implementation 
+ * @retval 0 Success
+ * @retval -ENOSYS if not implemented
+ * @retval !0 Implementation-specific error
+ */
 int SG_gateway_impl_manifest_put( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* chunk, uint64_t hints ) {
    
    int rc = 0;
@@ -2499,10 +2727,12 @@ int SG_gateway_impl_manifest_put( struct SG_gateway* gateway, struct SG_request_
 }
 
 
-// patch a manifest 
-// the gateway MUST inform the MS of the new manifest information 
-// return 0 on success
-// return non-zero on implemetation error
+/**
+ * @brief Patch a manifest 
+ * @note The gateway MUST inform the MS of the new manifest information 
+ * @retval 0 Success
+ * @retval !0 Implemetation error
+ */
 int SG_gateway_impl_manifest_patch( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_manifest* write_delta ) {
    
    int rc = 0;
@@ -2526,9 +2756,11 @@ int SG_gateway_impl_manifest_patch( struct SG_gateway* gateway, struct SG_reques
 }
 
 
-// delete a manifest 
-// return 0 on success
-// return non-zero on implemetation error
+/**
+ * @brief Delete a manifest 
+ * @retval 0 Success
+ * @retval !0 Implemetation error
+ */
 int SG_gateway_impl_manifest_delete( struct SG_gateway* gateway, struct SG_request_data* reqdat) {
    
    int rc = 0;
@@ -2552,11 +2784,14 @@ int SG_gateway_impl_manifest_delete( struct SG_gateway* gateway, struct SG_reque
 }
 
 
-// get a block from the implementation, directly.
-// fill in the given block with data.
-// return 0 on success, and populate *block with new data
-// return -ENOSYS if not defined
-// return non-zero on implementation-specific error 
+/**
+ * @brief Get a block from the implementation, directly.
+ *
+ * Fill in the given block with data.
+ * @retval 0 Success, and populate *block with new data
+ * @retval -ENOSYS Not defined
+ * @retval !0 Implementation-specific error
+ */
 int SG_gateway_impl_block_get( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block, uint64_t hints ) {
    
    int rc = 0;
@@ -2581,9 +2816,11 @@ int SG_gateway_impl_block_get( struct SG_gateway* gateway, struct SG_request_dat
 }
 
 
-// put a block into the implementation 
-// return 0 on success 
-// return non-zero on implementation error 
+/**
+ * @brief Put a block into the implementation 
+ * @retval 0 Success 
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_block_put( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* block, uint64_t hints ) {
    
    int rc = 0;
@@ -2608,9 +2845,11 @@ int SG_gateway_impl_block_put( struct SG_gateway* gateway, struct SG_request_dat
 }
 
 
-// delete a block in the implementation 
-// return 0 on success 
-// return non-zero on implementation error 
+/**
+ * @brief Delete a block in the implementation 
+ * @retval 0 Success 
+ * @retval !0 Implementation error
+ */ 
 int SG_gateway_impl_block_delete( struct SG_gateway* gateway, struct SG_request_data* reqdat ) {
    
    int rc = 0;
@@ -2635,9 +2874,12 @@ int SG_gateway_impl_block_delete( struct SG_gateway* gateway, struct SG_request_
 }
 
 
-// get an xattr
-// return 0 on success
-// return non-zero on implemetation error
+/**
+ * @brief Get an xattr
+ * @param[out] xattr_value The xattr value
+ * @retval 0 Success
+ * @retval !0 Implemetation error
+ */
 int SG_gateway_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* xattr_value ) {
    
    int rc = 0;
@@ -2661,9 +2903,11 @@ int SG_gateway_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data
 }
 
 
-// list xattrs 
-// return 0 on success 
-// return non-zero on implementation error 
+/**
+ * @brief List xattrs 
+ * @retval 0 Success 
+ * @retval !0 Implementation error
+ */
 int SG_gateway_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk** xattr_names, size_t* num_xattrs ) {
    
    int rc = 0;
@@ -2687,9 +2931,12 @@ int SG_gateway_impl_listxattr( struct SG_gateway* gateway, struct SG_request_dat
 }
 
 
-// set an xattr
-// return 0 on success
-// return non-zero on implemetation error
+/**
+ * @brief Set an xattr
+ * @param[in] xattr_value The new xattr value
+ * @retval 0 Success
+ * @retval !0 Implemetation error
+ */
 int SG_gateway_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* xattr_value ) {
    
    int rc = 0;
@@ -2713,9 +2960,11 @@ int SG_gateway_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data
 }
 
 
-// remove an xattr
-// return 0 on success
-// return non-zero on implemetation error
+/**
+ * @brief Remove an xattr
+ * @retval 0 Success
+ * @retval !0 Implemetation error
+ */
 int SG_gateway_impl_removexattr( struct SG_gateway* gateway, struct SG_request_data* reqdat ) {
    
    int rc = 0;
@@ -2739,9 +2988,11 @@ int SG_gateway_impl_removexattr( struct SG_gateway* gateway, struct SG_request_d
 }
 
 
-// convert an md_entry into an SG_request_data 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Convert an md_entry into an SG_request_data 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_request_data_from_md_entry( struct SG_request_data* reqdat, char const* fs_path, struct md_entry* ent, uint64_t block_id, int64_t block_version ) {
    
    memset( reqdat, 0, sizeof(struct SG_request_data) );

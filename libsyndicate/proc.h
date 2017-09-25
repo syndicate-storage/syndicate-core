@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file proc.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief proc header file
+ *
+ * @see libsyndicate/proc.cpp
+ */
+
 // process management 
 
 #ifndef _LIBSYNDICATE_PROC_

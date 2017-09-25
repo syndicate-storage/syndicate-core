@@ -14,10 +14,20 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/volume.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific volume related functions
+ *
+ * @see libsyndicate/ms/volume.h
+ */
+
 #include "libsyndicate/ms/volume.h"
 #include "libsyndicate/ms/url.h"
 
-// free a volume
+/// Free a volume
 void ms_client_volume_free( struct ms_volume* vol ) {
    if( vol == NULL ) {
       return;
@@ -38,14 +48,17 @@ void ms_client_volume_free( struct ms_volume* vol ) {
    memset( vol, 0, sizeof(struct ms_volume) );
 }
 
-// populate a Volume structure with the volume metadata.
-// NOTE: the cert should already have been verified and validated
-// NOTE: vol takes ownership of volume_cert
-// return 0 on success 
-// return -ENODATA if we can't load the volume public key 
-// return -ENOMEM if OOM 
-// return -EINVAL if we can't verify the volume metadata
-// if this fails, the volume should be unaffected
+/**
+ * @brief Populate a Volume structure with the volume metadata.
+ *
+ * If this fails, the volume should be unaffected
+ * @note the cert should already have been verified and validated
+ * @note vol takes ownership of volume_cert
+ * @retval 0 Success 
+ * @retval -ENODATA if we can't load the volume public key 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL if we can't verify the volume metadata
+ */
 int ms_client_volume_init( struct ms_volume* vol, ms::ms_volume_metadata* volume_cert ) {
 
    int rc = 0;

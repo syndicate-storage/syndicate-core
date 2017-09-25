@@ -14,18 +14,29 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/getattr.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific getattr related functions
+ *
+ * @see libsyndicate/ms/getattr.h
+ */
+
 #include "getattr.h"
 
 #include "libsyndicate/ms/path.h"
 
-// download state for metadata
+/// Download state for metadata
 struct ms_client_get_metadata_context {
    
-   char* url;
-   char* auth_header;
-   int request_id;
+   char* url;           ///< The URL
+   char* auth_header;   ///< Auth header
+   int request_id;      ///< Request ID
 }; 
 
+/// Initialize the URL, auth_header, and request_id
 static void ms_client_get_metadata_context_init( struct ms_client_get_metadata_context* dlstate, char* url, char* auth_header, int request_id ) {
    
    dlstate->url = url;
@@ -33,6 +44,10 @@ static void ms_client_get_metadata_context_init( struct ms_client_get_metadata_c
    dlstate->request_id = request_id;
 }
 
+/**
+ * @brief Free the metadata context
+ * @param[in] dlstate The metadata context to be freed
+ */
 static void ms_client_get_metadata_context_free( struct ms_client_get_metadata_context* dlstate ) {
    
    SG_safe_free( dlstate->auth_header );
@@ -41,10 +56,12 @@ static void ms_client_get_metadata_context_free( struct ms_client_get_metadata_c
 }
 
 
-// begin downloading metadata 
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -errno on failure to set up and start the download
+/**
+ * @brief Begin downloading metadata 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to set up and start the download
+ */
 static int ms_client_get_metadata_begin( struct ms_client* client, struct ms_path_ent* path_ent, int request_id, bool do_getchild, struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
    
    char* auth_header = NULL;
@@ -142,10 +159,14 @@ static int ms_client_get_metadata_begin( struct ms_client* client, struct ms_pat
 }
 
 
-// finish up a metadata entry download, and free up the download handle
-// return 0 on success, and put the batch's entries into the right places in result_ents, and set its *request_id
-// return -ENOMEM on OOM 
-// return -EBADMSG if we could not determine the listing status
+/**
+ * @brief Finish up a metadata entry download, and free up the download handle
+ * @param[out] result_ents Updated with batch's entries
+ * @param[out] request_id The request ID
+ * @retval 0 Success, and put the batch's entries into the right places in result_ents, and set its *request_id
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EBADMSG Could not determine the listing status
+ */
 static int ms_client_get_metadata_end( struct ms_client* client, ms_path_t* path, struct md_download_context* dlctx, struct md_entry* result_ents, int* request_id ) {
    
    int rc = 0;
@@ -241,15 +262,18 @@ static int ms_client_get_metadata_end( struct ms_client* client, ms_path_t* path
 }
 
 
-// download metadata for a set of entries 
-// by default, this performs GETATTR.  If do_getchild is true, then this runs GETCHILD 
-// return partial results, even in error.
-// NOTE: for GETATTR, path[i].file_id, .volume_id, .version, and .write_nonce must be defined for each entry
-// NOTE: for GETCHILD, path[i].parent_id, .volume_id, and .name must be defined for each entry
-// return 0 on success, or if there are no path entries to download
-// return -EINVAL if the path of entries to fetch data for (see above) is not well-formed
-// return -ENOMEM on OOM
-// return -ENODATA if we retried the maximum number of times to fetch an entry, but failed to do so
+/**
+ * @brief Download metadata for a set of entries 
+ *
+ * By default, this performs GETATTR.  If do_getchild is true, then this runs GETCHILD 
+ * @return partial results, even in error.
+ * @note For GETATTR, path[i].file_id, .volume_id, .version, and .write_nonce must be defined for each entry
+ * @note For GETCHILD, path[i].parent_id, .volume_id, and .name must be defined for each entry
+ * @retval 0 Success, or if there are no path entries to download
+ * @retval -EINVAL The path of entries to fetch data for (see above) is not well-formed
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA Retried the maximum number of times to fetch an entry, but failed to do so
+ */
 static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, struct ms_client_multi_result* result, bool do_getchild ) {
    
    int rc = 0;
@@ -490,31 +514,31 @@ static int ms_client_get_metadata( struct ms_client* client, ms_path_t* path, st
    return rc;
 }
 
-// download multiple entries at once.
-// result->ents will be in the same order as the corresponding element in path.
-// path entries need:
-// * file_id 
-// * volume_id 
-// * version 
-// * write_nonce
-// return 0 on success
-// return negative on error
+/**
+ * @brief Download multiple entries at once.
+ *
+ * result->ents will be in the same order as the corresponding element in path.
+ * path entries need: file_id, volume_id, version, write_nonce
+ * @return Result of ms_client_get_metadata
+ * @see ms_client_get_metadata
+ * @retval 0 Success
+ * @retval <0 Error
+ */
 int ms_client_getattr_multi( struct ms_client* client, ms_path_t* path, struct ms_client_multi_result* result ) {
    return ms_client_get_metadata( client, path, result, false );
 }
 
 
-// download metadata for a single entry 
-// ms_ent needs:
-// * file_id 
-// * volume_id 
-// * version 
-// * write_nonce 
-// return 0 on success
-// return -ENODATA on failure to communicate with the MS
-// return -EACCES on permission error in the MS
-// return -ENOENT if the entry doesn't exist
-// return -EBADMSG if the MS replied invalid data
+/**
+ * @brief Download metadata for a single entry 
+ *
+ * ms_ent needs: file_id, volume_id, version, write_nonce 
+ * @retval 0 Success
+ * @retval -ENODATA Failure to communicate with the MS
+ * @retval -EACCES Permission error in the MS
+ * @retval -ENOENT The entry doesn't exist
+ * @retval -EBADMSG The MS replied invalid data
+ */
 int ms_client_getattr( struct ms_client* client, struct ms_path_ent* ms_ent, struct md_entry* ent_out ) {
    
    ms_path_t path;
@@ -562,21 +586,26 @@ int ms_client_getattr( struct ms_client* client, struct ms_path_ent* ms_ent, str
 }
 
 
-// download multiple entries at once
-// result->ents will be in the same order as the entries in path.
-// retur 0 on success 
-// return negative on error
+/**
+ * @brief Download multiple entries at once
+ *
+ * result->ents will be in the same order as the entries in path.
+ * @return Result of ms_client_get_metadata
+ * @see ms_client_get_metadata
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int ms_client_getchild_multi( struct ms_client* client, ms_path_t* path, struct ms_client_multi_result* result ) {
    return ms_client_get_metadata( client, path, result, true );
 }
 
-// download metadata for a single entry 
-// ms_ent needs:
-// * parent_id
-// * volume_id
-// * name 
-// return 0 on success 
-// return negative on error
+/**
+ * @brief Download metadata for a single entry 
+ *
+ * ms_ent needs: parent_id, volume_id, name 
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 int ms_client_getchild( struct ms_client* client, struct ms_path_ent* ms_ent, struct md_entry* ent_out ) {
    
    ms_path_t path;
@@ -625,8 +654,10 @@ int ms_client_getchild( struct ms_client* client, struct ms_path_ent* ms_ent, st
    return rc;
 }
 
-// set up an ms_ent to request attributes
-// always succeeds
+/**
+ * @brief Set up an ms_ent to request attributes
+ * @return 0
+ */
 int ms_client_getattr_request( struct ms_path_ent* ms_ent, uint64_t volume_id, uint64_t file_id, int64_t file_version, int64_t write_nonce, void* cls ) {
    
    memset( ms_ent, 0, sizeof(struct ms_path_ent) );

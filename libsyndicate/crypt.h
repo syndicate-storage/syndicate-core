@@ -14,6 +14,18 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/crypt.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for Cryptography support
+ *
+ * Interface with OpenSSL libraries.
+ *
+ * @see libsyndicate/crypt.cpp
+ */
+
 #ifndef _LIBSYNDICATE_CRYPT_H_
 #define _LIBSYNDICATE_CRYPT_H_
 

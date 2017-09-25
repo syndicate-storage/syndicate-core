@@ -14,11 +14,23 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/url.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific url related functions
+ *
+ * @see libsyndicate/ms/url.h
+ */
+
 #include "libsyndicate/ms/url.h"
 
-// make a URL to a given MS request path
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief Make a URL to a given MS request path
+ * @return The URL
+ * @retval NULL Out of Memory
+ */
 char* ms_client_url( char const* ms_url, uint64_t volume_id, char const* metadata_path ) {
    char volume_id_str[50];
    sprintf(volume_id_str, "%" PRIu64, volume_id);
@@ -36,9 +48,11 @@ char* ms_client_url( char const* ms_url, uint64_t volume_id, char const* metadat
    return url;
 }
 
-// POST url for a file
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief POST url for a file
+ * @return The URL on success
+ * @retval NULL Out of Memory
+ */
 char* ms_client_file_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version ) {
    
    char volume_id_str[50];
@@ -59,7 +73,7 @@ char* ms_client_file_url( char const* ms_url, uint64_t volume_id, uint64_t volum
    return volume_file_path;
 }
 
-// query arg concat
+/// Query arg concat
 int ms_client_arg_concat( char* url, char const* arg, bool first ) {
    
    if( first ) {
@@ -74,9 +88,11 @@ int ms_client_arg_concat( char* url, char const* arg, bool first ) {
    return 0;
 }
 
-// GETATTR url for a file
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief GETATTR url for a file
+ * @return The URL
+ * @retval NULL Out of Memory
+ */
 char* ms_client_file_getattr_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version, uint64_t file_id, int64_t version, int64_t write_nonce ) {
 
    char volume_id_str[50];
@@ -109,9 +125,11 @@ char* ms_client_file_getattr_url( char const* ms_url, uint64_t volume_id, uint64
 }
 
 
-// GETCHILD url for a file
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief GETCHILD url for a file
+ * @return The URL on success
+ * @retval NULL Out of Memory
+ */
 char* ms_client_file_getchild_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version, uint64_t file_id, char* name ) {
 
    char volume_id_str[50];
@@ -137,11 +155,14 @@ char* ms_client_file_getchild_url( char const* ms_url, uint64_t volume_id, uint6
    return volume_file_url;
 }
 
-// LISTDIR url for a file
-// if page_id >= 0, include page_id=...
-// if least_unknown_generation >= 0, include lug=...
-// return the URL on success
-// return NULL on OOM
+/**
+ * @brief LISTDIR url for a file
+ *
+ * If page_id >= 0, include page_id=...
+ * If least_unknown_generation >= 0, include lug=...
+ * @return The URL on success
+ * @retval NULL Out of Memory
+ */
 char* ms_client_file_listdir_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version, uint64_t file_id, int64_t page_id, int64_t least_unknown_generation ) {
 
    char volume_id_str[50];
@@ -197,9 +218,11 @@ char* ms_client_file_listdir_url( char const* ms_url, uint64_t volume_id, uint64
    return volume_file_url;
 }
 
-// FETCHXATTRS url 
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief FETCHXATTRS url 
+ * @return the URL on success 
+ * @retval NULL Out of Memory
+ */
 char* ms_client_fetchxattrs_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version, uint64_t file_id ) {
    
    char volume_id_str[50];
@@ -223,9 +246,11 @@ char* ms_client_fetchxattrs_url( char const* ms_url, uint64_t volume_id, uint64_
    return listxattr_path;
 }
 
-// URL to read a file's vacuum log
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief URL to read a file's vacuum log
+ * @return The URL on success
+ * @retval NULL Out of Memory
+ */
 char* ms_client_vacuum_url( char const* ms_url, uint64_t volume_id, uint64_t volume_version, uint64_t cert_version, uint64_t file_id ) {
    
    char volume_id_str[50];
@@ -250,9 +275,11 @@ char* ms_client_vacuum_url( char const* ms_url, uint64_t volume_id, uint64_t vol
 }
  
 
-// URL to a Volume, by ID
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief URL to a Volume, by ID
+ * @return The URL on success 
+ * @retval NULL Out of Memory
+ */
 char* ms_client_volume_url( char const* ms_url, uint64_t volume_id ) {
    char buf[50];
    sprintf(buf, "%" PRIu64, volume_id );
@@ -269,9 +296,11 @@ char* ms_client_volume_url( char const* ms_url, uint64_t volume_id ) {
    return url;
 }
 
-// URL to a Volume, by name
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief URL to a Volume, by name
+ * @return The URL on success 
+ * @retval NULL Out of Memory
+ */
 char* ms_client_volume_url_by_name( char const* ms_url, char const* name ) {
    char* volume_md_path = md_fullpath( "/VOLUME/", name, NULL );
 
@@ -287,9 +316,11 @@ char* ms_client_volume_url_by_name( char const* ms_url, char const* name ) {
 }
 
 
-// get a certificate URL
-// return the URL on success 
-// return NULL on OOM
+/**
+ * @brief Get a certificate URL
+ * @return The URL on success 
+ * @retval NULL Out of Memory
+ */
 char* ms_client_cert_url( char const* ms_url, uint64_t volume_id, uint64_t cert_version, uint64_t gateway_type, uint64_t gateway_id, uint64_t gateway_cert_version ) {
    
    char* url = SG_CALLOC( char, strlen(ms_url) + 1 + strlen("/CERT/") + 1 + 21 + 1 + 21 + 1 + 21 + 1 + 21 + 1 );

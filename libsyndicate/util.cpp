@@ -13,9 +13,17 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-/*
- * Utility functions (debugging, etc)
+
+/**
+ * @file util.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Utility functions (debugging, etc)
+ *
+ * @see libsyndicate/util.h
  */
+
  
 #include "libsyndicate/util.h"
 #include "libsyndicate/libsyndicate.h"
@@ -28,6 +36,9 @@ int _SG_WARN_MESSAGES = 1;
 int _SG_ERROR_MESSAGES = 1;
 
 
+/**
+ * @brief Set the debug level
+ */
 void md_set_debug_level( int d ) {
    if( d <= 0 ) {
       // no debugging
@@ -43,6 +54,9 @@ void md_set_debug_level( int d ) {
    }
 }
 
+/**
+ * @brief Set the error level
+ */
 void md_set_error_level( int e ) {
    if( e <= 0 ) {
       // no error 
@@ -57,28 +71,38 @@ void md_set_error_level( int e ) {
    }
 }
 
+/**
+ * @brief Get debug level
+ */
 int md_get_debug_level() {
    return _SG_DEBUG_MESSAGES;
 }
 
+/**
+ * @brief Get error level
+ */
 int md_get_error_level() {
    return _SG_ERROR_MESSAGES;
 }
 
-/* Converts a hex character to its integer value */
+/**
+ * @brief Converts a hex character to its integer value
+ */
 static char from_hex(char ch) {
   return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
 
-/* Converts an integer value to its hex character*/
+/**
+ * @brief Converts an integer value to its hex character
+ */
 static char to_hex(char code) {
   static char hex[] = "0123456789abcdef";
   return hex[code & 15];
 }
 
 
-/*
- * Get the current time in seconds since the epoch, local time
+/**
+ * @brief Get the current time in seconds since the epoch, local time
  */
 int64_t md_current_time_seconds() {
    struct timespec ts;
@@ -92,7 +116,9 @@ int64_t md_current_time_seconds() {
 }
 
 
-// get the current time in milliseconds
+/**
+ * @brief Get the current time in milliseconds
+ */
 int64_t md_current_time_millis() {
    struct timespec ts;
    int rc = clock_gettime( CLOCK_REALTIME, &ts );
@@ -105,8 +131,11 @@ int64_t md_current_time_millis() {
    return (ts_sec * 1000) + (ts_nsec / 1000000);
 }
 
-// difference in time, in milliseconds
-// find t1 - t2
+/**
+ * @brief Difference in time, in milliseconds
+ *
+ * Find t1 - t2
+ */
 int64_t md_timespec_diff_ms( struct timespec* t1, struct timespec* t2 ) {
   
    int64_t sec = t1->tv_sec;
@@ -121,8 +150,11 @@ int64_t md_timespec_diff_ms( struct timespec* t1, struct timespec* t2 ) {
    return ((sec - t2->tv_sec) * 1000) + ((nsec - t2->tv_nsec)/1000000);
 }
 
-// difference in time
-// find t1 - t2
+/**
+ * @brief Difference in time
+ *
+ * Find t1 - t2
+ */
 int64_t md_timespec_diff( struct timespec* t1, struct timespec* t2 ) {
    
    int64_t sec = t1->tv_sec;
@@ -141,8 +173,8 @@ int64_t md_timespec_diff( struct timespec* t1, struct timespec* t2 ) {
 }
 
 
-/*
- * Get the user's umask
+/**
+ * @brief Get the user's umask
  */
 mode_t md_get_umask() {
   mode_t mask = umask(0);
@@ -151,8 +183,11 @@ mode_t md_get_umask() {
 }
 
 
-// calculate the sha-256 hash of something.
-// caller must free the hash buffer.
+/**
+ * @brief Calculate the sha-256 hash of something.
+ *
+ * @note Caller must free the hash buffer.
+ */
 unsigned char* sha256_hash_data( char const* input, size_t len ) {
    unsigned char* obuf = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
    if( obuf == NULL ) {
@@ -163,8 +198,10 @@ unsigned char* sha256_hash_data( char const* input, size_t len ) {
    return obuf;
 }
 
-// hash a string, and put the output in an already-allocated buf 
-// output needs at least SHA256_DIGEST_LENGTH bytes
+/**
+ * @brief Hash a string, and put the output in an already-allocated buf 
+ * @note Output needs at least SHA256_DIGEST_LENGTH bytes
+ */
 void sha256_hash_buf( char const* input, size_t len, unsigned char* output ) { 
    SHA256_CTX sha256;
    SHA256_Init(&sha256); 
@@ -172,16 +209,23 @@ void sha256_hash_buf( char const* input, size_t len, unsigned char* output ) {
    SHA256_Final(output, &sha256);
 }
 
+/**
+ * @brief Provide the sha256 digest length
+ */
 size_t sha256_len(void) {
    return SHA256_DIGEST_LENGTH;
 }
 
-// calculate the sha-256 hash of a string
+/**
+ * @brief Calculate the sha-256 hash of a string
+ */
 unsigned char* sha256_hash( char const* input ) {
    return sha256_hash_data( input, strlen(input) );
 }
 
-// duplicate a sha256
+/**
+ * @brief Duplicate a sha256
+ */
 unsigned char* sha256_dup( unsigned char const* sha256 ) {
    
    unsigned char* ret = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
@@ -193,7 +237,9 @@ unsigned char* sha256_dup( unsigned char const* sha256 ) {
    return ret;
 }
 
-// compare two SHA256 hashes
+/**
+ * @brief Compare two SHA256 hashes
+ */
 int sha256_cmp( unsigned char const* hash1, unsigned char const* hash2 ) {
    if( hash1 == NULL ) {
       return -1;
@@ -204,9 +250,11 @@ int sha256_cmp( unsigned char const* hash1, unsigned char const* hash2 ) {
    return memcmp( hash1, hash2, SHA256_DIGEST_LENGTH );
 }
 
-
-// make a sha-256 hash printable
-// write it to buf (should be at least 2 * SHA256_DIGEST_LENGTH + 1 bytes)
+/**
+ * @brief Make a sha-256 hash printable
+ *
+ * Write it to buf (should be at least 2 * SHA256_DIGEST_LENGTH + 1 bytes)
+ */
 void sha256_printable_buf( unsigned char const* hash, char* ret ) {
    
    char buf[3];
@@ -222,9 +270,11 @@ void sha256_printable_buf( unsigned char const* hash, char* ret ) {
    return;
 }
 
-// make a sha-256 hash printable
-// return the printable SHA256 on success
-// return NULL on OOM 
+/**
+ * @brief Make a sha-256 hash printable
+ * @return The printable SHA256 on success
+ * @retval NULL Out of Memory
+ */ 
 char* sha256_printable( unsigned char const* hash ) {
    
    char* ret = SG_CALLOC( char, 2 * SHA256_DIGEST_LENGTH + 1 );
@@ -236,10 +286,11 @@ char* sha256_printable( unsigned char const* hash ) {
    return ret;
 }
 
-
-// make a string of data printable
-// return the printable SHA256 on success
-// return NULL on OOM 
+/**
+ * @brief Make a string of data printable
+ * @return The printable SHA256 on success
+ * @retval NULL Out of Memory
+ */
 char* md_data_printable( unsigned char const* data, size_t len ) {
    
    char* ret = SG_CALLOC( char, 2 * len + 1 );
@@ -258,7 +309,9 @@ char* md_data_printable( unsigned char const* data, size_t len ) {
 }
 
 
-// printdata to a string 
+/**
+ * @brief Print data to a string
+ */
 void md_sprintf_data( char* str, unsigned char const* data, size_t len ) {
    
    for( unsigned int i = 0; i < len; i++ ) {
@@ -268,9 +321,11 @@ void md_sprintf_data( char* str, unsigned char const* data, size_t len ) {
 }
 
 
-// make a printable sha256 from data
-// return the printable string on success
-// return NULL on OOM
+/**
+ * @brief Make a printable sha256 from data
+ * @return The printable string on success
+ * @retval NULL Out of Memory
+ */
 char* sha256_hash_printable( char const* input, size_t len) {
    
    unsigned char* hash = sha256_hash_data( input, len );
@@ -283,9 +338,11 @@ char* sha256_hash_printable( char const* input, size_t len) {
    return hash_str;
 }
 
-// make a sha256 hash from printable data
-// return the SHA256 on success
-// return NULL on OOM
+/**
+ * @brief Make a sha256 hash from printable data
+ * @return The SHA256 on success
+ * @retval NULL Out of Memory
+ */
 unsigned char* sha256_data( char const* printable ) {
    
    unsigned char* ret = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
@@ -303,9 +360,11 @@ unsigned char* sha256_data( char const* printable ) {
 }
 
 
-// hash a file
-// return the SHA256 on success
-// return NULL on OOM or file-related errors
+/**
+ * @brief Hash a file
+ * @return The SHA256 on success
+ * @retval NULL Out of Memory or file-related errors
+ */
 unsigned char* sha256_file( char const* path ) {
    FILE* f = fopen( path, "r" );
    if( f == NULL ) {
@@ -347,9 +406,11 @@ unsigned char* sha256_file( char const* path ) {
    return new_checksum;
 }
 
-// hash a file, given its descriptor 
-// return the SHA256 on success
-// return NULL on OOM
+/**
+ * @brief Hash a file, given its descriptor 
+ * @return The SHA256 on success
+ * @retval NULL Out of Memory
+ */
 unsigned char* sha256_fd( int fd ) {
    
    unsigned char* new_checksum = SG_CALLOC( unsigned char, SHA256_DIGEST_LENGTH );
@@ -384,8 +445,10 @@ unsigned char* sha256_fd( int fd ) {
 }
 
 
-// hash a file for a given number of bytes, given its descriptor 
-// it can underflow if we reach EOF
+/**
+ * @brief Hash a file for a given number of bytes, given its descriptor 
+ * @note It can underflow if we reach EOF
+ */
 void sha256_fd_buf( int fd, size_t len, unsigned char* output ) {
    
    SHA256_CTX context;
@@ -419,9 +482,12 @@ void sha256_fd_buf( int fd, size_t len, unsigned char* output ) {
 }
 
 
-// load a file into RAM
-// return a pointer to the bytes on success, and set *size to the size of the file 
-// return NULL on error, such as OOM or failure to stat or read the file
+/**
+ * @brief Load a file into RAM
+ * @param[out] *size The size of the file
+ * @return A pointer to the bytes on success
+ * @retval NULL Error, such as Out of Memory or failure to stat or read the file
+ */
 char* md_load_file( char const* path, off_t* size ) {
    struct stat statbuf;
    int rc = stat( path, &statbuf );
@@ -457,11 +523,13 @@ char* md_load_file( char const* path, off_t* size ) {
 }
 
 
-// write a file from RAM to the given path.
-// the file must not exist previously.
-// this method succeeds in writing the whole file, or no file is written.
-// return 0 on success 
-// return -errno on error (filesystem-related errors)
+/**
+ * @brief Write a file from RAM to the given path.
+ * This method succeeds in writing the whole file, or no file is written.
+ * @note The file must not exist previously.
+ * @retval 0 Success 
+ * @retval -errno Error (filesystem-related errors)
+ */
 int md_write_file( char const* path, char const* data, size_t len, mode_t mode ) {
    
    int rc = 0;
@@ -516,10 +584,12 @@ int md_write_file( char const* path, char const* data, size_t len, mode_t mode )
    return 0;
 }
 
-// read, but mask EINTR
-// return the number of bytes read on success
-// return negative on error
-// return non-negative but less than len on EOF
+/**
+ * @brief Read, but mask EINTR
+ * @retval The number of bytes read on success
+ * @retval <0 Error
+ * @retval >=0 but less than len on EOF
+ */
 ssize_t md_read_uninterrupted( int fd, char* buf, size_t len ) {
    
    ssize_t num_read = 0;
@@ -546,10 +616,12 @@ ssize_t md_read_uninterrupted( int fd, char* buf, size_t len ) {
 }
 
 
-// recv, but mask EINTR 
-// return the number of bytes received on success
-// return negative on error
-// return non-negative (less than len) on EOF
+/**
+ * @brief Receive, but mask EINTR 
+ * @return The number of bytes received on success
+ * @retval <0 Error
+ * @retval >=0 (less than len) on EOF
+ */
 ssize_t md_recv_uninterrupted( int fd, char* buf, size_t len, int flags ) {
    
    ssize_t num_read = 0;
@@ -575,9 +647,11 @@ ssize_t md_recv_uninterrupted( int fd, char* buf, size_t len, int flags ) {
    return num_read;
 }
 
-// write, but mask EINTR
-// return the number of bytes written on success
-// return negative or less than len on error
+/**
+ * @brief Write, but mask EINTR
+ * @return The number of bytes written on success
+ * @retval <0 or less than len Error
+ */
 ssize_t md_write_uninterrupted( int fd, char const* buf, size_t len ) {
    
    ssize_t num_written = 0;
@@ -604,9 +678,11 @@ ssize_t md_write_uninterrupted( int fd, char const* buf, size_t len ) {
 }
 
 
-// send, but mask EINTR
-// return the number of bytes sent on success
-// return negative or less than len on error
+/**
+ * @brief Send, but mask EINTR
+ * @return The number of bytes sent on success
+ * @retval <0 or less than len Error
+ */
 ssize_t md_send_uninterrupted( int fd, char const* buf, size_t len, int flags ) {
    
    ssize_t num_written = 0;
@@ -633,11 +709,13 @@ ssize_t md_send_uninterrupted( int fd, char const* buf, size_t len, int flags ) 
 }
 
 
-// transfer data from one fd to another.
-// mask EINTR.
-// return 0 on success
-// return -ENODATA on underflow
-// return negative on error 
+/**
+ * @brief Transfer data from one fd to another.
+ * @note mask EINTR.
+ * @retval 0 Success
+ * @retval -ENODATA Underflow
+ * @retval <0 Error
+ */ 
 int md_transfer( int in_fd, int out_fd, size_t count ) {
 
    char buf[4096];
@@ -669,9 +747,12 @@ int md_transfer( int in_fd, int out_fd, size_t count ) {
 }
 
 
-// create an AF_UNIX local socket 
-// if bind_on is true, then this binds and listens on the socket
-// otherwise, it connects
+/**
+ * @brief Create an AF_UNIX local socket 
+ *
+ * If bind_on is true, then this binds and listens on the socket
+ * otherwise, it connects
+ */
 int md_unix_socket( char const* path, bool server ) {
    
    if( path == NULL ) {
@@ -740,10 +821,13 @@ int md_unix_socket( char const* path, bool server ) {
 }
 
 
-// dump data to a temporary file.
-// return 0 on success, and allocate and set *tmpfile_path to the path created 
-// return -errno on mkstemp or md_write_uninterrupted failure 
-// return -ENOMEM if out of memory
+/**
+ * @brief Dump data to a temporary file.
+ * @param[out] *tmpfile_path Path created
+ * @retval 0 Success, and allocate and set *tmpfile_path to the path created 
+ * @retval -errno on mkstemp or md_write_uninterrupted failure 
+ * @retval -ENOMEM Out of Memory
+ */
 int md_write_to_tmpfile( char const* tmpfile_fmt, char const* buf, size_t buflen, char** tmpfile_path ) {
    
    char* so_path = SG_strdup_or_null( tmpfile_fmt );
@@ -781,10 +865,13 @@ int md_write_to_tmpfile( char const* tmpfile_fmt, char const* buf, size_t buflen
 //////// courtesy of http://www.geekhideout.com/urlcode.shtml  //////////
 
 
-/* Returns a url-encoded version of str */
-/* IMPORTANT: be sure to free() the returned string after use */
-// return the encoded URL on success
-// return NULL on OOM
+/**
+ * @brief Returns a url-encoded version of str
+ * @note Important! Be sure to free() the returned string after use
+ * @retval URL The encoded URL on success
+ * @retval NULL Out of Memory
+ * @ref http://www.geekhideout.com/urlcode.shtml
+ */
 char *md_url_encode(char const *str, size_t len) {
    char *pstr = (char*)str;
    char *buf = SG_CALLOC( char, len * 3 + 1 );
@@ -820,9 +907,12 @@ char *md_url_encode(char const *str, size_t len) {
    return buf;
 }
 
-/* Returns a url-decoded version of str */
-/* IMPORTANT: be sure to free() the returned string after use */
-// return NULL on OOM
+/**
+ * @brief Returns a url-decoded version of str
+ * @note Important! Be sure to free() the returned string after use
+ * @retval NULL Out of Memory
+ * @ref http://www.geekhideout.com/urlcode.shtml
+ */
 char *md_url_decode(char const *str, size_t* len) {
    char *pstr = (char*)str;
    char* buf = SG_CALLOC( char, strlen(str) + 1 );
@@ -867,6 +957,10 @@ char *md_url_decode(char const *str, size_t* len) {
 
 // Base64 decode and encode, from https://gist.github.com/barrysteyn/4409525#file-base64decode-c
 
+/**
+ * @brief Calculate the length of a decoded base64 string
+ * @ref https://gist.github.com/barrysteyn/4409525#file-base64decode-c
+ */
 int calcDecodeLength(const char* b64input, size_t len) { //Calculates the length of a decoded base64 string
   int padding = 0;
 
@@ -880,10 +974,15 @@ int calcDecodeLength(const char* b64input, size_t len) { //Calculates the length
   return ((len * 3) >> 2) - padding;
 }
 
-// decode a message (b64message) from base64
-// return 0 on success, and put the malloc'ed result into *buffer and its length into *buffer_len 
-// return -ENOMEM on OOM
-// return -EPERM if base64 encoding fails
+/**
+ * @brief Decode a message (b64message) from base64
+ * @param[out] *buffer The result
+ * @param[out] *buffer_len The length of buffer
+ * @retval 0 Success, and put the malloc'ed result into *buffer and its length into *buffer_len 
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM base64 encoding fails
+ * @ref https://gist.github.com/barrysteyn/4409525#file-base64decode-c
+ */
 int md_base64_decode(const char* b64message, size_t b64message_len, char** buffer, size_t* buffer_len) { //Decodes a base64 encoded string
    
   BIO *bio, *b64;
@@ -943,9 +1042,13 @@ int md_base64_decode(const char* b64message, size_t b64message_len, char** buffe
 }
 
 
-// encode a message as bas64.
-// return 0 on success, and put the resulting malloc'ed NULL-terminated string into *buffer
-// return -ENOMEM if OOM
+/**
+ * @brief Encode a message as base64.
+ * @param[out] *buffer Resulting string
+ * @retval 0 Success, and put the resulting malloc'ed NULL-terminated string into *buffer
+ * @retval -ENOMEM Out of Memory
+ * @ref https://gist.github.com/barrysteyn/4409525#file-base64decode-c
+ */
 int md_base64_encode(char const* message, size_t msglen, char** buffer) { //Encodes a string to base64
 
    BIO *bio, *b64;
@@ -1011,6 +1114,9 @@ static uint32_t Q[4096], c=362436; /* choose random initial c<809430660 and */
                                          
 pthread_mutex_t CMWC4096_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/**
+ * @brief Algorithm for random number generator
+ */
 uint32_t CMWC4096(void) {
    pthread_mutex_lock( &CMWC4096_lock );
    
@@ -1036,10 +1142,16 @@ uint32_t CMWC4096(void) {
    return ret;
 }
 
+/**
+ * @brief uint32 Pseudo random number generator
+ */
 uint32_t md_random32(void) {
    return CMWC4096();
 }
 
+/**
+ * @brief uint64 Pseudo random number generator
+ */
 uint64_t md_random64(void) {
    uint64_t upper = (uint64_t)md_random32();
    uint64_t lower = (uint64_t)md_random32();
@@ -1048,6 +1160,9 @@ uint64_t md_random64(void) {
 }
 
 
+/**
+ * @brief Initialize pseudo random number generator
+ */
 int md_util_init(void) {
    // pseudo random number init
    int rfd = open("/dev/urandom", O_RDONLY );
@@ -1070,7 +1185,9 @@ int md_util_init(void) {
 }
 
 
-// sleep for the given timespec amount of time, transparently handing EINTR
+/**
+ * @brief Sleep for the given timespec amount of time, transparently handing EINTR
+ */
 int md_sleep_uninterrupted( struct timespec* ts ) {
    
    struct timespec now;
@@ -1108,8 +1225,10 @@ int md_sleep_uninterrupted( struct timespec* ts ) {
    return 0;
 }
 
-// strip characters in strip from the end of str, replacing them with 0
-// return the number of characters stripped
+/**
+ * @brief Strip characters in strip from the end of str, replacing them with 0
+ * @return the number of characters stripped
+ */
 int md_strrstrip( char* str, char const* strip ) {
    
    size_t strip_len = strlen(strip);
@@ -1140,7 +1259,9 @@ int md_strrstrip( char* str, char const* strip ) {
    return itrs;
 }
 
-// translate zlib error codes 
+/**
+ * @brief Translate zlib error codes 
+ */
 static int md_zlib_err( int zerr ) {
    if( zerr == Z_MEM_ERROR ) {
       
@@ -1158,9 +1279,14 @@ static int md_zlib_err( int zerr ) {
    return -EPERM;
 }
 
-// compress a string, returning the compressed string.
-// return 0 on success, and set *out and *out_len to be a malloc'ed buffer containing the deflated data from in.
-// return -ENOMEM on OOM
+/**
+ * @brief Compress a string
+ * @return The compressed string.
+ * @param[out] *out Buffer containing the deflated data from in
+ * @param[out] *out_len Length of out
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_deflate( char* in, size_t in_len, char** out, size_t* out_len ) {
    
    uint32_t out_buf_len = compressBound( in_len );
@@ -1189,9 +1315,13 @@ int md_deflate( char* in, size_t in_len, char** out, size_t* out_len ) {
    return 0;
 }
 
-// decompress a string, returning the normal string 
-// return 0 on success, and set *out and *out_len to refer to a malloc'ed buffer and its length that contain the inflated data from in.
-// return -ENOMEM on OOM
+/**
+ * @brief Decompress a string, returning the normal string
+ * @param[out] *out Malloc'ed buffer containing the inflated data from in
+ * @param[out] *out_len Length of out 
+ * @retval 0 Success, and set *out and *out_len to refer to a malloc'ed buffer and its length that contain the inflated data from in.
+ * @retval -ENOMEM Out of Memory
+ */
 int md_inflate( char* in, size_t in_len, char** out, size_t* out_len ) {
    
    uLongf out_buf_len = *out_len;
@@ -1243,10 +1373,12 @@ int md_inflate( char* in, size_t in_len, char** out, size_t* out_len ) {
    return 0;
 }
 
-// alloc and then mlock 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on improper memory alignment (shouldn't happen--this is a bug)
+/**
+ * @brief Alloc and then mlock 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Improper memory alignment (shouldn't happen--this is a bug)
+ */
 int mlock_calloc( struct mlock_buf* buf, size_t len ) {
    memset( buf, 0, sizeof( struct mlock_buf ) );
    
@@ -1275,7 +1407,10 @@ int mlock_calloc( struct mlock_buf* buf, size_t len ) {
    return 0;
 }
 
-// free an mlock'ed buf (unlock it first)
+/**
+ * @brief Free an mlock'ed buf
+ * @note Unlock it first
+ */
 int mlock_free( struct mlock_buf* buf ) {
    if( buf->ptr != NULL ) {
       
@@ -1289,10 +1424,12 @@ int mlock_free( struct mlock_buf* buf ) {
    return 0;
 }
 
-// duplicate a string into an mlock'ed buffer, allocating if needed
-// return 0 on success
-// return -EINVAL if not enough space in dest 
-// return -ENOMEM if OOM 
+/**
+ * @brief Duplicate a string into an mlock'ed buffer, allocating if needed
+ * @retval 0 Success
+ * @retval -EINVAL Not enough space in dest 
+ * @retval -ENOMEM Out of Memory
+ */
 int mlock_dup( struct mlock_buf* dest, char const* src, size_t src_len ) {
    
    if( dest->ptr == NULL ) {
@@ -1314,10 +1451,13 @@ int mlock_dup( struct mlock_buf* dest, char const* src, size_t src_len ) {
    return 0;
 }
 
-// duplicate an mlock'ed buffer's contents, allocating dest if need be.
-// return 0 on success
-// return -EINVAL if not enough space in dest
-// return -ENOMEM if OOM
+/**
+ * @brief Duplicate an mlock'ed buffer's contents, allocating dest if need be.
+ * @param[out] dest Buffer
+ * @retval 0 Success
+ * @retval -EINVAL Not enough space in dest
+ * @retval -ENOMEM Out of Memory
+ */
 int mlock_buf_dup( struct mlock_buf* dest, struct mlock_buf* src ) {
    
    if( dest->ptr == NULL ) {
@@ -1340,10 +1480,11 @@ int mlock_buf_dup( struct mlock_buf* dest, struct mlock_buf* src ) {
 }
 
 
-
-// flatten a response buffer into a byte string
-// return 0 on success
-// return NULL on OOM
+/**
+ * @brief Flatten a response buffer into a byte string
+ * @retval 0 Success
+ * @retval NULL Out of Memory
+ */
 static char* md_response_buffer_to_string_impl( md_response_buffer_t* rb, int extra_space ) {
    
    size_t total_len = 0;
@@ -1367,19 +1508,24 @@ static char* md_response_buffer_to_string_impl( md_response_buffer_t* rb, int ex
    return msg_buf;
 }
 
-// flatten a response buffer into a byte string
-// do not null-terminate
+/**
+ * @brief Flatten a response buffer into a byte string
+ * @note Do not null-terminate
+ */
 char* md_response_buffer_to_string( md_response_buffer_t* rb ) {
    return md_response_buffer_to_string_impl( rb, 0 );
 }
 
-
-// flatten a response buffer into a byte string, null-terminating it
+/**
+ * @brief Flatten a response buffer into a byte string, null-terminating it
+ */
 char* md_response_buffer_to_c_string( md_response_buffer_t* rb ) {
    return md_response_buffer_to_string_impl( rb, 1 );
 }
 
-// free a response buffer
+/**
+ * @brief Free a response buffer
+ */
 void md_response_buffer_free( md_response_buffer_t* rb ) {
    if( rb == NULL ) {
       return;
@@ -1398,7 +1544,9 @@ void md_response_buffer_free( md_response_buffer_t* rb ) {
    rb->clear();
 }
 
-// size of a response buffer
+/**
+ * @brief Size of a response buffer
+ */
 off_t md_response_buffer_size( md_response_buffer_t* rb ) {
    off_t ret = 0;
    for( unsigned int i = 0; i < rb->size(); i++ ) {
@@ -1408,9 +1556,11 @@ off_t md_response_buffer_size( md_response_buffer_t* rb ) {
 }
 
 
-// duplicate a buffer of RAM
-// return the new pointer on success
-// return NULL on OOM 
+/**
+ * @brief Duplicate a buffer of RAM
+ * @return The new pointer on success
+ * @retval NULL Out of Memory
+ */
 void* md_memdup( void* buf, size_t len ) {
    char* ret = SG_CALLOC( char, len );
    if( ret == NULL ) {
@@ -1421,7 +1571,9 @@ void* md_memdup( void* buf, size_t len ) {
    return ret;
 }
 
-// duplicate a string, but doe on OOM
+/**
+ * @brief Duplicate a string, but doe Out of Memory
+ */
 char* SG_strdup_or_die( char const* str ) {
    char* ret = SG_strdup_or_null( str );
    if( ret == NULL && str != NULL ) {
@@ -1430,6 +1582,9 @@ char* SG_strdup_or_die( char const* str ) {
    return ret;
 }
 
+/**
+ * @brief Create thread of self
+ */
 unsigned long long int md_pthread_self(void) {
    union {
       pthread_t t;

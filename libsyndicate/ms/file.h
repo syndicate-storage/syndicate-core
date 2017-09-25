@@ -14,63 +14,71 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/file.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for file.cpp
+ *
+ * @see libsyndicate/ms/file.cpp
+ */
+
 #ifndef _LIBSYNDICATE_MS_FILE_H_
 #define _LIBSYNDICATE_MS_FILE_H_
 
 #include "libsyndicate/ms/core.h"
 
-// request to manipulate metadata on the MS
-// NOTE: all data here is shallow-copied by request-generating methods--you don't have to free this structure.
+/**
+ * @brief Request to manipulate metadata on the MS
+ * @note All data here is shallow-copied by request-generating methods, you don't have to free this structure.
+ */
 struct ms_client_request {
-   int op;
-   int flags;
-   struct md_entry* ent;
+   int op;                          ///< Operation
+   int flags;                       ///< Flags
+   struct md_entry* ent;            ///< An entry
    
-   // optional; only if performing an ms::ms_request::UPDATE due to a write
-   uint64_t* affected_blocks;
-   size_t num_affected_blocks;
+   uint64_t* affected_blocks;       ///< Optional: if performing an ms::ms_request::UPDATE due to a write
+   size_t num_affected_blocks;      ///< Optional: if performing an ms::ms_request::UPDATE due to a write
    
-   // optional: coordinator signature over the above
-   unsigned char* vacuum_signature;
-   size_t vacuum_signature_len;
+   unsigned char* vacuum_signature; ///< Optional: if coordinator signature over the above
+   size_t vacuum_signature_len;     ///< Optional: if coordinator signature over the above
    
    // optional: new xattr info 
-   char const* xattr_name;
-   char const* xattr_value;
-   size_t xattr_value_len;
-   unsigned char* xattr_hash;
+   char const* xattr_name;          ///< Extended attribute name, optional: only if updated       
+   char const* xattr_value;         ///< Extended attribute value, optional: only if updated     
+   size_t xattr_value_len;          ///< Extended attribute value length, optional: only if updated        
+   unsigned char* xattr_hash;       ///< Extended attribute hash, optional: only if updated
    
-   // optional; only if performing an ms::ms_request::RENAME 
-   struct md_entry* dest;
+   struct md_entry* dest;           ///< Dest entry, optional: only if performing an ms::ms_request::RENAME 
    
-   // caller-given context to associate with this requests
-   void* cls;
+   void* cls;                       ///< Caller-given context to associate with this request
 };
 
-// result of a single RPC operation 
+/// Result of a single RPC operation 
 struct ms_client_request_result {
    
-   int rc;                      // return code from the MS for the operation 
-   int reply_error;             // return code from the MS for the request
-   uint64_t file_id;            // inode on which we're operating
-   struct md_entry* ent;        // will be NULL if there is no entry for this operation 
+   int rc;                      ///< Return code from the MS for the operation 
+   int reply_error;             ///< Return code from the MS for the request
+   uint64_t file_id;            ///< Inode on which we're operating
+   struct md_entry* ent;        ///< Will be NULL if there is no entry for this operation 
 };
 
 
-// multi-entry response (e.g. getattr_multi, listdir, etc.) 
+/// Multi-entry response (e.g. getattr_multi, listdir, etc.) 
 struct ms_client_multi_result {
    
-   int reply_error;             // result of the multi-RPC 
-   int num_processed;           // number of items processed by the MS
+   int reply_error;             ///< Result of the multi-RPC 
+   int num_processed;           ///< Number of items processed by the MS
    
-   struct md_entry* ents;       // entries returned by the MS
-   size_t num_ents;             // number of entries returned by the MS
+   struct md_entry* ents;       ///< Entries returned by the MS
+   size_t num_ents;             ///< Number of entries returned by the MS
 };
 
 
 typedef list<struct ms_client_request*> ms_client_request_list;
  
-// does an operation return an entry from the MS?
+/// Does an operation return an entry from the MS?
 #define MS_CLIENT_OP_RETURNS_ENTRY( op ) ((op) == ms::ms_request::CREATE || (op) == ms::ms_request::UPDATE || (op) == ms::ms_request::CHCOORD)
 
 extern "C" {

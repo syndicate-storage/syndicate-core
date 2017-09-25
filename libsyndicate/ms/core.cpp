@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/core.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific core syndicate functions
+ *
+ * @see libsyndicate/ms/core.h
+ */
+
 #include "libsyndicate/ms/core.h"
 #include "libsyndicate/ms/benchmark.h"
 #include "libsyndicate/ms/cert.h"
@@ -23,7 +33,11 @@
 #include "libsyndicate/ms/getattr.h"
 #include "libsyndicate/ms/volume.h"
 
-// verify that a given key has our desired security parameters
+/**
+ * @brief Verify that a given key has our desired security parameters
+ * @retval 0 Success
+ * @retval -EINVAL Not an RSA key or invalid RSA size
+ */
 int ms_client_verify_key( EVP_PKEY* key ) {
    
    RSA* ref_rsa = EVP_PKEY_get1_RSA( key );
@@ -46,8 +60,11 @@ int ms_client_verify_key( EVP_PKEY* key ) {
 }
 
 
-// set up secure CURL handle 
-// NOTE: the caller must set the CURLOPT_USERPWD field
+/**
+ * @brief Set up secure CURL handle 
+ * @note The caller must set the CURLOPT_USERPWD field
+ * @return 0
+ */
 int ms_client_init_curl_handle( struct ms_client* client, CURL* curl, char const* url, char const* auth_header ) {
    
    md_init_curl_handle( client->conf, curl, url, client->conf->connect_timeout);
@@ -71,9 +88,13 @@ int ms_client_init_curl_handle( struct ms_client* client, CURL* curl, char const
 }
 
 
-// load up a key, storing its OpenSSL EVP_PKEY form and optionally a duplicate of its PEM-encoded value (if key_pem_dup is not NULL)
-// return 0 on success 
-// return non-zero on error
+/**
+ * @brief Load up a key
+ *
+ * Storing its OpenSSL EVP_PKEY form and optionally a duplicate of its PEM-encoded value (if key_pem_dup is not NULL)
+ * @retval 0 Success 
+ * @retval !0 Error
+ */
 int ms_client_try_load_key( struct md_syndicate_conf* conf, EVP_PKEY** key, char** key_pem_dup, char const* key_pem, bool is_public ) {
    
    int rc = 0;
@@ -124,11 +145,14 @@ int ms_client_try_load_key( struct md_syndicate_conf* conf, EVP_PKEY** key, char
 }
    
 
-// create an MS client context
-// NOTE: it takes ownership of volume_cert and syndicate_pubkey
-// return 0 on success 
-// return -EINVAL if config is NULL 
-// return -ENOMEM if OOM
+/**
+ * @brief Create an MS client context
+ *
+ * It takes ownership of volume_cert and syndicate_pubkey
+ * @retval 0 Success 
+ * @retval -EINVAL if config is NULL 
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_init( struct ms_client* client, struct md_syndicate_conf* conf, EVP_PKEY* syndicate_pubkey, ms::ms_volume_metadata* volume_cert ) {
 
    int rc = 0;
@@ -337,8 +361,10 @@ int ms_client_init( struct ms_client* client, struct md_syndicate_conf* conf, EV
 }
 
 
-// destroy an MS client context 
-// always succeeds
+/**
+ * @brief Destroy an MS client context 
+ * @note Always succeeds
+ */
 int ms_client_destroy( struct ms_client* client ) {
    
    if( client == NULL ) {
@@ -415,12 +441,16 @@ int ms_client_destroy( struct ms_client* client ) {
 }
 
 
-// generate an authentication header, e.g. for the CURLOPT_USERPWD field.
-// format: "${g_type}_${g_id}:${signature}"
-// signature input: "${g_type}_${g_id}:${url}"
-// return 0 on success, and allocate *auth_header as a null-terminated string 
-// return -EPERM on signature generation error
-// return -ENOMEM on OOM 
+/**
+ * @brief Generate an authentication header, e.g. for the CURLOPT_USERPWD field.
+ *
+ * format: "${g_type}_${g_id}:${signature}"
+ * signature input: "${g_type}_${g_id}:${url}"
+ * @param[out] auth_header Allocate a null-terminated string
+ * @retval 0 Success
+ * @retval -EPERM Signature generation error
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_auth_header( struct ms_client* client, char const* url, char** auth_header ) {
    
    int rc = 0;
@@ -486,14 +516,18 @@ int ms_client_auth_header( struct ms_client* client, char const* url, char** aut
    return 0;
 }
 
-// synchronously download metadata from the MS.  logs benchmark data.
-// return 0 on success
-// return -ENOMEM if out of memory
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EAGAIN if we were signaled to retry the request 
-// return -EREMOTEIO if the HTTP error is >= 500 
-// return -EPROTO if the HTTP error was between 400 and 499
-// return other -errno on socket- and recv-related errors
+/**
+ * @brief Synchronously download metadata from the MS.
+ *
+ * Logs benchmark data.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time 
+ * @retval -EAGAIN Signaled to retry the request 
+ * @retval -EREMOTEIO The HTTP error is >= 500 
+ * @retval -EPROTO The HTTP error was between 400 and 499
+ * @retval Other -errno on socket- and recv-related errors
+ */
 int ms_client_download( struct ms_client* client, char const* url, char** buf, off_t* buflen ) {
    
    int rc = 0;
@@ -548,7 +582,10 @@ int ms_client_download( struct ms_client* client, char const* url, char** buf, o
 }
 
 
-// read-lock a client context 
+/**
+ * @brief Read-lock a client context
+ * @return Result from pthread_rwlock_rdlock
+ */ 
 int ms_client_rlock2( struct ms_client* client, char const* from_str, int lineno ) {
    
    if( client->conf->debug_lock ) {
@@ -559,7 +596,10 @@ int ms_client_rlock2( struct ms_client* client, char const* from_str, int lineno
 }
 
 
-// write-lock a client context 
+/**
+ * @brief Write-lock a client context
+ * @return Result from pthread_rwlock_wrlock
+ */
 int ms_client_wlock2( struct ms_client* client, char const* from_str, int lineno ) {
    
    if( client->conf->debug_lock ) {
@@ -570,7 +610,10 @@ int ms_client_wlock2( struct ms_client* client, char const* from_str, int lineno
 }
 
 
-// unlock a client context 
+/**
+ * @brief Unlock a client context
+ * @return Result from pthread_rwlock_unlock
+ */
 int ms_client_unlock2( struct ms_client* client, char const* from_str, int lineno ) {
    
    if( client->conf->debug_lock ) {
@@ -581,7 +624,10 @@ int ms_client_unlock2( struct ms_client* client, char const* from_str, int linen
 }
 
 
-// read-lock a client context's view
+/**
+ * @brief Read-lock a client context's view
+ * @return Result from pthread_rwlock_rdlock
+ */
 int ms_client_config_rlock2( struct ms_client* client, char const* from_str, int lineno ) {
     
    if( client->conf->debug_lock ) {
@@ -592,7 +638,10 @@ int ms_client_config_rlock2( struct ms_client* client, char const* from_str, int
 }
 
 
-// write-lock a client context's view
+/**
+ * @brief Write-lock a client context's view
+ * @return Result from pthread_rwlock_wrlock
+ */
 int ms_client_config_wlock2( struct ms_client* client, char const* from_str, int lineno  ) {
    
    if( client->conf->debug_lock ) {
@@ -603,7 +652,10 @@ int ms_client_config_wlock2( struct ms_client* client, char const* from_str, int
 }
 
 
-// unlock a client context's view
+/**
+ * @brief Unlock a client context's view
+ * @return Result from pthread_rwlock_unlock
+ */
 int ms_client_config_unlock2( struct ms_client* client, char const* from_str, int lineno ) {
    
    if( client->conf->debug_lock ) {
@@ -614,7 +666,7 @@ int ms_client_config_unlock2( struct ms_client* client, char const* from_str, in
 }
 
 
-// get the current volume config version
+/// Get the current volume config version
 uint64_t ms_client_volume_version( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -624,7 +676,7 @@ uint64_t ms_client_volume_version( struct ms_client* client ) {
 }
 
 
-// get the current gateway cert bundle version
+/// Get the current gateway cert bundle version
 uint64_t ms_client_cert_version( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -634,7 +686,7 @@ uint64_t ms_client_cert_version( struct ms_client* client ) {
 }
 
 
-// get the Volume ID
+/// Get the Volume ID
 uint64_t ms_client_get_volume_id( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -645,7 +697,7 @@ uint64_t ms_client_get_volume_id( struct ms_client* client ) {
 }
 
 
-// get the volume version 
+/// Get the volume version 
 uint64_t ms_client_get_volume_version( struct ms_client* client ) {
 
    ms_client_config_rlock( client );
@@ -655,7 +707,7 @@ uint64_t ms_client_get_volume_version( struct ms_client* client ) {
 }
 
 
-// get the volume owner ID 
+/// Get the volume owner ID 
 uint64_t ms_client_get_volume_owner_id( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -665,7 +717,7 @@ uint64_t ms_client_get_volume_owner_id( struct ms_client* client ) {
    return ret;
 }
 
-// get the owner ID 
+/// Get the owner ID 
 uint64_t ms_client_get_owner_id( struct ms_client* client ) {
    ms_client_config_rlock( client );
    
@@ -676,9 +728,11 @@ uint64_t ms_client_get_owner_id( struct ms_client* client ) {
 }
 
 
-// get the ID of the gateway we're attached to 
-// return the id on success
-// return SG_INVALID_GATEWAY_ID if we're not attached  
+/**
+ * @brief Get the ID of the gateway we're attached to 
+ * @return The id on success
+ * @retval SG_INVALID_GATEWAY_ID Not attached
+ */ 
 uint64_t ms_client_get_gateway_id( struct ms_client* client ) {
     
     uint64_t ret = 0;
@@ -695,8 +749,10 @@ uint64_t ms_client_get_gateway_id( struct ms_client* client ) {
     return ret;
 }
 
-// get the Volume name
-// return NULL on OOM 
+/**
+ * @brief Get the Volume name
+ * @retval NULL Out of Memory
+ */
 char* ms_client_get_volume_name( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -706,7 +762,7 @@ char* ms_client_get_volume_name( struct ms_client* client ) {
    return ret;
 }
 
-// get the port num
+/// Get the port num
 int ms_client_get_portnum( struct ms_client* client ) {
    ms_client_config_rlock( client );
    
@@ -717,8 +773,10 @@ int ms_client_get_portnum( struct ms_client* client ) {
 }
 
 
-// get the block size 
-// return the block size
+/**
+ * @brief Get the volume block size 
+ * @return The volume block size
+ */
 uint64_t ms_client_get_volume_blocksize( struct ms_client* client ) {
    ms_client_config_rlock( client );
 
@@ -729,10 +787,13 @@ uint64_t ms_client_get_volume_blocksize( struct ms_client* client ) {
 }
 
 
-// Go download the root inode 
-// return 0 on success, and populate *root 
-// return -ENODATA if we couldn't get a root inode.
-// return -ENOMEM if OOM
+/**
+ * @brief Download the root inode
+ * @param[out] *root The root inode
+ * @retval 0 Success
+ * @retval -ENODATA Couldn't get a root inode.
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_get_volume_root( struct ms_client* client, int64_t root_version, int64_t root_nonce, struct md_entry* root ) {
 
    int rc = 0;
@@ -763,28 +824,40 @@ int ms_client_get_volume_root( struct ms_client* client, int64_t root_version, i
 }
 
 
-// get a ref to the gateway public key
-// the client should be at least read-locked
+/**
+ * @brief Get a ref to the gateway public key
+ * @note The client should be at least read-locked
+ */
 EVP_PKEY* ms_client_my_pubkey( struct ms_client* client ) {
    return client->gateway_pubkey;
 }
 
-// get a ref to the gateway private key 
-// the client should be at least read-locked
+/**
+ * @brief Get a ref to the gateway private key 
+ * @note The client should be at least read-locked
+ */
 EVP_PKEY* ms_client_my_privkey( struct ms_client* client ) {
    return client->gateway_key;
 }
 
-// is an MS operation an async operation?
+/**
+ * @brief Check if an MS operation is an async operation
+ * @retval 1 Operation is an UPDATE_ASYNC, CREATE_ASYNC, or DELETE_ASYNC
+ * @retval 0 Not an async operation
+ */
 int ms_client_is_async_operation( int oper ) {
    
    return (oper == ms::ms_request::UPDATE_ASYNC || oper == ms::ms_request::CREATE_ASYNC || oper == ms::ms_request::DELETE_ASYNC );
 }
 
-// process a gateway message's header, in order to detect when we have a stale cert graph.
-// return 0 if no reload is needed
-// return 1 if the cert graph must be reloaded 
-// return -EINVAL if the volumes do not match
+/**
+ * @brief Process a gateway message's header
+ *
+ * In order to detect when we have a stale cert graph.
+ * @retval 0 No reload is needed
+ * @retval 1 The cert graph must be reloaded 
+ * @retval -EINVAL The volumes do not match
+ */
 int ms_client_need_reload( struct ms_client* client, uint64_t volume_id, uint64_t volume_version, uint64_t cert_bundle_version ) {
    
    int rc = 0;
@@ -811,10 +884,11 @@ int ms_client_need_reload( struct ms_client* client, uint64_t volume_id, uint64_
 }
 
 
-// get a pointer to a gateway's certificate
-// return a pointer to the certificate on success
-// return NULL otherwise.
-// NOTE: only call when you're sure that the config can't be reloaded out from under us
+/**
+ * @brief Get a pointer to a gateway's certificate
+ * @note Only call when you're sure that the config can't be reloaded out from under us
+ * @return A pointer to the certificate, NULL otherwise
+ */
 struct ms_gateway_cert* ms_client_get_gateway_cert( struct ms_client* client, uint64_t gateway_id ) {
    
    struct ms_gateway_cert* cert = NULL;
@@ -838,7 +912,7 @@ struct ms_gateway_cert* ms_client_get_gateway_cert( struct ms_client* client, ui
 }
 
 
-// get the number of gateway certs
+/// Get the number of gateway certs
 uint64_t ms_client_get_num_gateways( struct ms_client* client ) {
 
    uint64_t ret = 0;
@@ -851,9 +925,11 @@ uint64_t ms_client_get_num_gateways( struct ms_client* client ) {
 }
 
 
-// copy in the gateway IDs to the given id_buf
-// if the buf is too small, return -ERANGE
-// return the number copied otherwise.
+/**
+ * @brief Copy in the gateway IDs to the given id_buf
+ * @retval -ERANGE  The buf is too small
+ * @retval Other The number copied
+ */
 int ms_client_get_gateway_ids( struct ms_client* client, uint64_t* id_buf, size_t id_buf_len ) {
 
    int num_copied = 0;
@@ -876,9 +952,11 @@ int ms_client_get_gateway_ids( struct ms_client* client, uint64_t* id_buf, size_
 }
 
 
-// get a cert's capability bits
-// return the bitmask on success
-// return 0 if there is no such gateway (i.e. non-existent gateways have no capabilities)
+/**
+ * @brief Get a cert's capability bits
+ * @return The bitmask on success
+ * @retval 0 There is no such gateway (i.e. non-existent gateways have no capabilities)
+ */
 uint64_t ms_client_get_gateway_caps( struct ms_client* client, uint64_t gateway_id ) {
    
    ms_client_config_rlock( client );
@@ -898,9 +976,11 @@ uint64_t ms_client_get_gateway_caps( struct ms_client* client, uint64_t gateway_
 }
 
 
-// get a gateway's cert version
-// return >0 with the version
-// return 0 if not found
+/**
+ * @brief Get a gateway's cert version
+ * @retval >0 Success, with the version
+ * @retval 0 Not found
+ */
 uint64_t ms_client_get_gateway_cert_version( struct ms_client* client, uint64_t gateway_id ) {
 
    ms_client_config_rlock( client );
@@ -919,9 +999,13 @@ uint64_t ms_client_get_gateway_cert_version( struct ms_client* client, uint64_t 
 }
 
 
-// get a list of gateway IDs that have a particular type 
-// return 0 on success and set *gateway_ids and *num_gateway_ids.  *gateway_ids will be malloc'ed
-// return -ENOMEM on OOM
+/**
+ * @brief Get a list of gateway IDs that have a particular type
+ * @param[out] *gateway_ids The gateway IDs
+ * @param[out] *num_gateway_ids The number of gateway IDs
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_get_gateways_by_type( struct ms_client* client, uint64_t gateway_type, uint64_t** gateway_ids, size_t* num_gateway_ids ) {
    
    size_t count = 0;
@@ -965,8 +1049,10 @@ int ms_client_get_gateways_by_type( struct ms_client* client, uint64_t gateway_t
    return 0;
 }
 
-// swap the cert bundle
-// returns a pointer to the old cert bundle
+/**
+ * @brief Swap the cert bundle
+ * @return A pointer to the old cert bundle
+ */
 ms_cert_bundle* ms_client_swap_gateway_certs( struct ms_client* client, ms_cert_bundle* new_cert_bundle ) {
    
    ms_client_config_wlock( client );
@@ -980,9 +1066,11 @@ ms_cert_bundle* ms_client_swap_gateway_certs( struct ms_client* client, ms_cert_
 }
 
 
-// swap the volume cert 
-// returns a pointer to the old volume structure
-// return NULL on OOM
+/**
+ * @brief Swap the volume cert 
+ * @return Pointer to the old volume structure
+ * @retval NULL Out of Memory
+ */
 struct ms_volume* ms_client_swap_volume_cert( struct ms_client* client, ms::ms_volume_metadata* new_volume_cert ) {
    
    struct ms_volume* new_volume = SG_CALLOC( struct ms_volume, 1 );
@@ -1007,8 +1095,10 @@ struct ms_volume* ms_client_swap_volume_cert( struct ms_client* client, ms::ms_v
 }
 
 
-// swap the syndicate public key 
-// returns a pointer to the old syndicate public key 
+/**
+ * @brief Swap the syndicate public key 
+ * @return A pointer to the old syndicate public key
+ */
 EVP_PKEY* ms_client_swap_syndicate_pubkey( struct ms_client* client, EVP_PKEY* new_syndicate_pubkey ) {
     
     ms_client_config_wlock( client );
@@ -1022,17 +1112,20 @@ EVP_PKEY* ms_client_swap_syndicate_pubkey( struct ms_client* client, EVP_PKEY* n
 }
 
 
-// synchronous method to GET data
-// expects an ms_reply
-// return 0 on success
-// return -ENOMEM if out of memory
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EAGAIN if we were signaled to retry the request 
-// return -EREMOTEIO if the HTTP error is >= 500 
-// return -EPROTO if the HTTP error was between 400 and 499
-// return -EBADMSG if the signature didn't match
-// return other -errno on socket- and recv-related errors
-// NOTE: does *NOT* check the error code in reply
+/**
+ * @brief Synchronous method to GET data
+ *
+ * Expects an ms_reply
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time 
+ * @retval -EAGAIN Signaled to retry the request 
+ * @retval -EREMOTEIO The HTTP error is >= 500 
+ * @retval -EPROTO The HTTP error was between 400 and 499
+ * @retval -EBADMSG The signature didn't match
+ * @retval other -errno on socket- and recv-related errors
+ * @note Does *NOT* check the error code in reply
+ */
 int ms_client_read( struct ms_client* client, char const* url, ms::ms_reply* reply ) {
    
    char* buf = NULL;

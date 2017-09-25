@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file util.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Utility functions header file
+ *
+ * @see libsyndicate/util.cpp
+ */
+
 #ifndef _UTIL_H_
 #define _UTIL_H_
 

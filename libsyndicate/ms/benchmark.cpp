@@ -14,11 +14,23 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/benchmark.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific functions to track and report benchmark data
+ *
+ * @see libsyndicate/ms/benchmark.h
+ */
+
 #include "libsyndicate/ms/benchmark.h"
 #include "libsyndicate/ms/cert.h"
 #include "libsyndicate/ms/volume.h"
 
-// print out timing data
+/**
+ * @brief Print out timing data
+ */
 static void print_timings( uint64_t* timings, size_t num_timings, char const* hdr ) {
    if( num_timings > 0 ) {
       for( size_t i = 0; i < num_timings; i++ ) {
@@ -28,9 +40,11 @@ static void print_timings( uint64_t* timings, size_t num_timings, char const* hd
 }
 
 
-// benchmark header parser, for libcurl
-// returns size * nmemb on success
-// returns 0 on error
+/**
+ * @brief Benchmark header parser, for libcurl
+ * @return size * nmemb on success
+ * @retval 0 Error
+ */
 size_t ms_client_timing_header_func( void *ptr, size_t size, size_t nmemb, void *userdata) {
    struct ms_client_timing* times = (struct ms_client_timing*)userdata;
 
@@ -118,8 +132,11 @@ size_t ms_client_timing_header_func( void *ptr, size_t size, size_t nmemb, void 
 }
 
 
-// extract and print out benchmark data after a write 
-// ms_client must not be locked
+/**
+ * @brief Extract and print out benchmark data after a write 
+ * @note ms_client must not be locked
+ * @return 0
+ */
 int ms_client_timing_log( struct ms_client_timing* times ) {
    
    if( times->create_times != NULL ) {
@@ -138,7 +155,10 @@ int ms_client_timing_log( struct ms_client_timing* times ) {
 }
 
 
-// free timing data 
+/**
+ * @brief Free timing data
+ * @return 0
+ */
 int ms_client_timing_free( struct ms_client_timing* times ) {
    
    if( times->create_times != NULL ) {

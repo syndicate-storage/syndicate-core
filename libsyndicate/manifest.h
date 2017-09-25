@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/manifest.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for Manifest support
+ *
+ * @see libsyndicate/manifest.cpp
+ */
+
 #ifndef _LIBSYNDICATE_MANIFEST_H_
 #define _LIBSYNDICATE_MANIFEST_H_
 
@@ -26,45 +36,51 @@ struct SG_chunk;
 #define SG_MANIFEST_BLOCK_TYPE_MANIFEST SG_messages::ManifestBlock::MANIFEST
 #define SG_MANIFEST_BLOCK_TYPE_BLOCK SG_messages::ManifestBlock::BLOCK
 
+/**
+ * @brief The manifest block
+ */
 struct SG_manifest_block {
   
-   int type;            // block represents an actual block, or a manifest? 
-   uint64_t block_id;
-   int64_t block_version;
+   int type;                        ///< Represents an actual block, or a manifest? 
+   uint64_t block_id;               ///< Block id
+   int64_t block_version;           ///< The block version
    
-   unsigned char* hash;
-   size_t hash_len;
+   unsigned char* hash;             ///< Block hash
+   size_t hash_len;                 ///< Hash length
    
-   bool dirty;          // if true, then this block represents locally-written data
-   uint64_t logical_write_offset;   // logical offset of the write that created this block (ancillary data; not serialized by default)
-   uint64_t logical_write_len;      // logical length of the write that created this block (ancillary data; not serialized by default)
+   bool dirty;                      ///< If true, then this block represents locally-written data
+   uint64_t logical_write_offset;   ///< Logical offset of the write that created this block (ancillary data; not serialized by default)
+   uint64_t logical_write_len;      ///< Logical length of the write that created this block (ancillary data; not serialized by default)
 };
 
-// map block ID to block 
+/// map block ID to block 
 typedef map< uint64_t, struct SG_manifest_block > SG_manifest_block_map_t;
 
-// syndicate manifest
-// keeps track of a file's blocks
+/**
+ * @brief Syndicate manifest
+ *
+ * Keeps track of a file's blocks
+ */
 struct SG_manifest {
    
-   uint64_t volume_id;
-   uint64_t coordinator_id;
-   uint64_t file_id;
-   int64_t file_version;
+   uint64_t volume_id;          ///< Volume ID associated with this manifest
+   uint64_t coordinator_id;     ///< Coordinator ID
+   uint64_t file_id;            ///< File ID
+   int64_t file_version;        ///< File version
    
-   uint64_t size;       // total file size; filled in by the gateway implementation 
-   uint64_t owner_id;   // ID of the user that owns the associated file; filled in by the gateway implementation
+   uint64_t size;               ///< total file size; filled in by the gateway implementation 
+   uint64_t owner_id;           ///< ID of the user that owns the associated file; filled in by the gateway implementation
    
-   bool stale;
-   int64_t mtime_sec;   // time of last *replicated* write
-   int32_t mtime_nsec;
+   bool stale;                  ///< Flag if this manifest is stale
+   int64_t mtime_sec;           ///< Time of last *replicated* write (sec)
+   int32_t mtime_nsec;          ///< Time of last *replicated* write (nsec)
    
-   SG_manifest_block_map_t* blocks;
+   SG_manifest_block_map_t* blocks; ///< Map of blocks 
 
-   char* signature;
-   size_t signature_len;
+   char* signature;             ///< Manifest signature
+   size_t signature_len;        ///< Manifest signature length
    
-   pthread_rwlock_t lock;
+   pthread_rwlock_t lock;       ///< Lock the manifest
 };
 
 // iterate over blocks 

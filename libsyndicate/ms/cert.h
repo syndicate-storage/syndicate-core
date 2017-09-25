@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/cert.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for cert.cpp
+ *
+ * @see libsyndicate/ms/cert.cpp
+ */
+
 #ifndef _MS_CLIENT_CERT_H_
 #define _MS_CLIENT_CERT_H_
 
@@ -22,31 +32,31 @@
 // prototypes 
 struct ms_volume;
 
-// structure for holding gateway information and driver data
+/// Structure for holding gateway information and driver data
 struct ms_gateway_cert {
-   uint64_t user_id;            // Syndicate User ID
-   uint64_t gateway_id;         // Gateway ID
-   uint64_t gateway_type;       // what kind of gateway
-   uint64_t volume_id;          // Volume ID
+   uint64_t user_id;            ///< Syndicate User ID
+   uint64_t gateway_id;         ///< Gateway ID
+   uint64_t gateway_type;       ///< What kind of gateway
+   uint64_t volume_id;          ///< Volume ID
    
-   char* name;                  // gateway name
-   char* hostname;              // what host this gateway runs on
-   int portnum;                 // what port this gateway listens on
+   char* name;                  ///< Gateway name
+   char* hostname;              ///< What host this gateway runs on
+   int portnum;                 ///< What port this gateway listens on
    
-   char* driver_text;           // driver information (only retained for our gateway).  Fetched separately from the cert.
-   uint64_t driver_text_len;    // length of the above
+   char* driver_text;           ///< Driver information (only retained for our gateway).  Fetched separately from the cert.
+   uint64_t driver_text_len;    ///< Length of the above
    
-   unsigned char* driver_hash;  // sha256 of the driver information.
-   size_t driver_hash_len;      // length of the above 
+   unsigned char* driver_hash;  ///< sha256 of the driver information.
+   size_t driver_hash_len;      ///< Length of the above 
    
-   EVP_PKEY* pubkey;            // gateway public key
+   EVP_PKEY* pubkey;            ///< Gateway public key
    
-   uint64_t caps;               // gateway capabilities
-   uint64_t expires;            // when this certificate expires
-   uint64_t version;            // version of this certificate (increases monotonically)
+   uint64_t caps;               ///< Gateway capabilities
+   uint64_t expires;            ///< When this certificate expires
+   uint64_t version;            ///< Version of this certificate (increases monotonically)
    
-   ms::ms_gateway_cert* pb;     // protobuf'ed cert we got
-   ms::ms_user_cert* user_pb;   // protobuf'ed user cert that owns this gateway
+   ms::ms_gateway_cert* pb;     ///< Protobuf'ed cert we got
+   ms::ms_user_cert* user_pb;   ///< Protobuf'ed user cert that owns this gateway
 };
 
 extern "C" {

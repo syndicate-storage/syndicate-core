@@ -7,6 +7,18 @@ http://code.google.com/p/inih/
 
 */
 
+/**
+ * @file libsyndicate/ini.h
+ *
+ * @brief Header file for simple .INI file parser
+ *
+ * @copyright 2009, Ben Hoyt
+ * New BSD License
+ *
+ * @see [http://code.google.com/p/inih/](http://code.google.com/p/inih/)
+ * @see libsyndicate/ini.cpp
+ */
+
 #ifndef __INI_H__
 #define __INI_H__
 

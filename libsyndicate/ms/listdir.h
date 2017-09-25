@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/listdir.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for listdir.cpp
+ *
+ * @see libsyndicate/ms/listdir.cpp
+ */
+
 #ifndef _LIBSYNDICATE_MS_LISTDIR_
 #define _LIBSYNDICATE_MS_LISTDIR_
 
@@ -25,26 +35,26 @@
 
 typedef map< uint64_t, struct md_entry > ms_client_dir_listing;
 
-// listdir context
+/// listdir context
 struct ms_client_listdir_context {
    
-   struct ms_client* client;
+   struct ms_client* client;                    ///< MS client
    
-   uint64_t volume_id;   
-   uint64_t parent_id;
+   uint64_t volume_id;                          ///< Volume ID
+   uint64_t parent_id;                          ///< Parent ID
    
-   queue<int>* batches;                         // which batches of the index to download next
+   queue<int>* batches;                         ///< Which batches of the index to download next
    
-   set<uint64_t>* children_ids;                 // file ids of downloaded children
-   vector<struct md_entry>* children;           // downloaded children
+   set<uint64_t>* children_ids;                 ///< File ids of downloaded children
+   vector<struct md_entry>* children;           ///< Downloaded children
    
-   int listing_error;
-   int64_t num_children;
-   int64_t capacity;
+   int listing_error;                           ///< The listing error
+   int64_t num_children;                        ///< Number of children
+   int64_t capacity;                            ///< Capacity
    
-   bool finished;                              // set to true if we get all the children before we're done
+   bool finished;                               ///< Set to true if we get all the children before we're done
    
-   pthread_mutex_t lock;
+   pthread_mutex_t lock;                        ///< Lock
 };
 
 extern "C" {

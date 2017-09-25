@@ -14,9 +14,23 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/drivers/coblitz/coblitz.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Coblitz CDN driver functions
+ *
+ * @see libsyndicate/drivers/coblitz/coblitz.h
+ */
+
 #include "coblitz.h"
 
-// intialize our cache driver 
+/**
+ * @brief Intialize our cache driver
+ * @retval 0 Success
+ * @retval -EINVAL CDN_PREFIX not found
+ */ 
 int closure_init( struct md_closure* closure, void** cls ) {
    // get the CDN prefix...
    char* cdn_prefix = NULL;
@@ -37,7 +51,10 @@ int closure_init( struct md_closure* closure, void** cls ) {
 }
 
 
-// shut down our cache driver
+/**
+ * @brief Shut down our cache driver
+ * @return 0
+ */
 int closure_shutdown( void* cls ) {
    
    struct coblitz_cls* ccls = (struct coblitz_cls*)(cls);
@@ -50,7 +67,10 @@ int closure_shutdown( void* cls ) {
    return 0;
 }
 
-// connect to the coblitz CDN 
+/**
+ * @brief Connect to the coblitz CDN
+ * @return 0
+ */
 int connect_cache( struct md_closure* closure, CURL* curl, char const* url, void* cls ) {
    SG_debug("Coblitz connect_cache on %s\n", url );
    

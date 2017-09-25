@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file workqueue.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Work queue header file
+ *
+ * @see libsyndicate/workqueue.cpp
+ */
+
 #ifndef _LIBSYNDICATE_WQ_H_
 #define _LIBSYNDICATE_WQ_H_
 
@@ -30,49 +40,54 @@ using namespace std;
 // syndicate workqueue callback type
 typedef int (*md_wq_func_t)( struct md_wreq* wreq, void* cls );
 
-// syndicate workqueue request
+/**
+ * @brief Syndicate workqueue request
+ */
 struct md_wreq {
    
-   // callback to do work 
+   /// Callback to do work 
    md_wq_func_t work;
    
-   // user-supplied arguments
+   /// User-supplied arguments
    void* work_data;
    
-   // flags controlling the lifecycle of this work request
+   /// Flags controlling the lifecycle of this work request
    int flags;
    
-   // promise semaphore, to wake up the caller.
-   // only initialized of MD_WQ_PROMISE is specified
+   /// Promise semaphore, to wake up the caller.  Only initialized of MD_WQ_PROMISE is specified
    sem_t promise_sem;
+
+   /// The promise return value (rc)
    int promise_ret;
 };
 
-// workqueue type 
+/// Workqueue type 
 typedef queue< struct md_wreq > md_wq_queue_t;
 
-// syndicate workqueue
+/// Syndicate workqueue
 struct md_wq {
    
-   // caller-specific data 
+   /// Caller-specific data 
    void* cls;
   
-   // worker thread 
+   /// Worker thread 
    pthread_t thread;
    
-   // is the thread running?
+   /// Thread running state
    bool running;
    
-   // things to do (double-bufferred)
+   /// Things to do (double-bufferred)
    md_wq_queue_t* work;
    
+   /// Things to do (first buffer)
    md_wq_queue_t* work_1;
+   /// Things to do (second buffer)
    md_wq_queue_t* work_2;
    
-   // lock governing access to work
+   /// Lock governing access to work
    pthread_mutex_t work_lock;
    
-   // semaphore to signal the availability of work
+   /// Semaphore to signal the availability of work
    sem_t work_sem;
 };
 

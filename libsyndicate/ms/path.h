@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/path.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for path.cpp
+ *
+ * @see libsyndicate/ms/path.cpp
+ */
+
 #ifndef _LIBSYNDICATE_MS_PATH_
 #define _LIBSYNDICATE_MS_PATH_
 
@@ -26,33 +36,35 @@
 #define MS_LISTING_NONE         ms::ms_listing::NONE            // entry doesn't exist
 
 
-// path entry metadata for getting metadata listings
-// not all entries need to be set; it depends on the context in which it is used
+/**
+ * @brief Path entry metadata for getting metadata listings
+ * @note Not all entries need to be set; it depends on the context in which it is used
+ */
 struct ms_path_ent {
-   uint64_t volume_id;
-   uint64_t file_id;
-   uint64_t parent_id;
-   int64_t version;
-   int64_t write_nonce;
-   int64_t num_children;
-   int64_t generation;
-   int64_t capacity;
+   uint64_t volume_id;          ///< Volume ID
+   uint64_t file_id;            ///< File ID
+   uint64_t parent_id;          ///< Parent ID
+   int64_t version;             ///< Version
+   int64_t write_nonce;         ///< Write nonce
+   int64_t num_children;        ///< Num children
+   int64_t generation;          ///< Generation
+   int64_t capacity;            ///< Capacity
    
-   char* name;
+   char* name;                  ///< Name
 
-   void* cls;
+   void* cls;                   ///< Data
 };
 
-// directory listing
+/// directory listing
 struct ms_listing {
-   int status;       
-   int type;         // file or directory?
-   vector<struct md_entry>* entries;
+   int status;                  ///< Status
+   int type;                    ///< File or directory?
+   vector<struct md_entry>* entries; ///< Vector of entries
    
-   int error;
+   int error;                   ///< Error
 };
 
-// list of path entries is a path 
+/// List of path entries is a path 
 typedef vector< struct ms_path_ent > ms_path_t;
 
 extern "C" {

@@ -14,34 +14,46 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/manifest.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Manifest related functionality
+ *
+ * @see libsyndicate/manifest.h
+ */
+
 #include "libsyndicate/manifest.h"
 #include "libsyndicate/gateway.h"
 
-// read-lock a manifest 
+/// Read-lock a manifest 
 static int SG_manifest_rlock( struct SG_manifest* manifest ) {
    return pthread_rwlock_rdlock( &manifest->lock );
 }
 
-// write-lock a manifest 
+/// Write-lock a manifest 
 static int SG_manifest_wlock( struct SG_manifest* manifest ) {
    return pthread_rwlock_wrlock( &manifest->lock );
 }
 
-// unlock a manifest 
+/// Unlock a manifest 
 static int SG_manifest_unlock( struct SG_manifest* manifest ) {
    return pthread_rwlock_unlock( &manifest->lock );
 }
 
-// allocate manifest blocks 
+/// Allocate manifest blocks 
 struct SG_manifest_block* SG_manifest_block_alloc( size_t num_blocks ) {
    return SG_CALLOC( struct SG_manifest_block, num_blocks );
 }
 
-// initialize a manifest block (for a block of data, instead of a serialized manifest)
-// duplicate all information 
-// return 0 on success
-// return -ENOMEM on OOM 
-// hash can be NULL
+/**
+ * @brief Initialize a manifest block (for a block of data, instead of a serialized manifest)
+ * @note Duplicate all information 
+ * @note Hash can be NULL
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_block_init( struct SG_manifest_block* dest, uint64_t block_id, int64_t block_version, unsigned char const* hash, size_t hash_len ) {
    
    memset( dest, 0, sizeof(struct SG_manifest_block) );
@@ -64,9 +76,11 @@ int SG_manifest_block_init( struct SG_manifest_block* dest, uint64_t block_id, i
    return 0;
 }
 
-// duplicate a manifest block 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Duplicate a manifest block 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_block_dup( struct SG_manifest_block* dest, struct SG_manifest_block* src ) {
    
    int rc = SG_manifest_block_init( dest, src->block_id, src->block_version, src->hash, src->hash_len );
@@ -81,10 +95,12 @@ int SG_manifest_block_dup( struct SG_manifest_block* dest, struct SG_manifest_bl
 }
 
 
-// load a manifest block from a block protobuf 
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL on missing/invalid fields (i.e. the hash wasn't the right size)
+/**
+ * @brief Load a manifest block from a block protobuf 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL on missing/invalid fields (i.e. the hash wasn't the right size)
+ */
 int SG_manifest_block_load_from_protobuf( struct SG_manifest_block* dest, const SG_messages::ManifestBlock* mblock ) {
    
    unsigned char const* hash = NULL;
@@ -114,7 +130,10 @@ int SG_manifest_block_load_from_protobuf( struct SG_manifest_block* dest, const 
    return rc;
 }
 
-// set the dirty status for a block 
+/**
+ * @brief Set the dirty status for a block
+ * @return 0
+ */
 int SG_manifest_block_set_dirty( struct SG_manifest_block* dest, bool dirty ) {
    
    dest->dirty = dirty;
@@ -122,16 +141,21 @@ int SG_manifest_block_set_dirty( struct SG_manifest_block* dest, bool dirty ) {
 }
 
 
-// set the type of block
+/**
+ * @brief Set the type of block
+ * @return 0
+ */
 int SG_manifest_block_set_type( struct SG_manifest_block* dest, int type ) {
    dest->type = type;
    return 0;
 }
 
 
-// construct a manifest block from a chunk of data and versioning info 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Construct a manifest block from a chunk of data and versioning info 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_block_init_from_chunk( struct SG_manifest_block* dest, uint64_t block_id, int64_t block_version, struct SG_chunk* chunk ) {
    
    int rc = 0;
@@ -154,15 +178,20 @@ int SG_manifest_block_init_from_chunk( struct SG_manifest_block* dest, uint64_t 
 }
 
 
-// allocate a manifest 
+/**
+ * @brief Allocate a manifest
+ * @return A pointer to the memory block allocated by calloc
+ */
 struct SG_manifest* SG_manifest_new() {
    return SG_CALLOC( struct SG_manifest, 1 );
 }
 
-// initialize a fresh, empty manifest.
-// it's modification time will be 0.
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a fresh, empty manifest.
+ * @note The modification time will be 0.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_init( struct SG_manifest* manifest, uint64_t volume_id, uint64_t coordinator_id, uint64_t file_id, int64_t file_version ) {
    
    memset( manifest, 0, sizeof(struct SG_manifest) );
@@ -192,11 +221,15 @@ int SG_manifest_init( struct SG_manifest* manifest, uint64_t volume_id, uint64_t
    return 0;
 }
 
-// duplicate a manifest, including its freshness status and modtime 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if src is malformed
-// NOTE: src must be unlocked or readlocked
+/**
+ * @brief Duplicate a manifest, including its freshness status and modtime
+ * @param[out] dest New manifest
+ * @param[in] src Manifest to duplicate
+ * @note src must be unlocked or readlocked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL src is malformed
+ */
 int SG_manifest_dup( struct SG_manifest* dest, struct SG_manifest* src ) {
    
    int rc = 0;
@@ -245,7 +278,10 @@ int SG_manifest_dup( struct SG_manifest* dest, struct SG_manifest* src ) {
 }
 
 
-// clear a manifest's blocks 
+/**
+ * @brief Clear a manifest's blocks
+ * @retval 0 Success
+ */ 
 int SG_manifest_clear( struct SG_manifest* manifest ) {
    
    for( SG_manifest_block_map_t::iterator itr = manifest->blocks->begin(); itr != manifest->blocks->end(); itr++ ) {
@@ -257,7 +293,10 @@ int SG_manifest_clear( struct SG_manifest* manifest ) {
    return 0;
 }
 
-// clear a manifest's blocks, but don't free them
+/**
+ * @brief Clear a manifest's blocks, but don't free them
+ * @retval 0 Success
+ */
 int SG_manifest_clear_nofree( struct SG_manifest* manifest ) {
    
    manifest->blocks->clear();
@@ -265,10 +304,12 @@ int SG_manifest_clear_nofree( struct SG_manifest* manifest ) {
 }
 
 
-// load a manifest from a protocol buffer 
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if an invalid block is encountered
+/**
+ * @brief Load a manifest from a protocol buffer 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Invalid block was encountered
+ */
 int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages::Manifest* mmsg ) {
    
    int rc = 0;
@@ -354,10 +395,13 @@ int SG_manifest_load_from_protobuf( struct SG_manifest* dest, const SG_messages:
 }
 
 
-// load a manifest from a serialized bytestring that encodes a protobuf
-// return 0 on success, and populate *manifest
-// return -EINVAL if it's not a valid protobuf
-// return -ENOMEM on OOM
+/**
+ * @brief Load a manifest from a serialized bytestring that encodes a protobuf
+ * @param[out] manifest Manifest to be populated
+ * @retval 0 Success, and populate *manifest
+ * @retval -EINVAL if it's not a valid protobuf
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_load_from_chunk( struct SG_manifest* manifest, struct SG_chunk* chunk ) {
 
    int rc = 0;
@@ -385,8 +429,10 @@ int SG_manifest_load_from_chunk( struct SG_manifest* manifest, struct SG_chunk* 
 }
 
 
-// free a manifest block 
-// always succeeds
+/**
+ * @brief Free a manifest block 
+ * @note Always succeeds
+ */
 int SG_manifest_block_free( struct SG_manifest_block* block ) {
    
    SG_safe_free( block->hash );
@@ -396,8 +442,10 @@ int SG_manifest_block_free( struct SG_manifest_block* block ) {
 }
 
 
-// free a manifest 
-// always succeeds
+/**
+ * @brief Free a manifest 
+ * @note Always succeeds
+ */
 int SG_manifest_free( struct SG_manifest* manifest ) {
    
    if( manifest->blocks != NULL ) {
@@ -413,8 +461,10 @@ int SG_manifest_free( struct SG_manifest* manifest ) {
 }
 
 
-// free a block map 
-// always succeeds
+/**
+ * @brief Free a block map 
+ * @note Always succeeds
+ */
 int SG_manifest_block_map_free( SG_manifest_block_map_t* blocks ) {
    
    for( SG_manifest_block_map_t::iterator itr = blocks->begin(); itr != blocks->end(); itr++ ) {
@@ -427,9 +477,11 @@ int SG_manifest_block_map_free( SG_manifest_block_map_t* blocks ) {
 }
 
 
-// set the manifest file version 
-// always succeeds
-// NOTE: manifest cannot be locked
+/**
+ * @brief Set the manifest file version 
+ * @note Manifest cannot be locked
+ * @note Always succeeds
+ */
 int SG_manifest_set_file_version( struct SG_manifest* manifest, int64_t version ) {
    
    SG_manifest_wlock( manifest );
@@ -440,16 +492,19 @@ int SG_manifest_set_file_version( struct SG_manifest* manifest, int64_t version 
    return 0;
 }
 
-// add a block to the manifest.
-// duplicate the block if dup_block is true; otherwise the manifest takes ownership of all data within it (shallow-copied)
-// if replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
-// otherwise, this method will return with -EEXIST if the given block is already present.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block is malformed
-// return -EEXIST if replace is false, but a block with the given ID is already present in the manifest
-// NOTE: manifest cannot be locked
-// NOTE: this is a zero-alloc operation if replace is true, dup_block is false, and the block already exists in the manifest (i.e. the data is just copied over, and the old data is freed)
+/**
+ * @brief Add a block to the manifest.
+ *
+    Duplicate the block if dup_block is true; otherwise the manifest takes ownership of all data within it (shallow-copied)
+    If replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
+    Otherwise, this method will return with -EEXIST if the given block is already present.
+ * @note manifest cannot be locked
+ * @note This is a zero-alloc operation if replace is true, dup_block is false, and the block already exists in the manifest (i.e. the data is just copied over, and the old data is freed)
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The block is malformed
+ * @retval -EEXIST If replace is false, but a block with the given ID is already present in the manifest
+ */
 static int SG_manifest_put_block_ex( struct SG_manifest* manifest, struct SG_manifest_block* block, bool replace, bool dup_block ) {
    
    int rc = 0;
@@ -541,35 +596,45 @@ static int SG_manifest_put_block_ex( struct SG_manifest* manifest, struct SG_man
 }
 
 
-// add a block to the manifest, duplicating it in the process.
-// if replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
-// otherwise, this method will return with -EEXIST if the given block is already present.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block is malformed
-// NOTE: manifest cannot be locked
+/**
+ * @brief Add a block to the manifest, duplicating it in the process.
+ *
+    If replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
+    otherwise, this method will return with -EEXIST if the given block is already present.
+ * @note manifest cannot be locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The block is malformed
+ */
 int SG_manifest_put_block( struct SG_manifest* manifest, struct SG_manifest_block* block, bool replace ) {
    
    return SG_manifest_put_block_ex( manifest, block, replace, true );
 }
 
 
-// put a block into the manifest directly
-// if replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
-// otherwise, this method will return with -EEXIST if the given block is already present.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block is malformed
-// NOTE: manifest cannot be locked
+/**
+ * @brief Put a block into the manifest directly
+ *
+ * If replace is true, then this block will be allowed to overwrite an existing block (which will then be freed)
+ * @note manifest cannot be locked
+ * @return Value of SG_manifest_put_block_ex(...)
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL if the block is malformed
+ * @retval -EEXIST Already present
+ * @see SG_manifest_put_block_ex
+ */
 int SG_manifest_put_block_nocopy( struct SG_manifest* manifest, struct SG_manifest_block* block, bool replace ) {
    
    return SG_manifest_put_block_ex( manifest, block, replace, false );
 }
 
 
-// delete a block from the manifest 
-// return 0 on success
-// return -ENOENT if not found.
+/**
+ * @brief Delete a block from the manifest 
+ * @retval 0 Success
+ * @retval -ENOENT Not found.
+ */
 int SG_manifest_delete_block( struct SG_manifest* manifest, uint64_t block_id ) {
    
    int rc = 0;
@@ -593,15 +658,18 @@ int SG_manifest_delete_block( struct SG_manifest* manifest, uint64_t block_id ) 
 }
 
 
-// patch a manifest 
-// go through the blocks of src, and put them into dest.
-// if replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
-// if dup_block is true, then blocks of src will be duplicated and put into dest.  otherwise, they'll be placed in directly.
-// otherwise, this method fails with -EEXIST 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block was malformed 
-// NOTE: manifest cannot be locked 
+/**
+ * @brief Patch a manifest 
+ *
+    Go through the blocks of src, and put them into dest.
+    If replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
+    If dup_block is true, then blocks of src will be duplicated and put into dest.  Otherwise, they'll be placed in directly.
+ * @note manifest cannot be locked 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL if the block was malformed 
+ * @retval -EEXIST Failed
+ */
 static int SG_manifest_patch_ex( struct SG_manifest* dest, struct SG_manifest* src, bool replace, bool dup_block ) {
 
    int rc = 0;
@@ -632,37 +700,50 @@ static int SG_manifest_patch_ex( struct SG_manifest* dest, struct SG_manifest* s
 }
 
 
-// patch a manifest 
-// go through the blocks of src, duplicate them, and put the duplicates into dest.
-// if replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
-// otherwise, this method fails with -EEXIST 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block was malformed 
-// NOTE: manifest cannot be locked 
+/**
+ * @brief Patch a manifest
+ *
+    Go through the blocks of src, duplicate them, and put the duplicates into dest.
+    If replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
+ * @note manifest cannot be locked
+ * @return The value of SG_manifest_patch_ex(...)
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The block was malformed 
+ * @retval -EEXIST Failed
+ * @see SG_manifest_patch_ex
+ */
 int SG_manifest_patch( struct SG_manifest* dest, struct SG_manifest* src, bool replace ) {
    
    return SG_manifest_patch_ex( dest, src, replace, true );
 }
 
 
-// patch a manifest 
-// go through the blocks of src, and put them directly into dest.  dest takes ownership of src's blocks.
-// if replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
-// otherwise, this method fails with -EEXIST 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if the block was malformed 
-// NOTE: manifest cannot be locked 
+/**
+ * @brief Patch a manifest 
+ *
+    Go through the blocks of src, and put them directly into dest.  dest takes ownership of src's blocks.
+    If replace is true, then the blocks of dest will overwrite existing blocks in src (which will then be freed)
+ * @note manifest cannot be locked 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL if the block was malformed 
+ * @retval -EEXIST Failed
+ * @see SG_manifest_patch_ex
+ */
 int SG_manifest_patch_nocopy( struct SG_manifest* dest, struct SG_manifest* src, bool replace ) {
    
    return SG_manifest_patch_ex( dest, src, replace, false );
 }
 
 
-// truncate a manifest
-// if there are any blocks with a block ID larger than max_block_id, then remove them 
-// always succeeds; returns 0
+/**
+ * @brief Truncate a manifest
+ *
+ * If there are any blocks with a block ID larger than max_block_id, then remove them 
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_truncate( struct SG_manifest* manifest, uint64_t max_block_id ) {
    
    int rc = 0;
@@ -690,9 +771,11 @@ int SG_manifest_truncate( struct SG_manifest* manifest, uint64_t max_block_id ) 
 }
 
 
-// set the dirty bit for a block 
-// return 0 on success
-// return -ENOENT if there is no such block 
+/**
+ * @brief Set the dirty bit for a block 
+ * @retval 0 Success
+ * @retval -ENOENT if there is no such block
+ */
 int SG_manifest_set_block_dirty( struct SG_manifest* manifest, uint64_t block_id, bool dirty ) {
    
    int rc = 0;
@@ -716,8 +799,10 @@ int SG_manifest_set_block_dirty( struct SG_manifest* manifest, uint64_t block_id
 }
 
 
-// set the dirty bit for all blocks in a manifest 
-// return 0 on success
+/**
+ * @brief Set the dirty bit for all blocks in a manifest 
+ * @retval 0 Success
+ */
 int SG_manifest_set_blocks_dirty( struct SG_manifest* manifest, bool dirty ) {
    
    int rc = 0;
@@ -736,8 +821,11 @@ int SG_manifest_set_blocks_dirty( struct SG_manifest* manifest, bool dirty ) {
 }
 
 
-// set the modification time for the manifest
-// always succeeds
+/**
+ * @brief Set the modification time for the manifest
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_set_modtime( struct SG_manifest* manifest, int64_t mtime_sec, int32_t mtime_nsec ) {
    
    int rc = 0;
@@ -751,8 +839,11 @@ int SG_manifest_set_modtime( struct SG_manifest* manifest, int64_t mtime_sec, in
    return rc;
 }
 
-// set the owner ID of the manifest 
-// always succeeds
+/**
+ * @brief Set the owner ID of the manifest 
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_set_owner_id( struct SG_manifest* manifest, uint64_t owner_id ) {
    
    int rc = 0;
@@ -766,8 +857,11 @@ int SG_manifest_set_owner_id( struct SG_manifest* manifest, uint64_t owner_id ) 
    return rc;
 }
 
-// set the coordinator ID of the manifest 
-// always succeeds
+/**
+ * @brief Set the coordinator ID of the manifest 
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_set_coordinator_id( struct SG_manifest* manifest, uint64_t coordinator_id ) {
    
    int rc = 0;
@@ -781,8 +875,11 @@ int SG_manifest_set_coordinator_id( struct SG_manifest* manifest, uint64_t coord
    return rc;
 }
 
-// set the size of the assocaited file 
-// always succeds
+/**
+ * @brief Set the size of the assocaited file 
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_set_size( struct SG_manifest* manifest, uint64_t size ) {
    
    int rc = 0;
@@ -796,8 +893,11 @@ int SG_manifest_set_size( struct SG_manifest* manifest, uint64_t size ) {
    return rc;
 }
 
-// mark the manifest as stale 
-// always succeeds 
+/**
+ * @brief Mark the manifest as stale 
+ * @note Always succeeds 
+ * @retval 0 Success
+ */
 int SG_manifest_set_stale( struct SG_manifest* manifest, bool stale ) {
    
    SG_manifest_wlock( manifest );
@@ -813,39 +913,63 @@ int SG_manifest_set_stale( struct SG_manifest* manifest, bool stale ) {
    return 0;
 }
 
-// get a manifest block's ID
+/**
+ * @brief Get a manifest block's ID
+ * @return block_id
+ */
 uint64_t SG_manifest_block_id( struct SG_manifest_block* block ) {
    return block->block_id;
 }
 
-// get a manifest block's version 
+/**
+ * @brief Get a manifest block's version
+ * @return block_version
+ */ 
 int64_t SG_manifest_block_version( struct SG_manifest_block* block ) {
    return block->block_version;
 }
 
-// get manifest block's type 
+/**
+ * @brief Get manifest block's type
+ * @return type
+ */
 int SG_manifest_block_type( struct SG_manifest_block* block ) {
    return block->type;
 }
 
-// get a manifest block's dirty status 
+/**
+ * @brief Get a manifest block's dirty status
+ * @return dirty
+ */
 bool SG_manifest_block_is_dirty( struct SG_manifest_block* block ) {
    return block->dirty;
 }
 
-// get a manifest block's hash 
+/**
+ * @brief Get a manifest block's hash
+ * @return hash
+ */ 
 unsigned char* SG_manifest_block_hash( struct SG_manifest_block* block ) {
    return block->hash;
 }
 
-// set the block version 
+/**
+ * @brief Set the block version
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_block_set_version( struct SG_manifest_block* block, int64_t version ) {
    block->block_version = version;
    return 0;
 }
 
-// set a manifest's block hash (freeing the previous one, if present)
-// the block takes ownership of the hash
+/**
+ * @brief Set a manifest's block hash (freeing the previous one, if present)
+ *
+ * The block takes ownership of the hash
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_block_set_hash( struct SG_manifest_block* block, unsigned char* hash ) {
    if( block->hash != NULL ) {
       SG_safe_free( block->hash );
@@ -854,23 +978,39 @@ int SG_manifest_block_set_hash( struct SG_manifest_block* block, unsigned char* 
    return 0;
 }
 
+/**
+ * @brief Set the block logical write offset
+ * @note Always succeeds
+ * @retval 0 Success
+ */
 int SG_manifest_block_set_logical_write( struct SG_manifest_block* block, uint64_t offset, uint64_t len ) {
    block->logical_write_offset = offset;
    block->logical_write_len = len;
    return 0;
 }
 
+/**
+ * @brief Get the block logical write offset
+ * @return logical_write_offset
+ */
 uint64_t SG_manifest_block_get_logical_write_offset( struct SG_manifest_block* block ) {
    return block->logical_write_offset;
 }
 
+/**
+ * @brief Get the block logical write length
+ * @return logical_write_len
+ */
 uint64_t SG_manifest_block_get_logical_write_len( struct SG_manifest_block* block ) {
    return block->logical_write_len;
 }
 
 
+/**
+ * @brief Get the manifest volume ID
+ * @return volume_id
+ */
 uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest );
-// get the manifest volume ID 
 uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest ) {
    
    uint64_t volume_id = 0;
@@ -884,7 +1024,10 @@ uint64_t SG_manifest_get_volume_id( struct SG_manifest* manifest ) {
    return volume_id;
 }
 
-// get the manifest file ID 
+/**
+ * @brief Get the manifest file ID
+ * @return file_id
+ */ 
 uint64_t SG_manifest_get_file_id( struct SG_manifest* manifest ) {
    
    uint64_t file_id = 0;
@@ -899,7 +1042,10 @@ uint64_t SG_manifest_get_file_id( struct SG_manifest* manifest ) {
 }
 
 
-// get the manifest file version 
+/**
+ * @brief Get the manifest file version
+ * @return file_version
+ */ 
 int64_t SG_manifest_get_file_version( struct SG_manifest* manifest ) {
    
    int64_t version = 0;
@@ -914,8 +1060,10 @@ int64_t SG_manifest_get_file_version( struct SG_manifest* manifest ) {
 }
 
 
-// get the number of blocks *represented* by the manifest
-// return the *maximum* block ID + 1
+/**
+ * @brief Get the number of blocks *represented* by the manifest
+ * @return the *maximum* block ID + 1
+ */
 uint64_t SG_manifest_get_block_range( struct SG_manifest* manifest ) {
    
    uint64_t rc = 0;
@@ -933,7 +1081,10 @@ uint64_t SG_manifest_get_block_range( struct SG_manifest* manifest ) {
    return rc;
 }
 
-// get the actual number of blocks in the manifest 
+/**
+ * @brief Get the actual number of blocks in the manifest 
+ * @return manifest->blocks->size()
+ */
 uint64_t SG_manifest_get_block_count( struct SG_manifest* manifest ) {
    
    uint64_t ret = 0;
@@ -947,7 +1098,10 @@ uint64_t SG_manifest_get_block_count( struct SG_manifest* manifest ) {
    return ret;
 }
    
-// get the size of the file 
+/**
+ * @brief Get the size of the file
+ * @return manifest->size
+ */
 uint64_t SG_manifest_get_file_size( struct SG_manifest* manifest ) {
    
    uint64_t ret = 0;
@@ -961,14 +1115,18 @@ uint64_t SG_manifest_get_file_size( struct SG_manifest* manifest ) {
    return ret;
 }
 
-
-// get a malloc'ed copy of a block's hash 
-// if block_hash is NULL, it will be alloced.  Otherwise, it will be used.
-// return 0 on success, and set *block_hash and *hash_len
-// return -ENOMEM on OOM 
-// return -ENOENT if not found
-// return -ERANGE if *block_hash is not NULL, but is not big enough to hold the block's hash (*hash_len will be set to the required length)
-// return -ENODATA if there is no hash for this (existant) block 
+/**
+ * @brief Get a malloc'ed copy of a block's hash 
+ *
+ * If block_hash is NULL, it will be alloced.  Otherwise, it will be used.
+ * param[out] *block_hash The hash
+ * param[out] *hash_len The hash length
+ * @retval 0 Success, and set *block_hash and *hash_len
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOENT Not found
+ * @retval -ERANGE *block_hash is not NULL, but is not big enough to hold the block's hash (*hash_len will be set to the required length)
+ * @retval -ENODATA There is no hash for this (existant) block 
+ */
 int SG_manifest_get_block_hash( struct SG_manifest* manifest, uint64_t block_id, unsigned char** block_hash, size_t* hash_len ) {
    
    unsigned char* ret = NULL;
@@ -1017,9 +1175,11 @@ int SG_manifest_get_block_hash( struct SG_manifest* manifest, uint64_t block_id,
 }
 
 
-// does a block have a hash?
-// return true if so
-// return false if not (including if it doesn't exist)
+/**
+ * @brief Check if a block has a hash
+ * @retval True Has a hash
+ * @retval False No hash (including if it doesn't exist)
+ */
 bool SG_manifest_has_block_hash( struct SG_manifest* manifest, uint64_t block_id ) {
 
    bool rc = true;
@@ -1043,9 +1203,11 @@ bool SG_manifest_has_block_hash( struct SG_manifest* manifest, uint64_t block_id
 }
 
 
-// get a block's version
-// return 0 on success 
-// return -ENOENT if not found
+/**
+ * @brief Get a block's version
+ * @retval 0 Success 
+ * @retval -ENOENT Not found
+ */
 int SG_manifest_get_block_version( struct SG_manifest* manifest, uint64_t block_id, int64_t* block_version ) {
    
    int rc = 0;
@@ -1067,8 +1229,10 @@ int SG_manifest_get_block_version( struct SG_manifest* manifest, uint64_t block_
 }
 
 
-// get the coordinator for this manifest 
-// always succeeds
+/**
+ * @brief Get the coordinator for this manifest 
+ * @note Always succeeds
+ */
 uint64_t SG_manifest_get_coordinator( struct SG_manifest* manifest ) {
    
    uint64_t ret = 0;
@@ -1081,10 +1245,13 @@ uint64_t SG_manifest_get_coordinator( struct SG_manifest* manifest ) {
    return ret;
 }
 
-// determine if a block is represented in the manifest.
-// if it is not, it's a "block hole"
-// return true if it's present 
-// return false if it's a hole
+/**
+ * @brief Determine if a block is represented in the manifest.
+ *
+ * If it is not, it's a "block hole"
+ * @retval True If it's present 
+ * @retval False If it's a hole
+ */
 bool SG_manifest_is_block_present( struct SG_manifest* manifest, uint64_t block_id ) {
    
    bool ret = false;
@@ -1100,8 +1267,10 @@ bool SG_manifest_is_block_present( struct SG_manifest* manifest, uint64_t block_
    return ret;
 }
 
-// get a manifest's modtime, putting it into *mtime_sec and *mtime_nsec 
-// always succeeds
+/**
+ * @brief Get a manifest's modtime, putting it into *mtime_sec and *mtime_nsec 
+ * @note Always succeeds
+ */
 int SG_manifest_get_modtime( struct SG_manifest* manifest, int64_t* mtime_sec, int32_t* mtime_nsec ) {
    
    SG_manifest_rlock( manifest );
@@ -1113,9 +1282,10 @@ int SG_manifest_get_modtime( struct SG_manifest* manifest, int64_t* mtime_sec, i
    return 0;
 }
 
-
-// get the manifest's modtime, second half
-// always succeeds
+/**
+ * @brief Get the manifest's modtime, second half
+ * @note Always succeeds
+ */
 int64_t SG_manifest_get_modtime_sec( struct SG_manifest* manifest ) {
    
    SG_manifest_rlock( manifest );
@@ -1126,9 +1296,10 @@ int64_t SG_manifest_get_modtime_sec( struct SG_manifest* manifest ) {
    return mtime_sec;
 }
 
-
-// get the manifest's modtime, nanosecond half
-// always succeeds
+/**
+ * @brief Get the manifest's modtime, nanosecond half
+ * @note Always succeeds
+ */
 int32_t SG_manifest_get_modtime_nsec( struct SG_manifest* manifest ) {
 
    SG_manifest_rlock( manifest );
@@ -1139,7 +1310,11 @@ int32_t SG_manifest_get_modtime_nsec( struct SG_manifest* manifest ) {
    return mtime_nsec;
 }
 
-// is a manifest stale?
+/**
+ * @brief Check if a manifest is stale
+ * @retval True Stale
+ * @retval False Not stale
+ */
 bool SG_manifest_is_stale( struct SG_manifest* manifest ) {
    
    bool ret = false;
@@ -1153,9 +1328,12 @@ bool SG_manifest_is_stale( struct SG_manifest* manifest ) {
    return ret;
 }
 
-// look up a block and return a pointer to it 
-// return NULL if the block is not known.
-// NOTE: this pointer is only good for as long as no blocks are added or removed from the manifest!
+/**
+ * @brief Look up a block and return a pointer to it 
+ * @note this pointer is only good for as long as no blocks are added or removed from the manifest!
+ * @return Pointer to a block
+ * @retval NULL The block is not known.
+ */
 struct SG_manifest_block* SG_manifest_block_lookup( struct SG_manifest* manifest, uint64_t block_id ) {
    
    struct SG_manifest_block* ret = NULL;
@@ -1174,12 +1352,14 @@ struct SG_manifest_block* SG_manifest_block_lookup( struct SG_manifest* manifest
 }
 
 
-// look up and compare a block's hash against a test hash 
-// return 1 if they are equal 
-// return 0 if they are not equal 
-// return -ENOENT if there is no block in this manifest 
-// return -ENODATA if the block in the manifest does not have a hash 
-// return -EINVAL if the hash length does not match the block's hash length 
+/**
+ * @brief Look up and compare a block's hash against a test hash 
+ * @retval 1 They are equal 
+ * @retval 0 They are not equal 
+ * @retval -ENOENT There is no block in this manifest 
+ * @retval -ENODATA The block in the manifest does not have a hash 
+ * @retval -EINVAL The hash length does not match the block's hash length
+ */
 int SG_manifest_block_hash_eq( struct SG_manifest* manifest, uint64_t block_id, unsigned char* test_hash, size_t test_hash_len ) {
    
    int rc = 0;
@@ -1227,11 +1407,14 @@ int SG_manifest_block_hash_eq( struct SG_manifest* manifest, uint64_t block_id, 
    return rc;
 }
 
-// put a manifest's data into its protobuf representation 
-// the manifest will NOT be signed
-// return 0 on success
-// return -ENOMEM on OOM 
-// the caller should free mmsg regardless of the return code
+/**
+ * @brief Put a manifest's data into its protobuf representation 
+ *
+ * The manifest will NOT be signed
+ * @note The caller should free mmsg regardless of the return code
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_serialize_to_protobuf( struct SG_manifest* manifest, SG_messages::Manifest* mmsg ) {
    
    int rc = 0;
@@ -1291,9 +1474,11 @@ int SG_manifest_serialize_to_protobuf( struct SG_manifest* manifest, SG_messages
 }
 
 
-// put a manifest's block data into a request 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Put a manifest's block data into a request 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_serialize_blocks_to_request_protobuf( struct SG_manifest* manifest, SG_messages::Request* request ) {
    
    int rc = 0;
@@ -1325,9 +1510,11 @@ int SG_manifest_serialize_blocks_to_request_protobuf( struct SG_manifest* manife
 }
 
 
-// serialize a block to a protobuf 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Serialize a block to a protobuf 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_block_serialize_to_protobuf_ex( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock, bool include_logical_write_data ) {
   
    // sanity check...
@@ -1361,13 +1548,18 @@ int SG_manifest_block_serialize_to_protobuf_ex( struct SG_manifest_block* block,
    return 0;
 }
 
+/**
+ * @brief Call SG_manifest_block_serialize_to_protobuf_ex()
+ * @see SG_manifest_block_serialize_to_protobuf_ex
+ */
 int SG_manifest_block_serialize_to_protobuf( struct SG_manifest_block* block, SG_messages::ManifestBlock* mblock) {
    return SG_manifest_block_serialize_to_protobuf_ex( block, mblock, false );
 }
 
-
-// print out a manifest to stdout (i.e. for debugging)
-// return -ENOMEM on OOM
+/**
+ * @brief Print out a manifest to stdout (i.e. for debugging)
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_manifest_print( struct SG_manifest* manifest ) {
    
    SG_manifest_rlock( manifest );

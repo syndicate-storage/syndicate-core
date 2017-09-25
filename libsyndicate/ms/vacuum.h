@@ -14,24 +14,36 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/vacuum.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for vacuum.cpp
+ *
+ * @see libsyndicate/ms/vacuum.cpp
+ */
+
 #ifndef _MS_CLIENT_VACUUM_H_
 #define _MS_CLIENT_VACUUM_H_
 
 #include "libsyndicate/ms/core.h"
 
-// vacuum entry 
+/**
+ * @brief Vacuum entry
+ * @note Covered with the vacuum_signature in the ms_client_request sent to the MS
+ */
 struct ms_vacuum_entry {
    
-   // NOTE: covered with the vacuum_signature in the ms_client_request sent to the MS
-   uint64_t volume_id;
-   uint64_t writer_id;  // id of the gateway that committed the data
-   uint64_t file_id;
-   int64_t file_version;
-   int64_t manifest_mtime_sec;
-   int32_t manifest_mtime_nsec;
+   uint64_t volume_id;          ///< Volume ID
+   uint64_t writer_id;          ///< ID of the gateway that committed the data
+   uint64_t file_id;            ///< File ID
+   int64_t file_version;        ///< File version
+   int64_t manifest_mtime_sec;  ///< Time sec
+   int32_t manifest_mtime_nsec; ///< Time nsec
    
-   uint64_t* affected_blocks;
-   size_t num_affected_blocks;
+   uint64_t* affected_blocks;   ///< Affected blocks
+   size_t num_affected_blocks;  ///< Number of affected blocks
    
 };
 

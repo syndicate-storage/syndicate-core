@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/core.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for core.cpp
+ *
+ * @see libsyndicate/ms/core.cpp
+ */
+
 #ifndef _MS_CLIENT_CORE_H_
 #define _MS_CLIENT_CORE_H_
 
@@ -64,61 +74,63 @@ struct ms_volume;
 // callback to be alerted when a volume's gateway config changes
 typedef int (*ms_client_config_change_callback)( struct ms_client*, void* );
 
-// MS client session
+/**
+ * @brief MS client session
+ * @todo Related to ms_client, restart the http server on a new port if port num changes
+ */
 struct ms_client {
    
    //////////////////////////////////////////////////////////////////
    // core information
-   pthread_rwlock_t lock;       // lock governing access to this whole structure
+   pthread_rwlock_t lock;               ///< Lock governing access to this whole structure
    
-   char* url;                   // MS URL (read-only; never changes)
+   char* url;                           ///< MS URL (read-only; never changes)
    
-   struct md_downloader* dl;    // downloader instance
+   struct md_downloader* dl;            ///< Downloader instance
    
-   struct md_syndicate_conf* conf;      // reference to syndicate config (read-only, never changes)
+   struct md_syndicate_conf* conf;      ///< Reference to syndicate config (read-only, never changes)
    
    //////////////////////////////////////////////////////////////////
    // NOTE: the following fields are filled in at runtime, and do not change over the lifetime of the gateway 
    // (except for portnum, TODO: restart the http server on a new port if this ever changes)
-   bool inited;               // set to true if this structure was initialized
-   uint64_t owner_id;         // ID of the User account running this ms_client
-   uint64_t gateway_id;       // ID of the Gateway running this ms_client
-   uint64_t gateway_type;     // what kind of gateway is this for?
+   bool inited;                         ///< Set to true if this structure was initialized
+   uint64_t owner_id;                   ///< ID of the User account running this ms_client
+   uint64_t gateway_id;                 ///< ID of the Gateway running this ms_client
+   uint64_t gateway_type;               ///< What kind of gateway is this for?
    
-   int portnum;               // port the gateway listens on
+   int portnum;                         ///< Port the gateway listens on
 
-   bool running;              // set to true if threads are running for this ms_client
-   sem_t config_sem;          // uploader thread waits on this until signaled to reload 
+   bool running;                        ///< Set to true if threads are running for this ms_client
+   sem_t config_sem;                    ///< Uploader thread waits on this until signaled to reload 
    
    
    //////////////////////////////////////////////////////////////////
    // flow-control information 
-   int page_size;             // when listing files, how many are we allowed to ask for at once?
-   int max_request_batch;     // maximum number of synchronous requests we can send in one multi_request
-   int max_request_async_batch;     // maximum number of asynchronous requests we can send in one multi_request
-   int max_connections;       // maximum number of open connections to make to the MS
-   int ms_transfer_timeout;     // how long to wait for data transfer before failing with -EAGAIN
+   int page_size;                       ///< When listing files, how many are we allowed to ask for at once?
+   int max_request_batch;               ///< Maximum number of synchronous requests we can send in one multi_request
+   int max_request_async_batch;         ///< Maximum number of asynchronous requests we can send in one multi_request
+   int max_connections;                 ///< Maximum number of open connections to make to the MS
+   int ms_transfer_timeout;             ///< How long to wait for data transfer before failing with -EAGAIN
    
    //////////////////////////////////////////////////////////////////
    // gateway volume-change structures (represents a consistent view of the Volume control state)
-   struct ms_volume* volume;        // Volume we're bound to
-   ms_cert_bundle* certs;           // certificates for all other gateways in the volume
+   struct ms_volume* volume;            ///< Volume we're bound to
+   ms_cert_bundle* certs;               ///< Certificates for all other gateways in the volume
    
-   pthread_rwlock_t config_lock;          // lock governing the above
+   pthread_rwlock_t config_lock;        ///< Lock governing the above
    
    //////////////////////////////////////////////////////////////////
    // identity and authentication
    // gateway key information (read-only, never changes)
-   EVP_PKEY* gateway_key;
-   EVP_PKEY* gateway_pubkey;
+   EVP_PKEY* gateway_key;               ///< Gateway key
+   EVP_PKEY* gateway_pubkey;            ///< Gateway public key
 
-   // syndicate pubkey (never changes)
+   /// Syndicate pubkey (never changes)
    EVP_PKEY* syndicate_pubkey;
   
-   // raw private key (read-only, never changes)
-   char* gateway_key_pem;
-   size_t gateway_key_pem_len;
-   bool gateway_key_pem_mlocked;     // if true, then gateway_key_pem is mlock'ed and needs to be munlock'ed before being freed
+   char* gateway_key_pem;               ///< raw private key (read-only, never changes)
+   size_t gateway_key_pem_len;          ///< private key length
+   bool gateway_key_pem_mlocked;        ///< if true, then gateway_key_pem is mlock'ed and needs to be munlock'ed before being freed
 };
 
 extern "C" {

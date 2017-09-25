@@ -14,7 +14,15 @@
    limitations under the License.
 */
 
-// Syndicate Gateway client API
+/**
+ * @file libsyndicate/client.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for the Syndicate Gateway client API
+ *
+ * @see libsyndicate/client.cpp
+ */
 
 #ifndef _LIBSYNDICATE_CLIENT_H_
 #define _LIBSYNDICATE_CLIENT_H_
@@ -24,8 +32,7 @@
 #include "libsyndicate/gateway.h"
 #include "libsyndicate/download.h"
 
-// maximum length of a gateway reply: 1MB
-#define SG_CLIENT_MAX_REPLY_LEN         1024000
+#define SG_CLIENT_MAX_REPLY_LEN         1024000 ///< Maximum length of a gateway reply: 1MB
 
 // asynchronous upload
 struct SG_client_request_async;

@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/driver.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for driver support
+ *
+ * @see libsyndicate/driver.cpp
+ */
+
 #ifndef _SG_DRIVER_H_
 #define _SG_DRIVER_H_
 

@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/gateway.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for gateway operations
+ *
+ * @see libsyndicate/gateway.cpp
+ */
+
 // basic syndicate gateway implementation.
 
 #ifndef _LIBSYNDICATE_GATEWAY_H_
@@ -27,15 +37,17 @@
 #include "libsyndicate/workqueue.h"
 #include "libsyndicate/ms/core.h"
 
-// I/O hints for gateway requests
+/**
+ * @brief I/O hints for gateway requests
+ */
 struct SG_IO_hints {
-   int io_type;             // none, read, write, trunc
-   uint64_t io_context;     // unique identifier that is consistent across a series of related reads or writes
-   uint64_t offset;         // logical offset of the read/write
-   uint64_t len;            // logical length of the read/write
-   uint64_t* block_vec;     // which blocks are affected
-   int num_blocks;
-   off_t block_size;        // if positive, this is the logical size of the block (i.e. useful for when the block is at the EOF and partially-filled)
+   int io_type;             ///< None, read, write, trunc
+   uint64_t io_context;     ///< Unique identifier that is consistent across a series of related reads or writes
+   uint64_t offset;         ///< Logical offset of the read/write
+   uint64_t len;            ///< Logical length of the read/write
+   uint64_t* block_vec;     ///< Which blocks are affected
+   int num_blocks;          ///< Number of blocks
+   off_t block_size;        ///< If positive, this is the logical size of the block (i.e. useful for when the block is at the EOF and partially-filled)
 };
 
 // values for SG_IO_hints.io_type 
@@ -45,148 +57,155 @@ struct SG_IO_hints {
 #define SG_IO_SYNC  SG_messages::DriverRequest::SYNC
 #define SG_IO_DELETE SG_messages::DriverRequest::DELETE
 
-// gateway request structure, for a block or a manifest or xattr info
+/**
+ * @brief Gateway request structure, for a block or a manifest or xattr info
+ */
 struct SG_request_data {
-   uint64_t user_id;                            // ID of the user running the requesting gateway
-   uint64_t volume_id;                          // volume ID
-   uint64_t file_id;                            // file ID (inode number)
-   uint64_t coordinator_id;                     // gateway coordinating writes for this file 
-   char* fs_path;                               // path to the file
-   int64_t file_version;                        // file version 
+   uint64_t user_id;                            ///< ID of the user running the requesting gateway
+   uint64_t volume_id;                          ///< Volume ID
+   uint64_t file_id;                            ///< File ID (inode number)
+   uint64_t coordinator_id;                     ///< Gateway coordinating writes for this file 
+   char* fs_path;                               ///< Path to the file
+   int64_t file_version;                        ///< File version 
    
    // if a block request...
-   uint64_t block_id;                           // block ID                     
-   int64_t block_version;                       // block version 
+   uint64_t block_id;                           ///< Block ID                     
+   int64_t block_version;                       ///< Block version 
    
    // if a manifest request...
-   struct timespec manifest_timestamp;          // manifest timestamp 
+   struct timespec manifest_timestamp;          ///< Manifest timestamp 
    
    // set to true if an xattr request 
-   bool getxattr;
-   bool listxattr;
-   bool setxattr;
-   bool removexattr;
+   bool getxattr;                               ///< Flag if getxattr request
+   bool listxattr;                              ///< Flag if listxattr request
+   bool setxattr;                               ///< Flag if setxattr request
+   bool removexattr;                            ///< Flag if removexattr request
    
    // getxattr/setxattr/removexattr
-   char* xattr_name;
-   char* xattr_value;
-   size_t xattr_value_len;
-   int64_t xattr_nonce;
+   char* xattr_name;                            ///< Extended attribute name
+   char* xattr_value;                           ///< Extended attribute value
+   size_t xattr_value_len;                      ///< Extended attribute value length
+   int64_t xattr_nonce;                         ///< Extended attribute nonce
    
    // internal hints to be given to the driver
-   uint64_t io_thread_id;                        // I/O worker thread id handling this request
-   struct SG_IO_hints io_hints;                  // I/O hints to be passed along to the driver
+   uint64_t io_thread_id;                       ///< I/O worker thread id handling this request
+   struct SG_IO_hints io_hints;                 ///< I/O hints to be passed along to the driver
 
-   // ID of the requesting gateway (optional) 
-   uint64_t src_gateway_id;
+   uint64_t src_gateway_id;                     ///< ID of the requesting gateway (optional) 
 
-   // on rename, this is the new path
-   char* new_path;
+   char* new_path;                              ///< On rename, this is the new path
 };
 
-// gateway chunk of data, with known length
+/**
+ * @brief Gateway chunk of data, with known length
+ */
 struct SG_chunk {
    
    char* data;
    off_t len;
 };
 
-// Syndicte gateway implementation.
-// This interface gets implemented by each gateway flavor,
-// and allows it to react to other Syndicate gateways.
+/**
+ * @brief Syndicte gateway implementation.
+ *
+ * This interface gets implemented by each gateway flavor,
+ * and allows it to react to other Syndicate gateways.
+ */
 struct SG_gateway {
    
-   void* cls;                           // gateway-specific state
-   struct md_syndicate_conf* conf;      // gateway config
-   struct SG_driver* driver;            // gateway driver
-   struct ms_client* ms;                // MS client
-   struct md_syndicate_cache* cache;    // block and manifest cache
-   struct md_HTTP* http;                // HTTP server
-   struct md_downloader* dl;            // downloader
-   struct md_wq* iowqs;                 // server I/O work queues
-   int num_iowqs;                       // number of I/O work queues
+   void* cls;                           ///< Gateway-specific state
+   struct md_syndicate_conf* conf;      ///< Gateway config
+   struct SG_driver* driver;            ///< Gateway driver
+   struct ms_client* ms;                ///< MS client
+   struct md_syndicate_cache* cache;    ///< Block and manifest cache
+   struct md_HTTP* http;                ///< HTTP server
+   struct md_downloader* dl;            ///< Downloader
+   struct md_wq* iowqs;                 ///< Server I/O work queues
+   int num_iowqs;                       ///< Number of I/O work queues
    
-   volatile bool running;               // set to true once brought up
-   volatile bool use_signal_handlers;   // set to true to use signal handlers
+   volatile bool running;               ///< Set to true once brought up
+   volatile bool use_signal_handlers;   ///< Set to true to use signal handlers
    
-   sem_t config_sem;                    // for starting volume/cert reloads
-   sem_t config_finished_sem;           // for unblocking reload-waiters
-   pthread_mutex_t num_config_reload_waiters_lock;  // for atomic increment/decrement of num_config_reload_waiters
-   uint64_t num_config_reload_waiters;  // how many threads are waiting on reload?
-   int** config_reload_mboxes;          // list of message boxes for the reload status
+   sem_t config_sem;                    ///< For starting volume/cert reloads
+   sem_t config_finished_sem;           ///< For unblocking reload-waiters
+   pthread_mutex_t num_config_reload_waiters_lock;  ///< For atomic increment/decrement of num_config_reload_waiters
+   uint64_t num_config_reload_waiters;  ///< How many threads are waiting on reload?
+   int** config_reload_mboxes;          ///< List of message boxes for the reload status
    
-   int first_arg_optind;                // index into argv of the first non-argument option
-   bool foreground;                     // whether or not we'll run in the foreground
+   int first_arg_optind;                ///< Index into argv of the first non-argument option
+   bool foreground;                     ///< Whether or not we'll run in the foreground
     
    // gateway init/shutdown 
-   int (*impl_setup)( struct SG_gateway*, void** );
-   void (*impl_shutdown)( struct SG_gateway*, void* );
+   int (*impl_setup)( struct SG_gateway*, void** ); ///< Gateway initialization/setup
+   void (*impl_shutdown)( struct SG_gateway*, void* ); ///< Gateway shutdown
 
-   // connect to network caches 
+   /// Connect to network caches 
    int (*impl_connect_cache)( struct SG_gateway*, CURL*, char const*, void* );
    
-   // stat an inode (for the server to know whether or not it can serve a file)
+   /// Stat an inode (for the server to know whether or not it can serve a file)
    int (*impl_stat)( struct SG_gateway*, struct SG_request_data*, struct SG_request_data*, mode_t*, void* );
    
-   // stat a block inode (for the server to know whether or not it can serve a file)
+   /// Stat a block inode (for the server to know whether or not it can serve a file)
    int (*impl_stat_block)( struct SG_gateway*, struct SG_request_data*, struct SG_request_data*, mode_t*, void* );
 
-   // truncate file to a new size
+   /// Truncate file to a new size
    int (*impl_truncate)( struct SG_gateway*, struct SG_request_data*, uint64_t, void* );
    
-   // rename a file 
+   /// Rename a file 
    int (*impl_rename)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* );
 
-   // hint that a rename has occurred
+   /// Hint that a rename has occurred
    int (*impl_rename_hint)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, char const*, void* );
    
-   // delete a file 
+   /// Delete a file 
    int (*impl_detach)( struct SG_gateway*, struct SG_request_data*, void* );
 
-   // refresh a file 
+   /// Refresh a file 
    int (*impl_refresh)( struct SG_gateway*, struct SG_request_data*, void* );
 
-   // serialize a chunk
+   /// Serialize a chunk
    int (*impl_serialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* );
 
-   // deserialize a chunk 
+   /// Deserialize a chunk 
    int (*impl_deserialize)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, struct SG_chunk*, void* );
 
-   // get a block (on cache miss)
-   // if it returns -ENOENT, the gateway responds with HTTP 404 to signal EOF
+   /**
+    * @brief Get a block (on cache miss)
+    * @note If it returns -ENOENT, the gateway responds with HTTP 404 to signal EOF
+    */
    int (*impl_get_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t hints, void* );
    
-   // put a block 
+   /// Put a block 
    int (*impl_put_block)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t hints, void* );
    
-   // delete a block
+   /// Delete a block
    int (*impl_delete_block)( struct SG_gateway*, struct SG_request_data*, void* );
    
-   // get manifest (on cache miss)
+   /// Get manifest (on cache miss)
    int (*impl_get_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_manifest*, uint64_t hints, void* );
    
-   // put manifest 
+   /// Put manifest 
    int (*impl_put_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, uint64_t hints, void* );
    
-   // patch (update) a manifest
+   /// Patch (update) a manifest
    int (*impl_patch_manifest)( struct SG_gateway*, struct SG_request_data*, struct SG_manifest*, void* );
    
-   // delete manifest 
+   /// Delete manifest 
    int (*impl_delete_manifest)( struct SG_gateway*, struct SG_request_data*, void* );
    
-   // get xattr
+   /// Get xattr
    int (*impl_getxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, void* );
    
-   // list xattrs 
+   /// List xattrs 
    int (*impl_listxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk** xattr_names, size_t* num_xattrs, void* );
    
-   // set xattr 
+   /// Set xattr 
    int (*impl_setxattr)( struct SG_gateway*, struct SG_request_data*, struct SG_chunk*, void* );
    
-   // remove xattr 
+   /// Remove xattr 
    int (*impl_removexattr)( struct SG_gateway*, struct SG_request_data*, void* );
    
-   // config change 
+   /// Config change 
    int (*impl_config_change)( struct SG_gateway*, int, void* );
 };
 

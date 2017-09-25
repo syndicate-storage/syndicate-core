@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/getattr.h
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Header file for getattr.cpp
+ *
+ * @see libsyndicate/ms/getattr.cpp
+ */
+
 #ifndef _LIBSYNDICATE_MS_GETATTR_
 #define _LIBSYNDICATE_MS_GETATTR_
 

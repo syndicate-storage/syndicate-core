@@ -14,81 +14,103 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/download.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Functions to support download capabilities
+ *
+ * @see libsyndicate/download.h
+ */
+
 #include "libsyndicate/download.h"
 
-// download set
+/**
+ * @brief Download contexts set
+ */
 struct md_download_set {
    
-   md_pending_set_t* waiting;           // pointers to download contexts for which we are waiting
+   md_pending_set_t* waiting;           ///< pointers to download contexts for which we are waiting
    
-   sem_t sem;                           // block on this until at least one of waiting has been finalized
+   sem_t sem;                           ///< block on this until at least one of waiting has been finalized
 };
 
-// download context
+/**
+ * @brief Download context
+ */
 struct md_download_context { 
    
-   struct md_bound_response_buffer brb;
+   struct md_bound_response_buffer brb; ///< A bounded response buffer
    
-   CURL* curl;
+   CURL* curl;                    ///< Ptr to a CURL object
    
-   int curl_rc;         // stores CURL error code
-   int http_status;     // stores HTTP status 
-   int transfer_errno;  // stores CURL-reported system errno, if an error occurred
-   volatile bool cancelled;      // if true, this was cancelled
-   char* effective_url; // stores final URL that resolved to data
+   int curl_rc;                   ///< Stores CURL error code
+   int http_status;               ///< Stores HTTP status 
+   int transfer_errno;            ///< Stores CURL-reported system errno, if an error occurred
+   volatile bool cancelled;       ///< If true, this was cancelled
+   char* effective_url;           ///< Stores final URL that resolved to data
    
-   volatile bool initialized;    // if true, then this download context has been initialized
-   volatile bool pending;        // if true, then this download context is in the process of being started
-   volatile bool cancelling;     // if true, then this download context is in the process of being cancelled
-   volatile bool running;        // if true, then this download is enqueued on the downloader
-   volatile bool finalized;      // if true, then this download has finished
-   int ref_count;                // number of threads referencing this download
+   volatile bool initialized;     ///< If true, then this download context has been initialized
+   volatile bool pending;         ///< If true, then this download context is in the process of being started
+   volatile bool cancelling;      ///< If true, then this download context is in the process of being cancelled
+   volatile bool running;         ///< If true, then this download is enqueued on the downloader
+   volatile bool finalized;       ///< If true, then this download has finished
+   int ref_count;                 ///< Number of threads referencing this download
    
-   pthread_mutex_t finalize_lock;       // lock to serialize operations that change the above flags (primarily related to finalization)
+   pthread_mutex_t finalize_lock; ///< Lock to serialize operations that change the above flags (primarily related to finalization)
    
-   struct md_download_set* dlset;       // parent group containing this context
+   struct md_download_set* dlset; ///< Parent group containing this context
    
-   sem_t sem;   // client holds this to be woken up when the download finishes 
+   sem_t sem;                     ///< Client holds this to be woken up when the download finishes 
    
-   void* cls;   // associated download state
+   void* cls;                     ///< Associated download state
 };
 
 
-// download worker
+/**
+ * @brief Download worker
+ *
+ * Container for download information
+ */
 struct md_downloader {
    
-   char* name;
-   pthread_t thread;    // CURL thread for downloading 
+   char* name;                          ///< Downloader name
+   pthread_t thread;                    ///< CURL thread for downloading 
    
-   md_downloading_map_t* downloading;   // currently-running downloads
-   pthread_rwlock_t downloading_lock;   // guards downloading and curlm
+   md_downloading_map_t* downloading;   ///< Currently-running downloads
+   pthread_rwlock_t downloading_lock;   ///< Guards downloading and curlm
    
-   md_pending_set_t* pending;           // to be inserted into the downloading map
-   pthread_rwlock_t pending_lock;       // guards pending
-   volatile bool has_pending;
+   md_pending_set_t* pending;           ///< To be inserted into the downloading map
+   pthread_rwlock_t pending_lock;       ///< Guards pending
+   volatile bool has_pending;           ///< Flag that download is pending
    
-   md_pending_set_t* cancelling;        // to be removed from the downloading map
-   pthread_rwlock_t cancelling_lock;    // guards cancelling_lock
-   volatile bool has_cancelling;
+   md_pending_set_t* cancelling;        ///< To be removed from the downloading map
+   pthread_rwlock_t cancelling_lock;    ///< Guards cancelling_lock
+   volatile bool has_cancelling;        ///< Flag that a download is cancelling
    
-   CURLM* curlm;        // multi-download
+   CURLM* curlm;                        ///< Multi-download
    
-   bool running;        // if true, then this downloader is running
-   bool inited;         // if true, then this downloader is fully initialized
+   bool running;                        ///< If true, then this downloader is running
+   bool inited;                         ///< If true, then this downloader is fully initialized
 };
 
 
-// download loop structure
+/**
+ * @brief Download loop structure
+ *
+ * Container for downloads
+ */
 struct md_download_loop {
    
-   struct md_downloader* dl;
+   struct md_downloader* dl;               ///< Downloader
    
-   struct md_download_context** downloads;
-   int num_downloads;
+   struct md_download_context** downloads; ///< Downloads
+   int num_downloads;                      ///< Number of downloads
    
-   struct md_download_set dlset;
+   struct md_download_set dlset;           ///< A download set with download contexts for which we are waiting
    
-   bool started;
+   bool started;                           ///< Flag whether the download loop is in progress
 };
 
 
@@ -110,54 +132,62 @@ md_download_set_iterator md_download_set_end( struct md_download_set* dlset );
 struct md_download_context* md_download_set_iterator_get_context( const md_download_set_iterator& itr );
 
 
-// locks around the downloading contexts 
+/// Read lock downloading contexts 
 int md_downloader_downloading_rlock( struct md_downloader* dl ) {
    return pthread_rwlock_rdlock( &dl->downloading_lock );
 }
 
+/// Write lock downloading contexts 
 int md_downloader_downloading_wlock( struct md_downloader* dl ) {
    return pthread_rwlock_wrlock( &dl->downloading_lock );
 }
 
+/// Unlock downloading contexts 
 int md_downloader_downloading_unlock( struct md_downloader* dl ) {
    return pthread_rwlock_unlock( &dl->downloading_lock );
 }
 
-// locks around the pending contexts 
+/// Read lock the pending contexts 
 int md_downloader_pending_rlock( struct md_downloader* dl ) {
    return pthread_rwlock_rdlock( &dl->pending_lock );
 }
 
+/// Write lock the pending contexts
 int md_downloader_pending_wlock( struct md_downloader* dl ) {
    return pthread_rwlock_wrlock( &dl->pending_lock );
 }
 
+/// Unlock the pending contexts
 int md_downloader_pending_unlock( struct md_downloader* dl ) {
    return pthread_rwlock_unlock( &dl->pending_lock );
 }
 
-// locks around the cancelling contexts 
+/// Read lock the pending contexts 
 int md_downloader_cancelling_rlock( struct md_downloader* dl ) {
    return pthread_rwlock_rdlock( &dl->cancelling_lock );
 }
 
+/// Write lock the cancelling context
 int md_downloader_cancelling_wlock( struct md_downloader* dl ) {
    return pthread_rwlock_wrlock( &dl->cancelling_lock );
 }
 
+/// Unlock the cancelling context
 int md_downloader_cancelling_unlock( struct md_downloader* dl ) {
    return pthread_rwlock_unlock( &dl->cancelling_lock );
 }
 
 
-// alloc a downloader 
+/// Allocate a downloader 
 struct md_downloader* md_downloader_new() {
    return SG_CALLOC( struct md_downloader, 1 );
 }
 
-// set up a downloader 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Set up a downloader 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_downloader_init( struct md_downloader* dl, char const* name ) {
    
    int rc = 0;
@@ -214,9 +244,11 @@ int md_downloader_init( struct md_downloader* dl, char const* name ) {
    return 0;
 }
 
-// start up a downloader 
-// return 0 on success
-// return -1 if we failed to start the thread, or if we're already running 
+/**
+ * @brief Start up a downloader 
+ * @retval 0 Success
+ * @retval -1 if we failed to start the thread, or if we're already running 
+ */
 int md_downloader_start( struct md_downloader* dl ) {
    
    int rc = 0;
@@ -236,9 +268,11 @@ int md_downloader_start( struct md_downloader* dl ) {
    return 0;
 }
 
-// stop a downloader 
-// return 0 on success 
-// return negative if we failed to join with the downloader thread
+/**
+ * @brief Stop a downloader 
+ * @retval 0 Success 
+ * @retval <0 Failed to join with the downloader thread
+ */
 int md_downloader_stop( struct md_downloader* dl ) {
    
    if( dl->running ) {
@@ -254,8 +288,10 @@ int md_downloader_stop( struct md_downloader* dl ) {
    return 0;
 }
 
-// signal every element of a pending_set by incrementing its semaphore
-// always succeeds
+/**
+ * @brief Signal every element of a pending_set by incrementing its semaphore
+ * @note Always succeeds
+ */
 static int md_signal_pending_set( md_pending_set_t* ps ) {
    
    // signal each waiting thread 
@@ -273,10 +309,14 @@ static int md_signal_pending_set( md_pending_set_t* ps ) {
 }
 
 
-// shut down a downloader.  it must be stopped first.
-// stops all CURL transfers abruptly.
-// return 0 on success 
-// return -EINVAL if the downloader was running, or if the downloader was never initialized
+/**
+ * @brief Shut down a downloader
+ *
+ * Stops all CURL transfers abruptly.
+ * @note The downloader must be stopped first.
+ * @retval 0 Success 
+ * @retval -EINVAL The downloader was running, or if the downloader was never initialized
+ */
 int md_downloader_shutdown( struct md_downloader* dl ) {
    
    if( dl->running ) {
@@ -364,17 +404,25 @@ int md_downloader_shutdown( struct md_downloader* dl ) {
    return 0;
 }
 
-// is the downloader running?
+/**
+ * @brief Get run state of downloader
+ * @retval True Running
+ * @retval False Not running
+ */
 bool md_downloader_is_running( struct md_downloader* dl ) {
    return dl->running;
 }
 
 
-// insert a pending context.  This increments the download context's reference count.
-// return 0 on success, and mark it as pending and unsafe to free on success
-// return -EPERM if the downloader is not running 
-// return -EINVAL if the download context is finalized, already pending, or already cancelling
-// return -ENOMEM if OOM
+/**
+ * @brief Insert a pending context.
+ *
+ * This increments the download context's reference count.
+ * @retval 0 Success, and mark it as pending and unsafe to free Success
+ * @retval -EPERM The downloader is not running 
+ * @retval -EINVAL The download context is finalized, already pending, or already cancelling
+ * @retval -ENOMEM Out of Memory
+ */
 int md_downloader_insert_pending( struct md_downloader* dl, struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -431,12 +479,13 @@ int md_downloader_insert_pending( struct md_downloader* dl, struct md_download_c
 }
 
 
-// insert a context to cancel 
-// return 0 on success, and mark the download context as cancelling 
-// return 0 if the download context is already cancelling
-// return -EPERM if the downloader was not running 
-// return -EINPROGRESS if the download context is already cancelling 
-// return -ENOMEM on OOM
+/**
+ * @brief Insert a context to cancel 
+ * @retval 0 Success, and mark the download context as cancelling 
+ * @retval -EPERM The downloader was not running 
+ * @retval -EINPROGRESS The download context is already cancelling 
+ * @retval -ENOMEM Out of Memory
+ */
 int md_downloader_insert_cancelling( struct md_downloader* dl, struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -492,11 +541,13 @@ int md_downloader_insert_cancelling( struct md_downloader* dl, struct md_downloa
    return rc;
 }
 
-// add all pending to downloading 
-// the downloader must be write-locked for downloading
-// return 0 on success 
-// return -EPERM if we failed to insert the curl handle
-// return -ENOMEM on OOM 
+/**
+ * @brief Add all pending to downloading 
+ * @note The downloader must be write-locked for downloading
+ * @retval 0 Success 
+ * @retval -EPERM Failed to insert the curl handle
+ * @retval -ENOMEM Out of Memory 
+ */
 int md_downloader_start_all_pending( struct md_downloader* dl ) {
    
    int rc = 0;
@@ -580,11 +631,15 @@ int md_downloader_start_all_pending( struct md_downloader* dl ) {
 }
 
 
-// remove all cancelling downloads from downloading, unrefing them and freeing them if needed.
-// the downloader must be write-locked for downloading 
-// return 0 on success 
-// return -EPERM if we fail to remove the curl handle
-// return -ENOMEM for OOM 
+/**
+ * @brief Remove all cancelling downloads from downloading
+ *
+ * Unreferences downloads and frees them if needed.
+ * @note The downloader must be write-locked for downloading 
+ * @retval 0 Success 
+ * @retval -EPERM Failed to remove the curl handle
+ * @retval -ENOMEM Out of Memory
+ */
 int md_downloader_end_all_cancelling( struct md_downloader* dl ) {
    
    int rc = 0;
@@ -664,9 +719,11 @@ int md_downloader_end_all_cancelling( struct md_downloader* dl ) {
 }
 
 
-// download data to a response buffer
-// return size * count on success 
-// return 0 on OOM
+/**
+ * @brief Download data to a response buffer
+ * @retval Size Success 
+ * @retval 0 Out of Memory
+ */
 size_t md_get_callback_response_buffer( void* stream, size_t size, size_t count, void* user_data ) {
    
    md_response_buffer_t* rb = (md_response_buffer_t*)user_data;
@@ -693,9 +750,11 @@ size_t md_get_callback_response_buffer( void* stream, size_t size, size_t count,
    return realsize;
 }
 
-// download to a bound response buffer
-// return size * count on success 
-// return 0 on OOM
+/**
+ * @brief Download to a bound response buffer
+ * @retval Size Success 
+ * @retval 0 Out of Memory
+ */
 size_t md_get_callback_bound_response_buffer( void* stream, size_t size, size_t count, void* user_data ) {
    
    struct md_bound_response_buffer* brb = (struct md_bound_response_buffer*)user_data;
@@ -736,18 +795,25 @@ size_t md_get_callback_bound_response_buffer( void* stream, size_t size, size_t 
    return realsize;
 }
 
-// alloc a download context 
+
+/**
+ * @brief Alloc a download context 
+ */
 struct md_download_context* md_download_context_new() {
    return SG_CALLOC( struct md_download_context, 1 );
 }
 
-// initialize a download context.  Takes a CURL handle from the client.
-// The only things it sets in the CURL handle are:
-// * CURLOPT_WRITEDATA
-// * CURLOPT_WRITEFUNCTION
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -errno on failure to initialize a pthread lock 
+
+/**
+ * @brief Initialize a download context.  Takes a CURL handle from the client.
+ *
+   The only things it sets in the CURL handle are:
+   CURLOPT_WRITEDATA
+   CURLOPT_WRITEFUNCTION
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno on failure to initialize a pthread lock 
+ */
 int md_download_context_init( struct md_download_context* dlctx, CURL* curl, off_t max_len, void* cls ) {
    
    SG_debug("Initialize download context %p\n", dlctx );
@@ -782,10 +848,12 @@ int md_download_context_init( struct md_download_context* dlctx, CURL* curl, off
 }
 
 
-// reset a download context.
-// don't call this until it's finalized
-// return 0 on success
-// return -EAGAIN if the donload context is not finalized
+/**
+ * @brief Reset a download context.
+ * @note Don't call this until it's finalized
+ * @retval 0 Success
+ * @retval -EAGAIN The download context is not finalized
+ */
 int md_download_context_reset( struct md_download_context* dlctx, CURL** old_curl ) {
    
    SG_debug("Reset download context %p\n", dlctx );
@@ -831,10 +899,15 @@ int md_download_context_reset( struct md_download_context* dlctx, CURL** old_cur
    return 0;
 }
 
-// free a download context.
-// NOTE: does *not* check reference count
-// if this download context was finalized, then it's guaranteed to be freed
-// always succeeds
+
+/**
+ * @brief Free a download context.
+ *
+ * If this download context was finalized, then it's guaranteed to be freed
+ * @note Does *not* check reference count
+ * @note Always succeeds
+ * @return 0
+ */
 int md_download_context_free2( struct md_download_context* dlctx, CURL** curl, char const* file, int lineno ) {
    
    pthread_mutex_lock( &dlctx->finalize_lock );
@@ -871,8 +944,11 @@ int md_download_context_free2( struct md_download_context* dlctx, CURL** curl, c
 }
 
 
-// reference this download context 
-// always succeeds
+/**
+ * @brief Reference this download context 
+ * @note Always succeeds
+ * @return 0
+ */
 int md_download_context_ref2( struct md_download_context* dlctx, char const* file, int lineno ) {
    
    pthread_mutex_lock( &dlctx->finalize_lock );
@@ -884,10 +960,14 @@ int md_download_context_ref2( struct md_download_context* dlctx, char const* fil
    return 0;
 }
 
-// unreference this download context 
-// if the reference count reaches 0, then free it
-// return 0 on success 
-// return 1 on success, in which case the caller should follow up this call with a call to md_download_context_free.
+
+/**
+ * @brief Unreference this download context 
+ *
+ * If the reference count reaches 0, then free it
+ * @retval 0 Success 
+ * @retval 1 Success, in which case the caller should follow up this call with a call to md_download_context_free.
+ */
 int md_download_context_unref2( struct md_download_context* dlctx, char const* file, int lineno ) {
    
    pthread_mutex_lock( &dlctx->finalize_lock );
@@ -909,9 +989,11 @@ int md_download_context_unref2( struct md_download_context* dlctx, char const* f
 }
 
 
-// unref, and possibly free a download context if it's fully unref'ed 
-// return 0 on success
-// return 1 on success and free
+/**
+ * @brief Unref, and possibly free a download context if it's fully unref'ed 
+ * @retval 0 Success
+ * @retval 1 Success and free
+ */
 int md_download_context_unref_free( struct md_download_context* dlctx, CURL** ret_curl ) {
 
    int rc = md_download_context_unref( dlctx );
@@ -923,8 +1005,12 @@ int md_download_context_unref_free( struct md_download_context* dlctx, CURL** re
    return rc;
 }
 
-// if a download context is part of a download set, remove it 
-// always succeeds
+
+/**
+ * @brief Remove a download context if it is part of a download set
+ * @note Always succeeds
+ * @return 0
+ */
 int md_download_context_clear_set( struct md_download_context* dlctx ) {
 
    if( dlctx != NULL && dlctx->dlset != NULL ) {
@@ -935,13 +1021,16 @@ int md_download_context_clear_set( struct md_download_context* dlctx ) {
    return 0;
 }
 
-// wait for a semaphore to be signaled, up to a given number of milliseconds.
-// if timeout_ms is less than or equal to 0, then wait indefinitely.
-// this method masks -EINTR.
-// if timeout_ms < 0, then use sem_wait.  Otherwise, use sem_trywait +timeout_ms seconds into the future.
-// return 0 on success
-// return -ETIMEDOUT if we timed out waiting 
-// return -errno if sem_timedwait(2) or sem_wait(2) failed for some other reason
+/**
+ * @brief Wait for a download semaphore to be signaled, up to a given number of milliseconds.
+ *
+ * If timeout_ms is less than or equal to 0, then wait indefinitely.
+ * If timeout_ms <= 0, then use sem_wait.  Otherwise, use sem_trywait +timeout_ms seconds into the future.
+ * @note This method masks -EINTR.
+ * @retval 0 Success
+ * @retval -ETIMEDOUT Timed out waiting 
+ * @retval -errno sem_timedwait(2) or sem_wait(2) failed for some other reason
+ */
 int md_download_sem_wait( sem_t* sem, int64_t timeout_ms ) {
    
    int rc = 0;
@@ -1001,11 +1090,12 @@ int md_download_sem_wait( sem_t* sem, int64_t timeout_ms ) {
 }
 
 
-// wait for a download to finish, either in error or not 
-// return the result of waiting, NOT the result of the download 
-// (see md_download_sem_wait for possible return codes)
-// return 0 on success
-// return -ETIMEDOUT if timeout_ms is >= 0 and the deadline was exceeded
+/**
+ * @brief Wait for a download to finish, either in error or not 
+ * @return The result of waiting, NOT the result of the download (see md_download_sem_wait for possible return codes)
+ * @retval 0 Success
+ * @retval -ETIMEDOUT timeout_ms is >= 0 and the deadline was exceeded
+ */
 int md_download_context_wait( struct md_download_context* dlctx, int64_t timeout_ms ) {
    
    SG_debug("Wait on download context %p (%" PRIu64 " millis)\n", dlctx, timeout_ms );
@@ -1019,11 +1109,12 @@ int md_download_context_wait( struct md_download_context* dlctx, int64_t timeout
 }
 
 
-// wait for a download to finish within a download set, either in error or not.
-// return the result of waiting, NOT the result of the download 
-// (see md_downlaod_sem_wait for possible return codes)
-// return 0 on success
-// return -EINVAL if the download set does not have any waiting contexts
+/**
+ * @brief Wait for a download to finish within a download set, either in error or not.
+ * @return The result of waiting, NOT the result of the download (see md_downlaod_sem_wait for possible return codes)
+ * @retval 0 Success
+ * @retval -EINVAL The download set does not have any waiting contexts
+ */
 int md_download_context_wait_any( struct md_download_set* dlset, int64_t timeout_ms ) {
 
    if( dlset->waiting == NULL ) {
@@ -1048,9 +1139,12 @@ int md_download_context_wait_any( struct md_download_set* dlset, int64_t timeout
    return rc;
 }
 
-// set up a download set 
-// return 0 on success
-// return -ENOMEM on OOM
+
+/**
+ * @brief Set up a download set 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_download_set_init( struct md_download_set* dlset ) {
    
    SG_debug("Initialize download set %p\n", dlset );
@@ -1066,9 +1160,11 @@ int md_download_set_init( struct md_download_set* dlset ) {
 }
 
 
-// free a download set 
-// return 0 on success
-// NOT THREAD SAFE
+/**
+ * @brief Free a download set 
+ * @note Not thread safe
+ * @retval 0 Success
+ */
 int md_download_set_free( struct md_download_set* dlset ) {
    
    SG_debug("Free download set %p\n", dlset );
@@ -1086,12 +1182,14 @@ int md_download_set_free( struct md_download_set* dlset ) {
 }
 
 
-// add a download context to a download set.
-// do this before starting the download.
-// does not affect the download's reference count
-// return 0 on success
-// return -ENOMEM on OOM
-// NOT THREAD SAFE
+/**
+ * @brief Add a download context to a download set.
+ *
+ * @note Do this before starting the download, does not affect the download's reference count
+ * @note Not thread safe
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_download_set_add( struct md_download_set* dlset, struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -1115,11 +1213,14 @@ int md_download_set_add( struct md_download_set* dlset, struct md_download_conte
    return rc;
 }
 
-// remove a download context from a download set by value
-// don't do this in e.g. a for() loop where you're iterating over download contexts
-// return 0 on success 
-// return -ENOMEM on OOM 
-// NOT THREAD SAFE
+
+/**
+ * @brief Remove a download context from a download set by value
+ * @note Don't do this in e.g. a for() loop where you're iterating over download contexts
+ * @note Not thread safe
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int md_download_set_clear( struct md_download_set* dlset, struct md_download_context* dlctx ) {
 
    try {
@@ -1139,43 +1240,56 @@ int md_download_set_clear( struct md_download_set* dlset, struct md_download_con
 }
 
 
-// how many items in a download set?
-// return the number of items
-// NOT THREAD SAFE
+/**
+ * @brief Get number of items in a download set
+ * @note Not thread safe
+ * @return The number of items
+ */
 size_t md_download_set_size( struct md_download_set* dlset ) {
    
    return dlset->waiting->size();
 }
 
-// does this download set contain this download?
-// NOT THREAD SAFE
+/**
+ * @brief Get whether this download set contain the provided download
+ * @note Not thread safe
+ */
 bool md_download_set_contains( struct md_download_set* dlset, struct md_download_context* dlctx ) {
    return dlset->waiting->count( dlctx ) > 0;
 }
 
-// iterate: begin 
-// return an iterator to the waiting set
+/**
+ * @brief Start the iteration to the provided download set
+ * @return An iterator to the waiting set
+ */
 md_download_set_iterator md_download_set_begin( struct md_download_set* dlset ) {
    return dlset->waiting->begin();
 }
 
-// iterate: end 
-// return an interator to the waiting set
+/**
+ * @brief Stop the iteration to the provided download set
+ * @return An interator to the waiting set
+ */
 md_download_set_iterator md_download_set_end( struct md_download_set* dlset ) {
    return dlset->waiting->end();
 }
 
-// iterate: deref 
-// return a pointer to the download context
+/**
+ * @brief Dereference the provided download set iterator
+ * @return A pointer to the download context
+ */
 struct md_download_context* md_download_set_iterator_get_context( const md_download_set_iterator& itr ) {
    return *itr;
 }
 
 
-// begin downloading something
-// this will ref the download (i.e. use it in conjunction with md_download_loop_watch)
-// return 0 on success
-// return non-zero if we failed to insert the download into the downloader 
+/**
+ * @brief Begin downloading something
+ *
+ * This will ref the download (i.e. use it in conjunction with md_download_loop_watch)
+ * @retval 0 Success
+ * @retval !0 Failed to insert the download into the downloader 
+ */
 int md_download_context_start( struct md_downloader* dl, struct md_download_context* dlctx ) {
    
    md_download_context_ref( dlctx );
@@ -1191,11 +1305,12 @@ int md_download_context_start( struct md_downloader* dl, struct md_download_cont
    return 0;
 }
 
-// cancel downloading something.
-// return 0 on successful insert, or if the download is already cancelled or finalized
-// return -EPERM if the downloader was not running 
-// return negative if we failed to insert (but mask EINPROGRESS)
-// return negative if we failed to wait for the download to get cancelled
+/**
+ * @brief Cancel download
+ * @retval 0 Success, or the download is already cancelled or finalized
+ * @retval -EPERM The downloader was not running 
+ * @retval <0 Failed to insert (but mask EINPROGRESS) and/or wait for the download to get cancelled
+ */
 int md_download_context_cancel( struct md_downloader* dl, struct md_download_context* dlctx ) {
    
    if( !dl->running ) {
@@ -1245,9 +1360,11 @@ int md_download_context_cancel( struct md_downloader* dl, struct md_download_con
 }
 
 
-// release a waiting context set, given one of its now-finished entries.
-// return 0 on success
-// return -EINVAL if the download set is NULL;
+/**
+ * @brief Release a waiting context set, given one of it's now-finished entries.
+ * @retval 0 Success
+ * @retval -EINVAL The download set is NULL
+ */
 int md_download_set_wakeup( struct md_download_set* dlset ) {
    
    SG_debug("Wake up download set %p\n", dlset );
@@ -1263,10 +1380,14 @@ int md_download_set_wakeup( struct md_download_set* dlset ) {
    return rc;
 }
 
-// run multiple downloads for a bit
-// dl must be write-locked for downloading 
-// return positive non-zero if curl failed somehow 
-// return negative if select() failed
+
+/**
+ * @brief Run multiple downloads
+ *
+ * @note Download must be write-locked for downloading 
+ * @retval >0 Curl failed
+ * @retval <0 select() failed
+ */
 int md_downloader_run_multi( struct md_downloader* dl ) {
    
    int still_running = 0;
@@ -1337,12 +1458,16 @@ int md_downloader_run_multi( struct md_downloader* dl ) {
 }
 
 
-// finalize a download context. On success, populate it with the curl rc, the HTTP status, the transfer OS errno, and the effective URL
-// http_status == -1 means that we couldn't get the HTTP status 
-// os_errno == EIO means that we couldn't get the OS errno or the URL
-// return 0 on success, or if the download was already finalized (if the latter, then the fields in dlctx are untouched)
-// return 1 on success, in which case the caller should free the download context
-// return -ENOMEM on OOM
+/**
+ * @brief Finalize a download context.
+ *
+ * On success, populate it with the curl rc, the HTTP status, the transfer OS errno, and the effective URL
+ * http_status == -1 means that we couldn't get the HTTP status 
+ * os_errno == EIO means that we couldn't get the OS errno or the URL
+ * @retval 0 Success, or if the download was already finalized (if the latter, then the fields in dlctx are untouched)
+ * @retval 1 Success, in which case the caller should free the download context
+ * @retval -ENOMEM Out of Memory
+ */
 int md_downloader_finalize_download_context( struct md_download_context* dlctx, int curl_rc ) {
    
    pthread_mutex_lock( &dlctx->finalize_lock );
@@ -1443,12 +1568,15 @@ int md_downloader_finalize_download_context( struct md_download_context* dlctx, 
 }
 
 
-// finalize all finished downloads 
-// try to remove all downloads, even if we fail to remove some.
-// dl must be write-locked for downloads 
-// return 0 on success
-// return -ENOMEM on OOM
-// return positive if curl did something fatal
+/**
+ * @brief Finalize all finished downloads 
+ *
+ * Try to remove all downloads, even if we fail to remove some.
+ * @note Download must be write-locked for downloads 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval positive if curl did something fatal
+ */
 int md_downloader_finalize_download_contexts( struct md_downloader* dl ) {
    CURLMsg* msg = NULL;
    int msgs_left = 0;
@@ -1554,8 +1682,10 @@ int md_downloader_finalize_download_contexts( struct md_downloader* dl ) {
 }
 
 
-// main downloader loop
-// return NULL
+/**
+ * @brief Main downloader loop
+ * @return NULL
+ */
 static void* md_downloader_main( void* arg ) {
    
    struct md_downloader* dl = (struct md_downloader*)arg;
@@ -1602,9 +1732,11 @@ static void* md_downloader_main( void* arg ) {
 }
 
 
-// consolidate and write back the buffer 
-// return 0 on success, and set *buf and *buf_len accordingly
-// return -ENOMEM on OOM
+/**
+ * @brief Consolidate and write back the buffer 
+ * @retval 0 Success, and set *buf and *buf_len accordingly
+ * @retval -ENOMEM Out of Memory
+ */
 int md_download_context_get_buffer( struct md_download_context* dlctx, char** buf, off_t* buf_len ) {
    
    *buf = md_response_buffer_to_string( dlctx->brb.rb );
@@ -1617,9 +1749,11 @@ int md_download_context_get_buffer( struct md_download_context* dlctx, char** bu
    return 0;
 }
 
-// get the http status
-// return the positive HTTP status on success
-// return -EAGAIN if the download context was not finalized 
+/**
+ * @brief Get the http status
+ * @return The positive HTTP status, Success
+ * @retval -EAGAIN The download context was not finalized 
+ */
 int md_download_context_get_http_status( struct md_download_context* dlctx ) {
    
    if( !dlctx->finalized ) {
@@ -1630,9 +1764,11 @@ int md_download_context_get_http_status( struct md_download_context* dlctx ) {
    return dlctx->http_status;
 }
 
-// get the errno 
-// return the transfer error code (non-negative number) on sucess
-// return -EAGAIN if the download context was not finalized
+/**
+ * @brief Get the errno 
+ * @return The transfer error code (non-negative number) on sucess
+ * @retval -EAGAIN The download context was not finalized
+ */
 int md_download_context_get_errno( struct md_download_context* dlctx ) {
    if( !dlctx->finalized ) {
       return -EAGAIN;
@@ -1641,9 +1777,11 @@ int md_download_context_get_errno( struct md_download_context* dlctx ) {
    return dlctx->transfer_errno;
 }
 
-// get the curl rc
-// return the non-negative return code on success
-// return -EAGAIN if the download was not finalized
+/**
+ * @brief Get the curl rc
+ * @retval >=0 Success
+ * @retval -EAGAIN The download was not finalized
+ */
 int md_download_context_get_curl_rc( struct md_download_context* dlctx ) {
    if( !dlctx->finalized ) {
       return -EAGAIN;
@@ -1652,10 +1790,12 @@ int md_download_context_get_curl_rc( struct md_download_context* dlctx ) {
    return dlctx->curl_rc;
 }
 
-// get the effective URL 
-// return 0 on success, and set *url to a malloc'ed copy of the URL (if there was a URL to begin with)
-// return -ENOMEM on OOM 
-// return -EAGAIN if the download was not finalized
+/**
+ * @brief Get the effective URL 
+ * @retval 0 Success, and set *url to a malloc'ed copy of the URL (if there was a URL to begin with)
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The download was not finalized
+ */
 int md_download_context_get_effective_url( struct md_download_context* dlctx, char** url ) {
    if( !dlctx->finalized ) {
       return -EAGAIN;
@@ -1675,68 +1815,94 @@ int md_download_context_get_effective_url( struct md_download_context* dlctx, ch
    return 0;
 }
 
-// get the download handle's curl handle 
-// return the curl handle
+/**
+ * @brief Get the download handle's curl handle 
+ * @return The curl handle
+ */
 CURL* md_download_context_get_curl( struct md_download_context* dlctx ) {
    return dlctx->curl;
 }
 
-// get the download handle's cls 
-// return the pointer to it 
+/**
+ * @brief Get the download handle's cls 
+ * @return Pointer to the cls
+ */ 
 void* md_download_context_get_cls( struct md_download_context* dlctx ) {
    return dlctx->cls;
 }
 
-// set the donwload handle's cls 
-// always succeeds
-// NOTE: not thread-safe; only use it if you know what you're doing!
+/**
+ * @brief Set the donwload handle's cls 
+ * @note Not thread-safe; only use it if you know what you're doing!
+ * @note Always succeeds
+ */
 void md_download_context_set_cls( struct md_download_context* dlctx, void* new_cls ) {
    dlctx->cls = new_cls;
 }
 
-// did a download context work?
-// return true if the download's curl rc is 0, its transfer errno is 0, and its HTTP status is the desired HTTP status
-// return false otherwise
+/**
+ * @brief State of download context
+ *
+ * Check if the download context worked
+ * @retval True The download's curl rc is 0, its transfer errno is 0, and its HTTP status is the desired HTTP status
+ * @retval False Otherwise
+ */
 bool md_download_context_succeeded( struct md_download_context* dlctx, int desired_HTTP_status ) {
    return (dlctx->curl_rc == 0 && dlctx->transfer_errno == 0 && dlctx->http_status == desired_HTTP_status); 
 }
 
-// is a download finalized?
-// return the finalization flag
+/**
+ * @brief Check if download is finalized
+ * @retval True Finalized
+ * @retval False Not finalized
+ */
 bool md_download_context_finalized( struct md_download_context* dlctx ) {
    return dlctx->finalized;
 }
 
-// is a download running?
-// return the running flag
+/**
+ * @brief Check if download is running
+ * @retval True Running
+ * @retval False Not running
+ */
 bool md_download_context_running( struct md_download_context* dlctx ) {
    return dlctx->running;
 }
 
-// is a download pending?
-// return the pending flag
+/**
+ * @brief Check if download is pending
+ * @retval True Pending
+ * @retval False Not pending
+ */
 bool md_download_context_pending( struct md_download_context* dlctx ) {
    return dlctx->pending;
 }
 
-// is a download cancelled?
-// return the cancelled flag
+/**
+ * @brief Check if download was cancelled
+ * @retval True Cancelled
+ * @retval False Not cancelled
+ */
 bool md_download_context_cancelled( struct md_download_context* dlctx ) {
    return dlctx->cancelled;
 }
 
-
-// it a download initialized?
-// return true if so 
+/**
+ * @brief Check if a download is initialized
+ * @retval True Initialized
+ * @retval False Not initialized
+ */ 
 bool md_download_context_initialized( struct md_download_context* dlctx ) {
    return dlctx->initialized;
 }
 
-// run a single download context 
-// dlctx *cannot* be locked
-// return 0 on successful finalization, even if the download failed
-// return 1 on successful finalization, even if the download failed, in which case the caller should free the download context since it's been fully unref'ed
-// return negative otherwise (see md_downloader_finalize_download_context)
+/**
+ * @brief Run a single download context 
+ * @note dlctx *cannot* be locked
+ * @retval 0 Successful finalization, even if the download failed
+ * @retval 1 Successful finalization, even if the download failed, in which case the caller should free the download context since it's been fully unref'ed
+ * @retval <0 Otherwise (see md_downloader_finalize_download_context)
+ */
 int md_download_context_run( struct md_download_context* dlctx ) {
    
    int rc = 0;
@@ -1754,7 +1920,11 @@ int md_download_context_run( struct md_download_context* dlctx ) {
    return rc;
 }
 
-// setsockopt for curl 
+/**
+ * @brief Set sockopt for curl
+ * @todo Test various flags for curl sockopt, TCP_CORK or TCP_NODELAY
+ * @retval CURL_SOCKOPT_OK
+ */
 static int md_curl_sockopt( void* userdata, curl_socket_t sockfd, curlsocktype purpose ) {
 
    int rc = CURL_SOCKOPT_OK;
@@ -1770,7 +1940,9 @@ static int md_curl_sockopt( void* userdata, curl_socket_t sockfd, curlsocktype p
 }
 
 
-// initialze a curl handle
+/**
+ * @brief Initialze a curl handle
+ */
 static void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_timeout, bool ssl_verify_peer, int64_t transfer_timeout ) {
    
    curl_easy_setopt( curl_h, CURLOPT_NOPROGRESS, 1L );   // no progress bar
@@ -1806,19 +1978,23 @@ static void md_init_curl_handle2( CURL* curl_h, char const* url, time_t query_ti
 }
 
 
-// initialze a curl handle
-// always succeeds
+/**
+ * @brief Initialze a curl handle
+ * @note Always succeeds
+ */
 void md_init_curl_handle( struct md_syndicate_conf* conf, CURL* curl_h, char const* url, time_t query_timeout ) {
    md_init_curl_handle2( curl_h, url, query_timeout, conf->verify_peer, conf->transfer_timeout );
 }
 
 
-// interpret error messages from a download context into an apporpriate return code to the downloader.
-// return 0 if there was no error
-// return -EAGAIN if the download should be retried
-// return -ETIMEDOUT on operation timeout
-// return -EREMOTEIO if the HTTP status was >= 500, or if an indeterminate error occurred but errno was not set.
-// return -http_status if the HTTP status was between 400 and 499
+/**
+ * @brief Interpret error messages from a download context into an appropriate return code for the downloader.
+ * @retval 0 Success
+ * @retval -EAGAIN The download should be retried
+ * @retval -ETIMEDOUT Operation timeout
+ * @retval -EREMOTEIO The HTTP status was >= 500, or an indeterminate error occurred but errno was not set.
+ * @retval -http_status The HTTP status was between 400 and 499
+ */
 int md_download_interpret_errors( int http_status, int curl_rc, int os_err ) {
    
    int rc = 0;
@@ -1859,8 +2035,10 @@ int md_download_interpret_errors( int http_status, int curl_rc, int os_err ) {
 }
 
 
-// translate an HTTP status code into the approprate error code.
-// return the code if no error could be determined.
+/**
+ * @brief Translate an HTTP status code into the approprate error code.
+ * @return The error or status code
+ */
 int md_HTTP_status_code_to_error_code( int status_code ) {
    if( status_code == SG_HTTP_TRYAGAIN ) {
       return -EAGAIN;
@@ -1878,14 +2056,19 @@ int md_HTTP_status_code_to_error_code( int status_code ) {
 }
 
 
-// alloc a download loop 
+/**
+ * @brief Alloc a download loop
+ * @return Pointer to the allocated memory block
+ */
 struct md_download_loop* md_download_loop_new() {
    return SG_CALLOC( struct md_download_loop, 1 );
 }
 
-// initialize a download loop 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a download loop 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int md_download_loop_init( struct md_download_loop* dlloop, struct md_downloader* dl, int num_downloads ) {
    
    memset( dlloop, 0, sizeof(struct md_download_loop) );
@@ -1928,8 +2111,10 @@ int md_download_loop_init( struct md_download_loop* dlloop, struct md_downloader
 }
 
 
-// free a download loop
-// always succeeds
+/**
+ * @brief Free a download loop
+ * @note Always succeeds
+ */
 int md_download_loop_free( struct md_download_loop* dlloop ) {
  
    for( int i = 0; i < dlloop->num_downloads; i++ ) {
@@ -1948,9 +2133,11 @@ int md_download_loop_free( struct md_download_loop* dlloop ) {
 }
 
 
-// get the next available download in the download loop.
-// return 0 on success, and set *dlctx to point to the available download
-// return -EAGAIN if there are no free downloads, and set *dlctx to NULL
+/**
+ * @brief Get the next available download in the download loop.
+ * @retval 0 Success, and set *dlctx to point to the available download
+ * @retval -EAGAIN No free downloads, and set *dlctx to NULL
+ */
 int md_download_loop_next( struct md_download_loop* dlloop, struct md_download_context** dlctx ) {
    
    *dlctx = NULL;
@@ -1968,18 +2155,26 @@ int md_download_loop_next( struct md_download_loop* dlloop, struct md_download_c
 }
 
 
-// have the download loop process the download when it runs, so md_download_loop_run knows to return if the given download finishes.
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Have the download loop process the download when it runs
+ *
+ * md_download_loop_run knows to return if the given download finishes.
+ * @return Status of running md_download_set_add
+ * @see md_download_set_add
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int md_download_loop_watch( struct md_download_loop* dlloop, struct md_download_context* dlctx ) {
    return md_download_set_add( &dlloop->dlset, dlctx );
 }
 
 
-// run the download loop, until at least one download completes
-// return 0 on success
-// return 1 if there are no more downloads
-// return -errno on critical failure to wait
+/**
+ * @brief Run the download loop, until at least one download completes
+ * @retval 0 Success
+ * @retval 1 if there are no more downloads
+ * @retval -errno on critical failure to wait
+ */
 int md_download_loop_run( struct md_download_loop* dlloop ) {
    
    int rc = 0;
@@ -2009,10 +2204,12 @@ int md_download_loop_run( struct md_download_loop* dlloop ) {
 }
 
 
-// find a finished download
-// caller must unref and free when done with it
-// return 0 on success, and set *dlctx to point to the finished download 
-// return -EAGAIN if there are no finished downloads, and set *dlctx to NULL
+/**
+ * @brief Find a finished download
+ * @note The caller must unref and free when done with it
+ * @retval 0 Success, and set *dlctx to point to the finished download 
+ * @retval -EAGAIN if there are no finished downloads, and set *dlctx to NULL
+ */
 int md_download_loop_finished( struct md_download_loop* dlloop, struct md_download_context** dlctx ) {
   
    *dlctx = NULL; 
@@ -2031,8 +2228,10 @@ int md_download_loop_finished( struct md_download_loop* dlloop, struct md_downlo
 }
 
 
-// find out how many downloads are running still 
-// return the number of downloads running (>=0)
+/**
+ * @brief Get the number of running downloads
+ * @retval >=0 Number of downloads running
+ */
 int md_download_loop_num_running( struct md_download_loop* dlloop ) {
    
    int ret = 0;
@@ -2049,8 +2248,10 @@ int md_download_loop_num_running( struct md_download_loop* dlloop ) {
 }
 
 
-// find out how many downloads are initialized 
-// return the number of initialized downloads (>=0)
+/**
+ * @brief Get the number of initialized downloads
+ * @retval >=0 Number of initialized downloads
+ */
 int md_download_loop_num_initialized( struct md_download_loop* dlloop ) {
    
    int ret = 0;
@@ -2066,16 +2267,23 @@ int md_download_loop_num_initialized( struct md_download_loop* dlloop ) {
    return ret;
 }
 
-// determine if there are downloads outstanding
+/**
+ * @brief Determine if there are downloads outstanding
+ * @retval True Outstanding downloads
+ * @retval False No outstanding downloads
+ */
 bool md_download_loop_running( struct md_download_loop* dlloop ) {
    
    return (dlloop->started && md_download_loop_num_initialized( dlloop ) > 0);
 }
  
 
-// cancel all downloads in a download loop, but in a fail-fast manner
-// return 0 on success
-// return -errno on failure to cancel (see md_download_context_cancel)
+/**
+ * @brief Cancel all downloads in a download loop, but in a fail-fast manner
+ * @retval 0 Success
+ * @retval -errno Failure to cancel (see md_download_context_cancel)
+ * @see md_download_context_cancel
+ */
 int md_download_loop_abort( struct md_download_loop* dlloop ) {
 
    int rc = 0;
@@ -2102,10 +2310,14 @@ int md_download_loop_abort( struct md_download_loop* dlloop ) {
 }
 
 
-// unref all downloads in a download loop, freeing them and passing their CURL handles to curl_release if their ref counts reach 0
-// if given, call the curl release function on each CURL handle 
-// always succeeds
-// NOTE: all the download contexts here have to be ref'ed! 
+/**
+ * @brief Unreference all downloads in a download loop
+ *
+ * Free them and pass their CURL handles to curl_release if their ref counts reach 0
+ * If given, call the curl release function on each CURL handle 
+ * @note All the download contexts here have to be ref'ed! 
+ * @note Always succeeds
+ */
 int md_download_loop_cleanup( struct md_download_loop* dlloop, md_download_curl_release_func curl_release, void* release_cls ) {
    
    int rc = 0;
@@ -2155,10 +2367,13 @@ int md_download_loop_cleanup( struct md_download_loop* dlloop, md_download_curl_
    return 0;
 }
 
-// find the next initialized download at the given offset, incrementing *i
-// if i == NULL, just find the first initialized download
-// return a pointer to the download on success
-// return NULL if we're off the end of the download array 
+/**
+ * @brief Find the next initialized download at the given offset, incrementing *i
+ *
+ * If i == NULL, just find the first initialized download
+ * @return A pointer to the download, Success
+ * @retval NULL Attempting to index beyond the array (i >= num_downloads)
+ */
 struct md_download_context* md_download_loop_next_initialized( struct md_download_loop* dlloop, int* i ) {
    
    if( i == NULL ) {
@@ -2189,14 +2404,16 @@ struct md_download_context* md_download_loop_next_initialized( struct md_downloa
    }
 }
 
-// download a single item, synchronously, up to max_size bytes (pass -1 for no maximum size)
-// return 0 on success, and populate *buf and *buflen with the downloaded data
-// return -ENOMEM on OOM
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EAGAIN if we were signaled to retry the request 
-// return -EREMOTEIO if the HTTP error is >= 500 
-// return between -499 and -400 if the HTTP error was in the range 400 to 499
-// return other -errno on socket- and recv-related errors
+/**
+ * @brief Download a single item, synchronously, up to max_size bytes (pass -1 for no maximum size)
+ * @retval 0 Success, and populate *buf and *buflen with the downloaded data
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time 
+ * @retval -EAGAIN Signaled to retry the request 
+ * @retval -EREMOTEIO HTTP error is >= 500 
+ * @retval -499<=rc>=-400 The HTTP error was in the range 400 to 499
+ * @retval Other -errno on socket- and recv-related errors
+ */
 int md_download_run( CURL* curl, off_t max_size, char** buf, off_t* buf_len ) {
    
    int rc = 0;
@@ -2247,9 +2464,11 @@ int md_download_run( CURL* curl, off_t max_size, char** buf, off_t* buf_len ) {
 }
 
 
-// initialize a bound response buffer 
-// return 0 on success
-// return -ENOMEM if allocation failed 
+/**
+ * @brief Initialize a bound response buffer 
+ * @retval 0 Success
+ * @retval -ENOMEM if allocation failed 
+ */
 int md_bound_response_buffer_init( struct md_bound_response_buffer* brb, off_t max_size ) {
    
    memset( brb, 0, sizeof(struct md_bound_response_buffer) );
@@ -2265,8 +2484,10 @@ int md_bound_response_buffer_init( struct md_bound_response_buffer* brb, off_t m
    return 0;
 }
 
-// free a bound response buffer 
-// always succeeds
+/**
+ * @brief Free a bound response buffer 
+ * @note Always succeeds
+ */
 int md_bound_response_buffer_free( struct md_bound_response_buffer* brb ) {
    
    if( brb->rb != NULL ) {

@@ -14,75 +14,94 @@
    limitations under the License.
 */
 
+/**
+ * @file proc.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief Provide support to handle processes
+ *
+ * @see libsyndicate/proc.h
+ */
+
 #include "libsyndicate/proc.h"
 
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
 
+/**
+ * @brief Track information about a process
+ */
 struct SG_proc {
    
-   bool dead;                   // set to true if the process is dead
+   bool dead;                   ///< Set to true if the process is dead
    
-   pid_t pid;                   // PID of child driver 
-   int fd_in;                   // input pipe to the child 
-   int fd_out;                  // output pipe from the child 
-   int fd_err;                  // error pipe from the child
+   pid_t pid;                   ///< PID of child driver 
+   int fd_in;                   ///< Input pipe to the child 
+   int fd_out;                  ///< Output pipe from the child 
+   int fd_err;                  ///< Error pipe from the child
    
-   FILE* fout;                  // bufferred I/O wrapper around fd_out, so we can easily read it 
+   FILE* fout;                  ///< Bufferred I/O wrapper around fd_out, so we can easily read it 
    
-   char* exec_str;              // string to feed into exec
-   char* exec_arg;              // arg to feed
-   char** exec_env;             // environment variables
+   char* exec_str;              ///< String to feed into exec
+   char* exec_arg;              ///< Arg to feed
+   char** exec_env;             ///< Environment variables
 
-   struct SG_proc* next;        // next process (linked list)
+   struct SG_proc* next;        ///< Next process (linked list)
 };
 
-
+/**
+ * @brief Information about a group of processes
+ */
 struct SG_proc_group {
    
-   struct SG_proc** procs;      // group of processes 
-   int num_procs;               // number of actual processes initialized
-   int capacity;                // length of procs 
+   struct SG_proc** procs;      ///< Group of processes 
+   int num_procs;               ///< Number of actual processes initialized
+   int capacity;                ///< Length of procs 
    
-   struct SG_proc* free;        // linked list of free processes
-   sem_t num_free;              // number of free processes
+   struct SG_proc* free;        ///< Linked list of free processes
+   sem_t num_free;              ///< Number of free processes
    
-   bool active;                 // whether or not we can acquire new processes
+   bool active;                 ///< Whether or not we can acquire new processes
    
-   pthread_rwlock_t lock;       // lock governing access to this structure 
+   pthread_rwlock_t lock;       ///< Lock governing access to this structure 
 };
 
 
-// rlock a proc group 
+/// Read lock a proc group 
 int SG_proc_group_rlock( struct SG_proc_group* group ) {
    return pthread_rwlock_rdlock( &group->lock );
 }
 
-// wlock a proc group 
+/// Write lock a proc group 
 int SG_proc_group_wlock( struct SG_proc_group* group ) {
    return pthread_rwlock_wrlock( &group->lock );
 }
 
-// unlock a proc group 
+/// Unlock a proc group 
 int SG_proc_group_unlock( struct SG_proc_group* group ) {
    return pthread_rwlock_unlock( &group->lock );
 }
 
 
-// allocate space for a process
-// return the pointer to the newly-allocated region on success
-// return NULL on OOM
+/**
+ * @brief Allocate space for a process
+ * @retval The pointer to the newly-allocated region on success
+ * @retval NULL Out of Memory
+ */
 struct SG_proc* SG_proc_alloc( int num_procs ) {
    return SG_CALLOC( struct SG_proc, num_procs );  
 }
 
 
-// free a process:
-// * close its file descriptors 
-// * free proc
-// NOTE: no attempt to kill the actual process is attempted.
-// the caller must do that itself.
+/**
+ * @brief Free a process
+ *
+ * Close its file descriptors.
+ * Free proc
+ * @note No attempt to kill the actual process is attempted. The caller must do that itself.
+ */
 void SG_proc_free_data( struct SG_proc* proc ) {
    
    if( proc != NULL ) {
@@ -119,6 +138,9 @@ void SG_proc_free_data( struct SG_proc* proc ) {
    }
 }
 
+/**
+ * @brief Run SG_proc_free_data and free proc
+ */
 void SG_proc_free( struct SG_proc* proc ) {
    SG_debug("SG_proc_free %p\n", proc);
    SG_proc_free_data( proc );
@@ -126,42 +148,45 @@ void SG_proc_free( struct SG_proc* proc ) {
 }
 
 
-// get the PID of a process 
+/// Get the PID of a process 
 pid_t SG_proc_pid( struct SG_proc* p ) { 
    return p->pid;
 }
 
-// get the exec argument of the process 
+/// Get the exec argument of the process 
 char const* SG_proc_exec_arg( struct SG_proc* p ) {
    return p->exec_arg;
 }
 
-// get stdin to a process
+/// Get stdin to a process
 int SG_proc_stdin( struct SG_proc* p ) {
    return p->fd_in;
 }
 
-// get a filestream wrapper of a process's stdout
+/// Get a filestream wrapper of a process's stdout
 FILE* SG_proc_stdout_f( struct SG_proc* p ) {
    return p->fout;
 }
 
-// get the underlying file descriptor for stdout 
+/// Get the underlying file descriptor for stdout 
 int SG_proc_stdout( struct SG_proc* p ) {
    return fileno(p->fout);
 }
 
-// allocate space for a process group 
-// return the pointer to the newly-allocated region on success 
-// return NULL on OOM 
+/**
+ * @brief Allocate space for a process group 
+ * @retval The pointer to the newly-allocated region on success 
+ * @retval NULL Out of Memory 
+ */
 struct SG_proc_group* SG_proc_group_alloc( int num_groups ) {
    return SG_CALLOC( struct SG_proc_group, num_groups );
 }
 
-
-// initialize a process group, with zero processes 
-// return 0 on success 
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a process group, with zero processes 
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ */
 int SG_proc_group_init( struct SG_proc_group* group ) {
    
    int rc = 0;
@@ -188,10 +213,11 @@ int SG_proc_group_init( struct SG_proc_group* group ) {
    return 0;
 }
 
-
-// take a process off a list 
-// return 0 if removed 
-// return -ENOENT if not removed
+/**
+ * @brief Take a process off a list 
+ * @retval 0 Removed 
+ * @retval -ENOENT Not removed
+ */
 int SG_proc_list_remove( struct SG_proc** list, struct SG_proc* remove ) {
    
    struct SG_proc* prev = *list;
@@ -224,8 +250,10 @@ int SG_proc_list_remove( struct SG_proc** list, struct SG_proc* remove ) {
 }
 
 
-// pop a process
-// return NULL if empty
+/**
+ * @brief Pop a process
+ * @retval NULL Empty
+ */
 struct SG_proc* SG_proc_list_pop( struct SG_proc** list ) {
    
    struct SG_proc* head = *list;
@@ -240,8 +268,10 @@ struct SG_proc* SG_proc_list_pop( struct SG_proc** list ) {
 }
 
 
-// add a process to a list's head
-// always succeeds
+/**
+ * @brief Add a process to a list's head
+ * @note Always succeeds
+ */
 int SG_proc_list_insert( struct SG_proc** list, struct SG_proc* insert ) {
    
    if( (*list) == NULL ) {
@@ -258,14 +288,19 @@ int SG_proc_list_insert( struct SG_proc** list, struct SG_proc* insert ) {
 }
 
 
-// get a pointer to the head of the process group's freelist 
+/**
+ * @brief Get a pointer to the head of the process group's freelist
+ * @return group->free
+ */ 
 struct SG_proc** SG_proc_group_freelist( struct SG_proc_group* group ) {
    return &group->free;
 }
 
 
-// send a signal to all processes in a proces group
-// always succeeds
+/**
+ * @brief Send a signal to all processes in a process group
+ * @note Always succeeds
+ */
 int SG_proc_group_kill( struct SG_proc_group* group, int signal ) {
    
    int rc = 0;
@@ -300,11 +335,12 @@ int SG_proc_group_kill( struct SG_proc_group* group, int signal ) {
 }
 
 
-// attempt to join with all processes in a process group.
-// does not block.
-// free the ones that got joined
-// return the number of *unjoined* processes on success 
-// NOTE the group must *not* be locked
+/**
+ * @brief Attempt to join with all processes in a process group.
+ * @note Does not block. Free the ones that got joined
+ * @note The group must *not* be locked
+ * @return The number of *unjoined* processes on success
+ */
 int SG_proc_group_tryjoin( struct SG_proc_group* group ) {
    
    int rc = 0;
@@ -361,10 +397,13 @@ int SG_proc_group_tryjoin( struct SG_proc_group* group ) {
 }
 
 
-// stop a group of processes, but don't lock the group 
-// wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
-// free up all processes once they die.
-// return 0 on success.
+/**
+ * @brief Stop a group of processes, but don't lock the group 
+ *
+ * Wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
+ * Free up all processes once they die.
+ * @retval 0 Success.
+ */
 int SG_proc_group_stop_unlocked( struct SG_proc_group* group, int timeout ) {
    
    if( timeout > 0 ) {
@@ -404,11 +443,14 @@ int SG_proc_group_stop_unlocked( struct SG_proc_group* group, int timeout ) {
 }
 
 
-// stop a group of processes 
-// wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
-// free up all processes once they die.
-// return 0 on success.
-// NOTE: the group must *not* be locked
+/**
+ * @brief Stop a group of processes
+ *
+ * Wait up to timeout seconds before SIGKILL'ing them (if zero, SIGKILL them immediately)
+ * Free up all processes once they die.
+ * @note The group must *not* be locked
+ * @retval 0 Success.
+ */
 int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
    
    SG_proc_group_wlock( group );
@@ -418,9 +460,11 @@ int SG_proc_group_stop( struct SG_proc_group* group, int timeout ) {
 }
 
 
-// calculate the time till a deadline 
-// return 0 on success
-// return -EAGAIN if the deadline has been exceeded
+/**
+ * @brief Calculate the time till a deadline 
+ * @retval 0 Success
+ * @retval -EAGAIN The deadline has been exceeded
+ */
 static int SG_proc_stop_deadline( struct timespec* deadline, struct timespec* timeout ) {
    
    struct timespec now;
@@ -447,10 +491,14 @@ static int SG_proc_stop_deadline( struct timespec* deadline, struct timespec* ti
 }
 
 
-// wait for a given process to die.  waitpid() and join with it. 
-// return 0 on success
-// return -EAGAIN if the process is still running, and should be killed
-// return -ECHILD if the process is already dead
+/**
+ * @brief Wait for a given process to die
+ *
+ * waitpid() and join with it. 
+ * @retval 0 Success
+ * @retval -EAGAIN The process is still running, and should be killed
+ * @retval -ECHILD The process is already dead
+ */
 static int SG_proc_wait( struct SG_proc* proc, int* child_rc, int timeout ) {
    
    int rc = 0;
@@ -541,11 +589,14 @@ static int SG_proc_wait( struct SG_proc* proc, int* child_rc, int timeout ) {
 }
 
 
-// stop a process, giving it a given number of seconds in between us 
-// asking it to stop, and us kill -9'ing it.
-// if timeout is <= 0, then kill -9 it directly.
-// masks ESRCH (e.g. even if proc->pid is <= 0)
-// return 0 on success 
+/**
+ * @brief Stop a process, giving it a given number of seconds in between us 
+ *
+ * Ask it to stop, and kill -9'ing it.
+ * If timeout is <= 0, then kill -9 it directly.
+ * Masks ESRCH (e.g. even if proc->pid is <= 0)
+ * @retval 0 Success
+ */
 int SG_proc_stop( struct SG_proc* proc, int timeout ) {
    
    int rc = 0;
@@ -600,10 +651,13 @@ int SG_proc_stop( struct SG_proc* proc, int timeout ) {
 }
 
 
-// free a process group:
-// * call SG_proc_free on each still-initialized process
-// NOTE: does not kill the processes!
-// NOTE: group should either be write-locked, or the group should not be accessible by anyone but the caller.
+/**
+ * @brief Free a process group:
+ *
+ * Call SG_proc_free on each still-initialized process
+ * @note Does not kill the processes!
+ * @note Group should either be write-locked, or the group should not be accessible by anyone but the caller.
+ */
 void SG_proc_group_free( struct SG_proc_group* group ) {
    
    for( int i = 0; i < group->capacity; i++ ) {
@@ -624,12 +678,15 @@ void SG_proc_group_free( struct SG_proc_group* group ) {
 }
 
 
-// add a process to a process group, and put the proc into the free list
-// the group must be write-locked
-// the group takes ownership of proc
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EEXIST if this process is already in the group
+/**
+ * @brief Add a process to a process group, and put the proc into the free list
+ *
+ * The group takes ownership of proc
+ * @note The group must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EEXIST This process is already in the group
+ */
 static int SG_proc_group_add_unlocked( struct SG_proc_group* group, struct SG_proc* proc ) {
    
    int rc = 0;
@@ -707,10 +764,12 @@ static int SG_proc_group_add_unlocked( struct SG_proc_group* group, struct SG_pr
 }
 
 
-// add a process to a process group.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EEXIST if it is already present 
+/**
+ * @brief Add a process to a process group.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST Already present
+ */
 int SG_proc_group_add( struct SG_proc_group* group, struct SG_proc* proc ) {
 
    SG_proc_group_wlock( group );
@@ -720,10 +779,14 @@ int SG_proc_group_add( struct SG_proc_group* group, struct SG_proc* proc ) {
 }
 
 
-// remove a process from a process group.  The group must already be write-locked
-// does not free or stop it.
-// return 0 on success 
-// return -ENOENT if it's not found 
+/**
+ * @brief Remove a locked process from a process group.
+ *
+ * Does not free or stop it.
+ * @note The group must already be write-locked
+ * @retval 0 Success 
+ * @retval -ENOENT Not found
+ */
 static int SG_proc_group_remove_unlocked( struct SG_proc_group* group, struct SG_proc* proc ) {
    
    int rc = 0;
@@ -758,9 +821,11 @@ static int SG_proc_group_remove_unlocked( struct SG_proc_group* group, struct SG
 }
 
 
-// remove a process from a process group
-// return 0 on success
-// return -ENOENT if not found 
+/**
+ * @brief Remove a unlocked process from a process group
+ * @retval 0 Success
+ * @retval -ENOENT Not found
+ */
 int SG_proc_group_remove( struct SG_proc_group* group, struct SG_proc* proc ) {
 
    SG_proc_group_wlock( group );
@@ -770,7 +835,10 @@ int SG_proc_group_remove( struct SG_proc_group* group, struct SG_proc* proc ) {
 }
 
 
-// how many processes does a group have? 
+/**
+ * @brief Get the number of processes in a group
+ * @return Number of processes (num_procs)
+ */
 int SG_proc_group_size( struct SG_proc_group* group ) {
 
    SG_proc_group_rlock( group );
@@ -781,8 +849,13 @@ int SG_proc_group_size( struct SG_proc_group* group ) {
 }
 
 
-// what's the next non-NULL process?
-// group must be at least read-locked!
+/**
+ * @brief Get the next non-NULL process
+ *
+ * Loop through group->procs starting from i and return the next one
+ * @note Group must be at least read-locked!
+ * @return The next process
+ */
 struct SG_proc* SG_proc_group_next( struct SG_proc_group* group, int i ) {
 
    for( int j = i; j < group->capacity; j++ ) {
@@ -794,8 +867,13 @@ struct SG_proc* SG_proc_group_next( struct SG_proc_group* group, int i ) {
    return NULL;
 }
 
-// test to see if a process is dead
-// return 0 on success 
+/**
+ * @brief Test to see if a process is dead
+ *
+ * Set proc->dead to true if dead
+ * @retval 0 Success
+ * @retval -errno Error with waitpid
+ */
 int SG_proc_test_dead( struct SG_proc* proc ) {
 
    if( proc->dead ) {
@@ -836,17 +914,23 @@ int SG_proc_test_dead( struct SG_proc* proc ) {
 }
 
 
-// is a process dead?
+/**
+ * @brief Check and get if a process is dead
+ * @retval True Process is dead
+ * @retval False Process is alive
+ */
 bool SG_proc_is_dead( struct SG_proc* proc ) {
    SG_proc_test_dead( proc );
    return proc->dead;
 }
 
 
-// remove a dead process, freeing it
-// return 0 on success
-// return -EINVAL if not dead
-// return -ENOENT if not present in the group
+/**
+ * @brief Remove a dead process, freeing it
+ * @retval 0 Success
+ * @retval -EINVAL Not dead
+ * @retval -ENOENT Not present in the group
+ */
 static int SG_proc_group_remove_dead_unlocked( struct SG_proc_group* group, struct SG_proc* proc ) {
    
    int rc = 0;
@@ -873,11 +957,13 @@ static int SG_proc_group_remove_dead_unlocked( struct SG_proc_group* group, stru
 }
 
 
-// remove a process if it is dead
-// return 1 if dead and removed
-// return 0 if not dead
-// return -ENOENT if not present
-// return -ENOMEM on OOM 
+/**
+ * @brief Remove a process if it is dead
+ * @retval 1 Dead and removed
+ * @retval 0 Not dead
+ * @retval -ENOENT if not present
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_proc_group_remove_if_dead_unlocked( struct SG_proc_group* group, struct SG_proc* proc ) {
 
    int rc = 0;
@@ -894,11 +980,14 @@ static int SG_proc_group_remove_if_dead_unlocked( struct SG_proc_group* group, s
 }
 
 
-// read a signed 64-bit integer from a file stream, appended by a newline
-// masks EINTR
-// return 0 on success, and set *result 
-// return -EIO if no int could be parsed 
-// return -ENODATA if EOF 
+/**
+ * @brief Read a signed 64-bit integer from a file stream, appended by a newline
+ * @note masks EINTR
+ * @param[out] *result The signed 64-bit integer
+ * @retval 0 Success, and set *result 
+ * @retval -EIO if no int could be parsed 
+ * @retval -ENODATA if EOF
+ */
 int SG_proc_read_int64( FILE* f, int64_t* result ) {
    
    int c = 0;
@@ -938,14 +1027,20 @@ int SG_proc_read_int64( FILE* f, int64_t* result ) {
 }
 
 
-// get a chunk from the reader worker: size, newline, data
-// if chunk->data is NULL, it will be malloc'ed.  If not, the existing memory will be used,
-// and this method will error if it receives too much data.
-// return 0 on success, and set up the given SG_chunk (storing the length to chunk->len)
-// return -ENOMEM on OOM 
-// return -ERANGE if the chunk is allocated but there is insufficient space, or if bound > 0 and the chunk is too big
-// return -ENODATA on EOF
-// return -EIO if the output is unparsable
+/**
+ * @brief Get a chunk from the reader worker
+ *
+ * Chunk: size, newline, data
+ * If chunk->data is NULL, it will be malloc'ed.  If not, the existing memory will be used,
+ * and this method will error if it receives too much data.
+ * param[out] *chunk A chunk, chunk->len will be updated
+ * @retval 0 Success, and set up the given SG_chunk (storing the length to chunk->len)
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ERANGE The chunk is allocated but there is insufficient space, or if bound > 0 and the chunk is too big
+ * @retval -ENODATA EOF
+ * @retval -EIO The output is unparsable
+ * @todo Investigate splice(2)'ing the data if memory pressure becomes an issue for SG_proc_read_chunk_bound
+ */
 int SG_proc_read_chunk_bound( FILE* f, struct SG_chunk* chunk, int64_t bound ) {
    
    int rc = 0;
@@ -1061,14 +1156,21 @@ int SG_proc_read_chunk_bound( FILE* f, struct SG_chunk* chunk, int64_t bound ) {
    return rc;
 }
 
+/**
+ * @brief Call SG_proc_read_chunk_bound
+ * @return Result of SG_proc_read_chunk_bound
+ * @see SG_proc_read_chunk_bound
+ */
 int SG_proc_read_chunk( FILE* f, struct SG_chunk* chunk ) {
    return SG_proc_read_chunk_bound( f, chunk, -1 );
 }
 
-// writes a signed 64-bit integer to a file descriptor, appended by a newline 
-// masks EINTR 
-// return 0 on success 
-// return -errno if write fails (including -EPIPE)
+/**
+ * @brief Writes a signed 64-bit integer to a file descriptor, appended by a newline 
+ * @note masks EINTR 
+ * @retval 0 Success 
+ * @retval -errno Write fails (including -EPIPE)
+ */
 int SG_proc_write_int64( int fd, int64_t value ) {
    
    ssize_t nw = 0;
@@ -1087,12 +1189,13 @@ int SG_proc_write_int64( int fd, int64_t value ) {
    return 0;
 }
 
-
-// send a chunk to a worker
-// NOTE: the caller should try to read a character reply from the worker's output stream--either '0' or something else
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -ENODATA if we could not write (e.g. SIGPIPE)
+/**
+ * @brief Send a chunk to a worker
+ * @note The caller should try to read a character reply from the worker's output stream--either '0' or something else
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENODATA Could not write (e.g. SIGPIPE)
+ */
 int SG_proc_write_chunk( int out_fd, struct SG_chunk* chunk ) {
    
    int rc = 0;
@@ -1128,10 +1231,13 @@ int SG_proc_write_chunk( int out_fd, struct SG_chunk* chunk ) {
 }
 
 
-// create a driver request from a reqdat
-// return 0 on success, and populate all required fields of *dreq, and any optional fields specific to the type
-// return -ENOMEM on OOM
-// return -EINVAL if fs_path is not set
+/**
+ * @brief Create a driver request from a reqdat
+ * @param[out] dreq Populated driver request
+ * @retval 0 Success, and populate all required fields of *dreq, and any optional fields specific to the type
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL fs_path is not set
+ */
 int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, SG_messages::DriverRequest* dreq ) {
 
    if( reqdat->fs_path == NULL ) {
@@ -1193,11 +1299,13 @@ int SG_proc_request_init( struct ms_client* ms, struct SG_request_data* reqdat, 
 }
 
 
-// send a driver request along to a process
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ENODATA if we couldn't write (i.e. SIGPIPE)
-// return -EIO if we couldn't get a reply
+/**
+ * @brief Send a driver request along to a process
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA Couldn't write (i.e. SIGPIPE)
+ * @retval -EIO Couldn't get a reply
+ */
 int SG_proc_write_request( int fd, SG_messages::DriverRequest* dreq ) {
 
    int rc = 0;
@@ -1221,16 +1329,20 @@ int SG_proc_write_request( int fd, SG_messages::DriverRequest* dreq ) {
 }
 
 
-// start a (long-running) worker process, and store the relevant information in an SG_proc.
-// if given, feed the worker its config (as a string), its secrets (as a string), and its driver info (as a string)
-// set up pipes to link the worker to the gateway.
-// return 0 on success 
-// return -EINVAL on invalid arguments
-// return -EMFILE if we're out of fds
-// return -ENFILE if the host is out of fds
-// return -ECHILD if the child failed to start
-// return -ENOSYS if the driver does not implement the requested operation mode
-// the caller should try to join with the proc if this method fails
+/**
+ * @brief Start a (long-running) worker process
+ *
+ * And store the relevant information in an SG_proc.
+ * If given, feed the worker its config (as a string), its secrets (as a string), and its driver info (as a string)
+ * Set up pipes to link the worker to the gateway.
+ * @note The caller should try to join with the proc if this method fails
+ * @retval 0 Success 
+ * @retval -EINVAL Invalid arguments
+ * @retval -EMFILE Out of fds
+ * @retval -ENFILE Host is out of fds
+ * @retval -ECHILD Child failed to start
+ * @retval -ENOSYS Driver does not implement the requested operation mode
+ */
 int SG_proc_start( struct SG_proc* proc, char const* exec_path, char const* exec_arg, char** exec_env, struct SG_chunk* config, struct SG_chunk* secrets, struct SG_chunk* driver ) {
    
    int rc = 0;
@@ -1501,10 +1613,13 @@ int SG_proc_start( struct SG_proc* proc, char const* exec_path, char const* exec
 }
 
 
-// kill a worker, but mask ESRCH
-// ensure the worker has a valid pid, and is in our process group
-// return 0 on success
-// return -EINVAL for invalid pid, or a process not in our process group
+/**
+ * @brief Kill a worker
+ * @note mask ESRCH
+ * @note Ensure the worker has a valid pid, and is in our process group
+ * @retval 0 Success
+ * @retval -EINVAL For invalid pid, or a process not in our process group
+ */
 int SG_proc_kill( struct SG_proc* proc, int signal ) {
    
    int rc = 0;
@@ -1529,12 +1644,15 @@ int SG_proc_kill( struct SG_proc* proc, int signal ) {
 }
 
 
-// Try to join with a child.  Does not block
-// proc->pid must be >= 2
-// send it SIGINT and wait on it
-// return 0 on success, and store the exit status to *child_success.  This masks ECHILD if the child is already dead
-// return -EINVAL for invalid PID 
-// return -EAGAIN if the child is still running
+/**
+ * @brief Try to join with a child.  Does not block
+ *
+ * Send it SIGINT and wait on it
+ * @note proc->pid must be >= 2
+ * @retval 0 Success, and store the exit status to *child_status.  This masks ECHILD if the child is already dead
+ * @retval -EINVAL Invalid PID 
+ * @retval -EAGAIN The child is still running
+ */
 int SG_proc_tryjoin( struct SG_proc* proc, int* child_status ) {
    
    int rc = 0;
@@ -1589,12 +1707,16 @@ int SG_proc_tryjoin( struct SG_proc* proc, int* child_status ) {
 }
 
 
-// reload a process group--respawn any running workers, using the same arguments.
-// stop all workers, and then start all workers
-// return 0 on succss
-// return -ENOMEM on OOM
-// return -errno on failure to start the new process
-// NOTE: group must be write-locked
+/**
+ * @brief Reload a process group
+ *
+ * Respawn any running workers, using the same arguments.
+ * Stop all workers, and then start all workers
+ * @note Group must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Failure to start the new process
+ */
 int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str, char const* new_exec_arg, char** new_helper_env, struct SG_chunk* new_config, struct SG_chunk* new_secrets, struct SG_chunk* new_driver ) {
    
    int rc = 0;
@@ -1651,17 +1773,19 @@ int SG_proc_group_reload( struct SG_proc_group* group, char const* new_exec_str,
 }
 
 
-// get a free process, and prevent it from receiving I/O from anyone else (i.e. take it off the free list)
-// wait at most wait_millis milliseconds before bailing (wait forever if wait_millis is < 0; fail immediately if wait_millis is 0 and there are no free processes)
-// return the non-NULL proc on success
-// return NULL if there are no free processess
-// set *ret to the error value:
-// * -EAGAIN if we should try again 
-// * -EINTR on interrupted wait
-// * -ENODATA if the group is no longer active
-// * -EPERM on general error
-// NOTE: group must NOT be locked
-// NOTE; this call blocks if there are available processes
+/**
+ * @brief Get a free process, and prevent it from receiving I/O from anyone else (i.e. take it off the free list)
+ *
+ * Wait at most "wait_millis" milliseconds before bailing (wait forever if wait_millis is < 0; fail immediately if wait_millis is 0 and there are no free processes)
+ * @note Group must NOT be locked
+ * @note This call blocks if there are available processes
+ * @return The non-NULL proc on success
+ * @return NULL if there are no free processess, set *ret to the error value:
+ * @retval -EAGAIN Should try again 
+ * @retval -EINTR Interrupted wait
+ * @retval -ENODATA The group is no longer active
+ * @retval -EPERM General error
+ */
 struct SG_proc* SG_proc_group_timed_acquire( struct SG_proc_group* group, int wait_millis, int* ret ) {
    
    int rc = 0;
@@ -1781,16 +1905,20 @@ struct SG_proc* SG_proc_group_timed_acquire( struct SG_proc_group* group, int wa
 }
 
 
-// acquire without blocking
+/**
+ * @brief Acquire group without blocking
+ */
 struct SG_proc* SG_proc_group_acquire( struct SG_proc_group* group ) {
    int ret = 0;
    return SG_proc_group_timed_acquire( group, 0, &ret );
 }
 
 
-// release a process now that we've used it (i.e. adding it back to the free list)
-// return 0 on success 
-// NOTE: group must NOT be locked 
+/**
+ * @brief Release a process now that we've used it (i.e. adding it back to the free list)
+ * @note Group must NOT be locked 
+ * @retval 0 Success
+ */
 int SG_proc_group_release( struct SG_proc_group* group, struct SG_proc* proc ) {
  
    if( proc->dead ) {
@@ -1823,13 +1951,15 @@ int SG_proc_group_release( struct SG_proc_group* group, struct SG_proc* proc ) {
 }
 
 
-
-// run a subprocess
-// gather the output into the output buffer (allocating it if needed).
-// return 0 on success
-// return 1 on output truncate 
-// return negative on error
-// set the subprocess exit status in *exit_status
+/**
+ * @brief Run a subprocess
+ *
+ * Gather the output into the output buffer (allocating it if needed).
+ * param[out] exit_status Store the subprocess exit status
+ * @retval 0 Success
+ * @retval 1 on output truncate 
+ * @retval -1 Error
+ */
 int SG_proc_subprocess( char const* cmd_path, char* const argv[], char* const env[], char const* input, size_t input_len, char** output, size_t* output_len, size_t max_output, int* exit_status ) {
    
    int inpipe[2];

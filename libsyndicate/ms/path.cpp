@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/ms/path.cpp
+ * @author Jude Nelson
+ * @date Mar 9 2016
+ *
+ * @brief MS specific path related functions
+ *
+ * @see libsyndicate/ms/path.h
+ */
+
 
 #include "libsyndicate/ms/file.h"
 #include "libsyndicate/ms/url.h"
@@ -22,7 +32,7 @@
 
 #include "path.h"
 
-// free an MS listing
+/// free an MS listing
 void ms_client_free_listing( struct ms_listing* listing ) {
    if( listing->entries != NULL ) {
       for( unsigned int i = 0; i < listing->entries->size(); i++ ) {
@@ -33,11 +43,13 @@ void ms_client_free_listing( struct ms_listing* listing ) {
    }
 }
 
-// build a path ent
-// NOTE: not all fields are necessary for all operations
-// NOTE: the caller must zero path_ent if it isn't already initialized
-// return 0 on success 
-// return -ENOMEM if out of memory
+/**
+ * @brief Build a path ent
+ * @note Not all fields are necessary for all operations
+ * @note The caller must zero path_ent if it isn't already initialized
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_make_path_ent( struct ms_path_ent* path_ent, uint64_t volume_id, uint64_t parent_id, uint64_t file_id, int64_t version, int64_t write_nonce,
                              int64_t num_children, int64_t generation, int64_t capacity, char const* name, void* cls ) {
    
@@ -69,7 +81,7 @@ int ms_client_make_path_ent( struct ms_path_ent* path_ent, uint64_t volume_id, u
    return 0;
 }
    
-// free a path entry, using the given free callback to free the path cls
+/// Free a path entry, using the given free callback to free the path cls
 void ms_client_free_path_ent( struct ms_path_ent* path_ent, void (*free_cls)( void* ) ) {
    
    SG_safe_free( path_ent->name );
@@ -82,7 +94,7 @@ void ms_client_free_path_ent( struct ms_path_ent* path_ent, void (*free_cls)( vo
    memset( path_ent, 0, sizeof(struct ms_path_ent) );
 }
 
-// free a path, using the given free callback to free the path cls
+/// Free a path, using the given free callback to free the path cls
 void ms_client_free_path( ms_path_t* path, void (*free_cls)(void*) ) {
    for( unsigned int i = 0; i < path->size(); i++ ) {
       ms_client_free_path_ent( &path->at(i), free_cls );
@@ -90,11 +102,14 @@ void ms_client_free_path( ms_path_t* path, void (*free_cls)(void*) ) {
 }
 
 
-// parse an MS listing, initializing the given ms_listing structure.
-// entries from the reply must come from their coordinators; we will verify that this is the case.
-// if we can't tell which coordinator signed it, it won't be included in the listing
-// return 0 on success
-// return -ENOMEM if we're out of memory 
+/**
+ * @brief Parse an MS listing, initializing the given ms_listing structure.
+ *
+ * Entries from the reply must come from their coordinators; we will verify that this is the case.
+ * If we can't tell which coordinator signed it, it won't be included in the listing
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int ms_client_parse_listing( struct ms_client* client, struct ms_listing* dst, ms::ms_reply* reply ) {
    
    ms::ms_listing* src = reply->mutable_listing();
@@ -162,12 +177,16 @@ static int ms_client_parse_listing( struct ms_client* client, struct ms_listing*
    return rc;
 }
 
-// extract multiple entries from the listing 
-// return 0 on success, and set *ents to the entries and *num_ents to the number of entries.
-// return -ENOMEM for OOM
-// return -EBADMSG for invalid listing status
-// return -ENODATA if the listing error is non-zero
-// in all cases, *listing_error will be set to the listing error if we could parse it.  It will be negative on error, otherwise positive.
+/**
+ * @brief Extract multiple entries from the listing 
+ * @param[out] *ents Entries
+ * @param[out] *num_ents Number of entries
+ * @retval 0 Success, and set *ents to the entries and *num_ents to the number of entries.
+ * @retval -ENOMEM Out of Memory
+ * @retval -EBADMSG Invalid listing status
+ * @retval -ENODATA The listing error is non-zero
+ * @note In all cases, *listing_error will be set to the listing error if we could parse it.  It will be negative on error, otherwise positive.
+ */
 int ms_client_listing_read_entries( struct ms_client* client, struct md_download_context* dlctx, struct md_entry** ents, size_t* num_ents, int* listing_error ) {
    
    int rc = 0;
@@ -286,12 +305,16 @@ int ms_client_listing_read_entries( struct ms_client* client, struct md_download
    }
 }
 
-// read one entry from the listing 
-// assert that there is only one entry if we got any data back at all, and put it into *ent on success
-// return 0 on success
-// return -EBADMSG if there is more than one entry
-// return negative on error 
-// * If the MS indicates that there is no change in the requested data, then *ent is zero'ed
+/**
+ * @brief Read one entry from the listing 
+ *
+ * Assert that there is only one entry if we got any data back at all, and put it into *ent on success
+ * @param[out] ent Entry
+ * @retval 0 Success
+ * @retval -EBADMSG There is more than one entry
+ * @retval negative Error 
+ * @note If the MS indicates that there is no change in the requested data, then *ent is zero'ed
+ */
 int ms_client_listing_read_entry( struct ms_client* client, struct md_download_context* dlctx, struct md_entry* ent, int* listing_error ) {
    
    size_t num_ents = 0;
@@ -330,22 +353,19 @@ int ms_client_listing_read_entry( struct ms_client* client, struct md_download_c
 }
 
 
-// Walk down a path on the MS, filling in the given path with information.  This method iteratively calls getchild() until it 
-// reaches the end of the path, or encounters an error.
-// Downloaded entries are put into ret_listings, which will be set up and allocated by this method
-// The given path entries must contain:
-// * volume_id
-// * name
-// Also, the first path entry must contain:
-// * name
-// * volume_id
-// * file_id 
-// * parent_id
-// NOTE: this method will modify path (filling in data it obtained from the MS)
-// return 0 on success, indicating no communication error with the MS (but possibly path-related errors, like security check failures or non-existence)
-// return -ENOMEM on OOM 
-// return -EINVAL if the path is ill-structured
-// return -errno from the MS
+/**
+ * @brief Walk down a path on the MS, filling in the given path with information
+ *
+ * This method iteratively calls getchild() until it reaches the end of the path, or encounters an error.
+ * Downloaded entries are put into ret_listings, which will be set up and allocated by this method
+ * The given path entries must contain: volume_id, name
+ * @note Also, the first path entry must contain: name, volume_id, file_id, parent_id
+ * @note This method will modify path (filling in data it obtained from the MS)
+ * @retval 0 Success, indicating no communication error with the MS (but possibly path-related errors, like security check failures or non-existence)
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The path is ill-structured
+ * @retval -errno From the MS
+ */
 int ms_client_path_download( struct ms_client* client, ms_path_t* path, struct ms_client_multi_result* ret_listings ) {
    
    int rc = 0;
@@ -425,18 +445,26 @@ int ms_client_path_download( struct ms_client* client, ms_path_t* path, struct m
 }
 
 
-// make the first entry required for ms_client_path_download
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Make the first entry required for ms_client_path_download
+ * @return The result of ms_client_make_path_ent
+ * @see ms_client_make_path_ent
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int ms_client_path_download_ent_head( struct ms_path_ent* path_ent, uint64_t volume_id, uint64_t parent_id, uint64_t file_id, char const* name, void* cls ) {
    
    memset( path_ent, 0, sizeof(struct ms_path_ent) );
    return ms_client_make_path_ent( path_ent, volume_id, parent_id, file_id, 0, 0, 0, 0, 0, name, cls );
 }
 
-// make a tail entry required for ms_client_path_download
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Make a tail entry required for ms_client_path_download
+ * @return The result of ms_client_make_path_ent
+ * @see ms_client_make_path_ent
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ */
 int ms_client_path_download_ent_tail( struct ms_path_ent* path_ent, uint64_t volume_id, char const* name, void* cls ) {
    
    memset( path_ent, 0, sizeof(struct ms_path_ent) );
@@ -444,8 +472,10 @@ int ms_client_path_download_ent_tail( struct ms_path_ent* path_ent, uint64_t vol
 }
 
 
-// convert each entry in an ms path to a string, up to max_index (use -1 for all)
-// return NULL if ms_path is empty, or we're out of memory
+/**
+ * @brief Convert each entry in an ms path to a string, up to max_index (use -1 for all)
+ * @retval NULL ms_path is empty, or Out of Memory
+ */
 char* ms_path_to_string( ms_path_t* ms_path, int max_index ) {
    
    int i = 0;
@@ -493,12 +523,12 @@ char* ms_path_to_string( ms_path_t* ms_path, int max_index ) {
 }
 
 
-// get cls 
+/// Get cls 
 void* ms_client_path_ent_get_cls( struct ms_path_ent* ent ) {
     return ent->cls;
 }
 
-// set cls 
+/// Set cls 
 void ms_client_path_ent_set_cls( struct ms_path_ent* ent, void* cls ) {
     ent->cls = cls;
 }

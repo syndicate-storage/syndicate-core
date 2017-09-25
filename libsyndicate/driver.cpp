@@ -14,45 +14,64 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate/driver.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Functions to support driver operations
+ *
+ * @see libsyndicate/driver.h
+ */
+
 #include "libsyndicate/libsyndicate.h"
 #include "libsyndicate/driver.h"
 #include "libsyndicate/crypt.h"
 #include "libsyndicate/gateway.h"
 
+/**
+ * @brief Structure to contain driver information
+ */
 struct SG_driver {
   
-   struct SG_chunk driver_conf;     // serialized driver config
-   struct SG_chunk driver_secrets;  // serialized driver secrets
-   struct SG_chunk driver_text;        // driver code
+   struct SG_chunk driver_conf;     ///< serialized driver config
+   struct SG_chunk driver_secrets;  ///< serialized driver secrets
+   struct SG_chunk driver_text;     ///< driver code
    
-   void* cls;           // supplied by the driver on initialization
-   int running;         // set to non-zero of this driver is initialized
+   void* cls;                       ///< supplied by the driver on initialization
+   int running;                     ///< set to non-zero of this driver is initialized
    
-   pthread_rwlock_t reload_lock;                // if write-locked, no method can be called here (i.e. the driver is reloading)
+   pthread_rwlock_t reload_lock;    ///< if write-locked, no method can be called here (i.e. the driver is reloading)
 
-   // driver processes: map role to group of processes that implement it 
+   /// driver processes: map role to group of processes that implement it 
    SG_driver_proc_group_t* groups;
 
    // driver info
-   char* exec_str;
-   char** roles;
-   size_t num_roles;
-   int num_instances;   // number of instances of each role 
+   char* exec_str;                  ///< Name of driver executable
+   char** roles;                    ///< Driver roles
+   size_t num_roles;                ///< Number of driver roles
+   int num_instances;               ///< Number of instances of each role 
 
-   // pointer to global conf 
-   struct md_syndicate_conf* conf;
+   struct md_syndicate_conf* conf;  ///< Pointer to global conf 
 };
 
 
-// alloc a driver 
+/**
+ * @brief Alloc a driver
+ * @return Pointer to SG_driver
+ */
 struct SG_driver* SG_driver_alloc(void) {
    return SG_CALLOC( struct SG_driver, 1 );
 }
 
-// convert a reqdat to a fully-qualified chunk path, to be fed into the driver worker.
-// the string will be terminated with a newline, and a null.
-// return the null-terminated string on success
-// return NULL on OOM or invalid request
+
+/**
+ * @brief Convert a reqdat to a fully-qualified chunk path to be fed into the driver worker.
+ *
+ * The string will be terminated with a newline, and a null.
+ * @return The null-terminated string on success
+ * @retval NULL Out of Memory or invalid request
+ */
 char* SG_driver_reqdat_to_path( struct SG_request_data* reqdat ) {
    
    char* ret = NULL;
@@ -101,10 +120,12 @@ char* SG_driver_reqdat_to_path( struct SG_request_data* reqdat ) {
 }
 
 
-// load a string as a JSON object 
-// return 0 on success, and fill in *jobj_ret 
-// return -ENOMEM on OOM
-// return -EINVAL if we failed to parses
+/**
+ * @brief Load a string as a JSON object 
+ * @retval 0 Success, and fill in *jobj_ret 
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Failed to parse
+ */
 static int SG_parse_json_object( struct json_object** jobj_ret, char const* obj_json, size_t obj_json_len ) {
    
    char* tmp = SG_CALLOC( char, obj_json_len + 1 );
@@ -152,10 +173,12 @@ static int SG_parse_json_object( struct json_object** jobj_ret, char const* obj_
 }
 
 
-// decode and decrypt secrets and put the plaintext into an mlock'ed buffer 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on failure to parse
+/**
+ * @brief Decode and decrypt secrets and put the plaintext into an mlock'ed buffer 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Failure to parse
+ */
 int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, char** ret_buf, size_t* ret_buflen, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
    
    // deserialize...
@@ -192,10 +215,12 @@ int SG_driver_decrypt_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey,
 }
 
 
-// parse the config
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on failure to parse
+/**
+ * @brief Parse the config
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Failure to parse
+ */
 static int SG_parse_driver_config( struct SG_chunk* config, char const* driver_config_b64, size_t driver_config_b64_len ) {
    
    char* obj_buf = NULL;
@@ -215,10 +240,12 @@ static int SG_parse_driver_config( struct SG_chunk* config, char const* driver_c
 }
 
 
-// parse the secrets 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on failure to parse
+/**
+ * @brief Parse the secrets 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Failure to parse
+ */
 static int SG_parse_driver_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_pkey, struct SG_chunk* secrets, char const* driver_secrets_b64, size_t driver_secrets_b64_len ) {
    
    char* obj_buf = NULL;
@@ -238,9 +265,11 @@ static int SG_parse_driver_secrets( EVP_PKEY* gateway_pubkey, EVP_PKEY* gateway_
 }
 
 
-// load a string by key 
-// returns a reference to the value in the json object on success (do NOT free or modify it)
-// return NULL if not found, or if OOM
+/**
+ * @brief Load a string by key 
+ * @retvals A reference to the value in the json object, Success (do NOT free or modify it)
+ * @retval NULL if not found, or Out of Memory
+ */
 static char const* SG_load_json_string_by_key( struct json_object* obj, char const* key, size_t* _val_len ) {
    
    // look up the keyed value
@@ -273,11 +302,13 @@ static char const* SG_load_json_string_by_key( struct json_object* obj, char con
 }
 
 
-// load a chunk of data by key directly 
-// return 0 on success, and set *val and *val_len to the value
-// return -ENOENT if there is no such key 
-// return -EINVAL on parse error 
-// return -ENOMEM if OOM
+/**
+ * @brief Load a chunk of data by key directly 
+ * @retval 0 Success, and set *val and *val_len to the value
+ * @retval -ENOENT if there is no such key 
+ * @retval -EINVAL on parse error 
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_parse_json_b64_string( struct json_object* toplevel_obj, char const* key, char** val, size_t* val_len ) {
    int rc = 0;
    
@@ -312,15 +343,18 @@ static int SG_parse_json_b64_string( struct json_object* toplevel_obj, char cons
 }
 
 
-// parse a serialized driver, encoded as a JSON object
-// A driver is a JSON object that can have a "config", "secrets", and/or "driver" fields.
-// A "config" field is JSON object that maps string keys to string values--it gets loaded as an SG_driver_conf_t.
-// A "secrets" field is an base64-encoded *encrypted* string that decrypts to a JSON object that maps string keys to string values.
-//    The ciphertext gets verified with the given public key, and decrypted with the given private key.  It gets parsed to an SG_driver_secrets_t.
-// A "driver" field is a base64-encoded binary string that encodes some gateway-specific functionality.
-// NOTE: no secrets will be parsed if the keys are null (e.g. if this is an anonymous gateway)
-// return 0 on success, and populate *driver
-// return -ENOMEM on OOM
+/**
+ * @brief Parse a serialized driver, encoded as a JSON object
+ *
+   A driver is a JSON object that can have a "config", "secrets", and/or "driver" fields.
+   A "config" field is JSON object that maps string keys to string values--it gets loaded as an SG_driver_conf_t.
+   A "secrets" field is an base64-encoded *encrypted* string that decrypts to a JSON object that maps string keys to string values.
+   The ciphertext gets verified with the given public key, and decrypted with the given private key.  It gets parsed to an SG_driver_secrets_t.
+   A "driver" field is a base64-encoded binary string that encodes some gateway-specific functionality.
+ * @note No secrets will be parsed. The keys are null (e.g. if this is an anonymous gateway)
+ * @retval 0 Success, and populate *driver
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, size_t driver_full_len, EVP_PKEY* pubkey, EVP_PKEY* privkey ) {
       
    // driver_text should be a JSON object...
@@ -407,27 +441,36 @@ static int SG_parse_driver( struct SG_driver* driver, char const* driver_full, s
 }
 
 
-// read-lock a driver
+/**
+ * @brief Read-lock a driver
+ */
 int SG_driver_rlock( struct SG_driver* driver ) {
    return pthread_rwlock_rdlock( &driver->reload_lock );
 }
 
 
-// write-lock a driver
+/**
+ * @brief Write-lock a driver
+ */
 int SG_driver_wlock( struct SG_driver* driver ) {
    return pthread_rwlock_wrlock( &driver->reload_lock );
 }
 
-// unlock a driver
+/**
+ * @brief Unlock a driver
+ */
 int SG_driver_unlock( struct SG_driver* driver ) {
    return pthread_rwlock_unlock( &driver->reload_lock );
 }
 
 
-// initialize a driver's worker processes
-// gift it a set of initialized process groups
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Initialize a driver's worker processes
+ *
+ * Gift it a set of initialized process groups
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int SG_driver_init_procs( struct SG_driver* driver, char** const roles, struct SG_proc_group** groups, size_t num_groups ) {
 
     driver->groups = SG_safe_new( SG_driver_proc_group_t() );
@@ -451,11 +494,14 @@ static int SG_driver_init_procs( struct SG_driver* driver, char** const roles, s
 }
 
 
-// initialize a driver from a JSON object representation
-// validate it using the given public key.
-// decrypt the driver secrets using the private key.
-// return 0 on success, and populate *driver 
-// return -ENOMEM on OOM
+/**
+ * @brief Initialize a driver from a JSON object representation
+ *
+   Validate the driver using the given public key.
+   decrypt the driver secrets using the private key.
+ * @retval 0 Success, and populate *driver 
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_driver_init( struct SG_driver* driver, struct md_syndicate_conf* conf,
                     EVP_PKEY* pubkey, EVP_PKEY* privkey,
                     char const* exec_str, char** const roles, size_t num_roles, int num_instances,
@@ -514,10 +560,12 @@ int SG_driver_init( struct SG_driver* driver, struct md_syndicate_conf* conf,
 }
 
 
-// spawn a driver's process groups
-// return 0 on success
-// return -ENOMEM on OOM
-// NOT THREAD SAFE: the driver must be under mutual exclusion 
+/**
+ * @brief Spawn a driver's process groups
+ * @note NOT THREAD SAFE: the driver must be under mutual exclusion 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int SG_driver_procs_start( struct SG_driver* driver ) {
    
    int rc = 0;
@@ -668,9 +716,11 @@ SG_driver_procs_start_finish:
 }
 
 
-// stop a driver's running processes 
-// return 0 on success
-// NOT THREAD SAFE--caller must lock the driver
+/**
+ * @brief Stop a driver's running processes 
+ * @note NOT THREAD SAFE: caller must lock the driver
+ * @retval 0 Success
+ */
 int SG_driver_procs_stop( struct SG_driver* driver ) {
 
    struct SG_proc_group* group = NULL;
@@ -732,11 +782,13 @@ int SG_driver_procs_stop( struct SG_driver* driver ) {
 }
 
 
-// reload the driver from a JSON object representation.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EINVAL on failure to parse, or if driver_text is NULL
-// return -EPERM if we were unable to start the driver processes
+/**
+ * @brief Reload the driver from a JSON object representation.
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Failure to parse, or if driver_text is NULL
+ * @retval -EPERM Unable to start the driver processes
+ */
 int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* privkey, char const* driver_text, size_t driver_text_len ) {
    
    if( driver_text == NULL ) {
@@ -792,9 +844,12 @@ int SG_driver_reload( struct SG_driver* driver, EVP_PKEY* pubkey, EVP_PKEY* priv
 }
 
 
-// shut down the driver 
-// stop any running processes
-// alwyas succeeds
+/**
+ * @brief Shut down the driver 
+ *
+ * Stop any running processes
+ * @note Always succeeds
+ */
 int SG_driver_shutdown( struct SG_driver* driver ) {
    
    // call the driver shutdown...
@@ -823,11 +878,13 @@ int SG_driver_shutdown( struct SG_driver* driver ) {
 }
 
 
-// get the value of a driver parameter (e.g. 'config', 'secrets', etc).  It will not be decoded in any way (i.e. it might be b64-encoded)
-// return 0 on success, and set *value and *value_len accordingly 
-// return -ENOMEM on OOM 
-// return -ENOENT if the key is not specified
-// return -EINVAL if driver_text isn't parseable json 
+/**
+ * @brief Get the value of a driver parameter (e.g. 'config', 'secrets', etc).  It will not be decoded in any way (i.e. it might be b64-encoded)
+ * @retval 0 Success, and set *value and *value_len accordingly 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOENT The key is not specified
+ * @retval -EINVAL driver_text isn't parseable json
+ */
 int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char const* key, char** value, size_t* value_len ) {
    
    int rc = 0;
@@ -870,11 +927,14 @@ int SG_driver_get_string( char const* driver_text, size_t driver_text_len, char 
 }
 
 
-// get the value of a driver parameter as an SG_chunk.
-// base64-decode it, and put the decoded data into the *chunk
-// return 0 on success, and populate *chunk
-// return -ENOMEM on OOM 
-// return -EINVAL if the field is not base64-encoded
+/**
+ * @brief Get the value of a driver parameter as an SG_chunk.
+ *
+ * base64-decode it, and put the decoded data into the *chunk
+ * @retval 0 Success, and populate *chunk
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL The field is not base64-encoded
+ */
 int SG_driver_get_chunk( char const* driver_text, size_t driver_text_len, char const* key, struct SG_chunk* chunk ) {
 
    int rc = 0;
@@ -903,10 +963,14 @@ int SG_driver_get_chunk( char const* driver_text, size_t driver_text_len, char c
 }
 
 
-// get a pointer to a proc group
-// NOTE: the driver can get reloaded intermittently, and the processes in the group can die unexpectedly.
-// However, the group will not be freed by the driver, or altered over the course of the gateway's lifetime.
-// The caller should lock the group to prevent the driver from adding/removing processes in it, though.
+/**
+ * @brief Get a pointer to a proc group
+ * @note The driver can get reloaded intermittently, and the processes in the group can die unexpectedly.
+ * However, the group will not be freed by the driver, or altered over the course of the gateway's lifetime.
+ * The caller should lock the group to prevent the driver from adding/removing processes in it, though.
+ * @return Pointer to a proc group
+ * @retval NULL bad alloc or groups == NULL
+ */
 struct SG_proc_group* SG_driver_get_proc_group( struct SG_driver* driver, char const* proc_group_name ) {
 
    if( driver->groups == NULL ) {
