@@ -2126,7 +2126,8 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
    fskit_entry_unlock( dent );
 
    // have we listed before?
-   if( least_unknown_generation <= 1 ) {
+   // TODO: force listdir for now
+   if( least_unknown_generation <= 1 || 1 ) {
 
       // nope--full download
       method = "ms_client_listdir";
