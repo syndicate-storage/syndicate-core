@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/xattr.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for xattr.cpp related functions
+ *
+ * @see libsyndicate-ug/xattr.cpp
+ */
+
 #ifndef _UG_XATTR_H_
 #define _UG_XATTR_H_
 

@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/core.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for core.cpp related functions
+ *
+ * @see libsyndicate-ug/core.cpp
+ */
+
 #ifndef _UG_CORE_H_
 #define _UG_CORE_H_
 

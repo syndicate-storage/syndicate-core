@@ -14,10 +14,16 @@
    limitations under the License.
 */
 
-/*
- * notes
- * 
- * * on loading a manifest, set the inode's old manifest timestamp to it, so we can vacuum it later.
+/**
+ * @file libsyndicate-ug/consistency.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for consistency.cpp related functions
+ *
+ * @note On loading a manifest, set the inode's old manifest timestamp to it, so we can vacuum it later.
+
+ * @see libsyndicate-ug/consistency.cpp
  */
 
 #ifndef _UG_CONSISTENCY_H_

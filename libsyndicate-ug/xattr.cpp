@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/xattr.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway extended attributes related functions
+ *
+ * @see libsyndicate-ug/xattr.h
+ */
+
 #include "consistency.h"
 #include "core.h"
 #include "xattr.h"
@@ -24,6 +34,7 @@ typedef ssize_t (*UG_xattr_get_handler_t)( struct fskit_core*, struct fskit_entr
 typedef int (*UG_xattr_set_handler_t)( struct fskit_core*, struct fskit_entry*, char const*, char const*, size_t, int );
 typedef int (*UG_xattr_delete_handler_t)( struct fskit_core*, struct fskit_entry*, char const* );
 
+/// User Gateway extended attribute handler
 struct UG_xattr_handler_t {
    char const* name;
    UG_xattr_get_handler_t get;
@@ -31,6 +42,7 @@ struct UG_xattr_handler_t {
    UG_xattr_delete_handler_t del;
 };
 
+/// User Gateway extended attribute namespace handler
 struct UG_xattr_namespace_handler {
    char const* prefix;
    UG_xattr_get_handler_t get;
@@ -40,10 +52,18 @@ struct UG_xattr_namespace_handler {
 
 
 // general purpose handlers...
+/**
+ * @brief Set to undefined, returning -ENOTSUP
+ * @return -ENOTSUP
+ */
 int UG_xattr_set_undefined( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags ) {
    return -ENOTSUP;
 }
 
+/**
+ * @brief Delete undefined, returning -ENOTSUP
+ * @return -ENOTSUP
+ */
 int UG_xattr_del_undefined( struct fskit_core* core, struct fskit_entry* fent, char const* name ) {
    return -ENOTSUP;
 }
@@ -59,7 +79,10 @@ static ssize_t UG_xattr_get_write_ttl( struct fskit_core* core, struct fskit_ent
 static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags );
 static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags );
 
-// default xattr handlers for built-in xattrs
+/**
+ * @brief Default xattr handlers for built-in xattrs
+ * @todo Possibly set coordinator by gateway name
+ */
 static struct UG_xattr_handler_t xattr_handlers[] = {
    {UG_XATTR_COORDINATOR,        UG_xattr_get_coordinator,          UG_xattr_set_undefined,    UG_xattr_del_undefined},      // TODO: set coordinator by gateway name?
    {UG_XATTR_CACHED_BLOCKS,      UG_xattr_get_cached_blocks,        UG_xattr_set_undefined,    UG_xattr_del_undefined},
@@ -70,9 +93,11 @@ static struct UG_xattr_handler_t xattr_handlers[] = {
 };
 
 
-// look up an xattr handler for a given attribute name
-// return a pointer to the handler on success
-// return NULL if not found.
+/**
+ * @brief Look up an xattr handler for a given attribute name
+ * @return A pointer to the handler on success
+ * @retval NULL Not found.
+ */
 static struct UG_xattr_handler_t* UG_xattr_lookup_handler( char const* name ) {
 
    for( int i = 0; xattr_handlers[i].name != NULL; i++ ) {
@@ -85,8 +110,10 @@ static struct UG_xattr_handler_t* UG_xattr_lookup_handler( char const* name ) {
 }
 
 
-// get size of all of the names of our xattrs
-// always succeeds
+/**
+ * @brief Get size of all of the names of our xattrs
+ * @return 0
+ */
 size_t UG_xattr_builtin_len_all( void ) {
 
    size_t len = 0;
@@ -100,10 +127,13 @@ size_t UG_xattr_builtin_len_all( void ) {
 }
 
 
-// get concatenated names of all xattrs (delimited by '\0')
-// fill in buf with the names, if it is long enough (buf_len)
-// return the number of bytes copied on success
-// return -ERANGE if the buffer is not big enough.
+/**
+ * @brief Get concatenated names of all xattrs (delimited by '\0')
+ *
+ * Fill in buf with the names, if it is long enough (buf_len)
+ * @retval The number of bytes copied on success
+ * @retval -ERANGE The buffer is not big enough
+ */
 ssize_t UG_xattr_get_builtin_names( char* buf, size_t buf_len ) {
 
    size_t needed_len = UG_xattr_builtin_len_all();
@@ -127,21 +157,25 @@ ssize_t UG_xattr_get_builtin_names( char* buf, size_t buf_len ) {
    return offset;
 }
 
-// get cached block vector, but as a string.
-// string[i] == '1' if block i is cached.
-// string[i] == '0' if block i is NOT cached.
-// return the length of the buffer on success, and fill in *buf with the buffer if *buf is not NULL
-// return -ENOMEM if OOM
-// return -ERANGE if *buf is not NULL but buf_len is not long enough to hold the block vector
-// NOTE: fent must be at least read-locked
+/**
+ * @brief Get cached block vector, as a string.
+ *
+ * string[i] == '1' if block i is cached.
+ * string[i] == '0' if block i is NOT cached.
+ * @attention fent must be at least read-locked
+ * param[out] *buf The buffer (if not NULL)
+ * @return The length of the buffer on success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ERANGE *buf is not NULL but buf_len is not long enough to hold the block vector
+ */
 static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit_entry* fent, char const* name, char* buf, size_t buf_len) {
 
    struct local {
 
       // callback to fskit_entry_resolve_path_cls
       // *cls is a pointer to the null-terminated block vector we're filling in
-      // returns 0 on success
-      // return -ENOMEM on OOM
+      // returns 0 Success
+      // return -ENOMEM Out of Memory
       static int xattr_stat_block( char const* block_path, void* cls ) {
 
          // NOTE: block_vector must be a null-terminated string, memset'ed to '0''s
@@ -234,12 +268,15 @@ static ssize_t UG_xattr_get_cached_blocks( struct fskit_core* core, struct fskit
 }
 
 
-// get cached file path.
-// fill it in in *buf
-// return the length of the path (including the '\0') on success, and fill in *buf if it is not NULL
-// return -ERANGE if the buf is not NULL and the buffer is not long enough
-// return -ENOMEM on OOM
-// NOTE: fent must be read-locked
+/**
+ * @brief Get cached file path.
+ *
+ * Fill in the file path in *buf
+ * @attention fent must be read-locked
+ * @return The length of the path (including the '\0') on success, and fill in *buf if it is not NULL
+ * @retval -ERANGE The buf is not NULL and the buffer is not long enough
+ * @retval -ENOMEM Out of Memory
+ */
 static ssize_t UG_xattr_get_cached_file_path( struct fskit_core* core, struct fskit_entry* fent, char const* name, char* buf, size_t buf_len) {
 
    char* cached_file_path = NULL;
@@ -288,12 +325,14 @@ static ssize_t UG_xattr_get_cached_file_path( struct fskit_core* core, struct fs
 }
 
 
-// get the name of a coordinator of a file
-// return the length of the coordinator's name (plus the '\0'), and write it to *buf if buf is not NULL
-// return -ERANGE if *buf is not NULL but not long enough
-// return -ENOATTR if the coordinator is not known to us (e.g. we're refreshing our cert bundle)
-// return -ENOMEM if OOM
-// NOTE: fent must be read-locked
+/**
+ * @brief Get the name of a coordinator of a file
+ * @return The length of the coordinator's name (plus the '\0'), and write it to *buf if buf is not NULL
+ * @attention fent must be read-locked
+ * @retval -ERANGE *buf is not NULL but not long enough
+ * @retval -ENOATTR The coordinator is not known to us (e.g. we're refreshing our cert bundle)
+ * @retval -ENOMEM Out of Memory
+ */ 
 static ssize_t UG_xattr_get_coordinator( struct fskit_core* core, struct fskit_entry* fent, char const* name, char* buf, size_t buf_len ) {
 
    int rc = 0;
@@ -338,10 +377,12 @@ static ssize_t UG_xattr_get_coordinator( struct fskit_core* core, struct fskit_e
 }
 
 
-// get the read ttl as a string
-// return the string length (plus '\0') on success, and write the string to *buf if buf is not NULL
-// return -ERANGE if buf is not NULL but not long enough
-// NOTE: fent must be read-locked
+/**
+ * @brief Get the read ttl as a string
+ * @attention fent must be read-locked
+ * @return The string length (plus '\0') on success, and write the string to *buf if buf is not NULL
+ * @retval -ERANGE buf is not NULL but not long enough
+ */
 static ssize_t UG_xattr_get_read_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char* buf, size_t buf_len ) {
 
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
@@ -370,9 +411,11 @@ static ssize_t UG_xattr_get_read_ttl( struct fskit_core* core, struct fskit_entr
 }
 
 
-// get the write ttl
-// return the string length (plus '\0') on success, and write the string to *buf if buf is not NULL
-// return -ERANGE if buf is not NULL, but not long enough
+/**
+ * @brief Get the write ttl
+ * @return The string length (plus '\0') on success, and write the string to *buf if buf is not NULL
+ * @retval -ERANGE buf is not NULL, but not long enough
+ */
 static ssize_t UG_xattr_get_write_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char* buf, size_t buf_len ) {
 
    struct UG_inode* inode = (struct UG_inode*)fskit_entry_get_user_data( fent );
@@ -403,12 +446,14 @@ static ssize_t UG_xattr_get_write_ttl( struct fskit_core* core, struct fskit_ent
    return len;
 }
 
-// set the read ttl
-// return 0 on success
-// return -EEXIST if the caller specified XATTR_CREATE--this attribute is built-in and always exists
-// return -EINVAL if we couldn't parse the buffer
-// return -EREMOTEIO on failure to propagate to the MS
-// NOTE: fent must be write-locked
+/**
+ * @brief Set the read ttl
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -EEXIST The caller specified XATTR_CREATE, this attribute is built-in and always exists
+ * @retval -EINVAL Couldn't parse the buffer
+ * @retval -EREMOTEIO Failure to propagate to the MS
+ */
 static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags ) {
 
    // this attribute always exists...
@@ -446,12 +491,14 @@ static int UG_xattr_set_read_ttl( struct fskit_core* core, struct fskit_entry* f
 }
 
 
-// set the write ttl
-// return 0 on success
-// return -EEXIST if the caller specified XATTR_CREAT--this attribute is built-in and always exists
-// return -EINVAL if we couldn't parse the buffer
-// return -EREMOTEIO on failure to propagate to the MS
-// NOTE: fent must be write-locked
+/**
+ * @brief Set the write ttl
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -EEXIST The caller specified XATTR_CREAT, this attribute is built-in and always exists
+ * @retval -EINVAL Couldn't parse the buffer
+ * @retval -EREMOTEIO Failure to propagate to the MS
+ */
 static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* fent, char const* name, char const* buf, size_t buf_len, int flags ) {
 
    // this attribute always exists...
@@ -488,15 +535,14 @@ static int UG_xattr_set_write_ttl( struct fskit_core* core, struct fskit_entry* 
    return rc;
 }
 
-
-// handle built-in getxattr
-// return the length of the xattr value on success
-// return 0 if not handled
-// return the length of the xattr value on success
-// return the length of the xattr value of *value is NULL, but the xattr is built-in
-// return -ENOMEM on OOM
-// return -ERANGE if the buf isn't big enough
-// fent must be read-locked
+/**
+ * @brief Handle built-in getxattr
+ * @attention fent must be read-locked
+ * @return The length of the xattr value
+ * @retval 0 Not handled
+ * @retval -ENOMEM Out of Memory
+ * @retval -ERANGE The buf isn't big enough
+ */
 static ssize_t UG_xattr_fgetxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
 
    int rc = 0;
@@ -514,19 +560,23 @@ static ssize_t UG_xattr_fgetxattr_builtin( struct SG_gateway* gateway, char cons
 }
 
 
-// fgetxattr(2) implementation, for use in both the client, HTTP server, and fskit.
-// handles local built-in xattrs and all remote xattrs.
-// does not handle local non-built-in xattrs; defer to fskit for these.
-// return length of the xattr on success
-// return 0 if not handled (i.e. local request, and not a built-in xattr)
-// return -ERANGE if the buffer is too small
-// return -ENOENT if the entry doesn't exist
-// return -EACCES if we don't have permission to read
-// return -EAGAIN if we're acting on stale data, and should try again
-// return -ETIMEDOUT if the xattr is remote, and could not be completed on time
-// return -EREMOTEIO on remote I/O error
-// return -ENOATTR if the attribute doesn't exist
-// NOTE: fent must be read-locked
+/**
+ * @brief fgetxattr(2) implementation, for use in both the client, HTTP server, and fskit.
+ *
+ * Handles local built-in xattrs and all remote xattrs.
+ * Does not handle local non-built-in xattrs; defer to fskit for these.
+ * @attention fent must be read-locked
+ * @return Length of the xattr on success
+ * or the length of the xattr value if *value is NULL, but we were able to get the xattr
+ * @retval 0 not handled (i.e. local request, and not a built-in xattr)
+ * @retval -ERANGE The buffer is too small
+ * @retval -ENOENT The entry doesn't exist
+ * @retval -EACCES No permission to read
+ * @retval -EAGAIN Stale data, and should try again
+ * @retval -ETIMEDOUT The xattr is remote, and could not be completed on time
+ * @retval -EREMOTEIO Remote I/O error
+ * @retval -ENOATTR The attribute doesn't exist
+ */
 ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t size, bool query_remote ) {
 
    int rc = 0;
@@ -592,20 +642,27 @@ ssize_t UG_xattr_fgetxattr_ex( struct SG_gateway* gateway, char const* path, str
    return rc;
 }
 
+/**
+ * @brief fgetxattr(2) implementation
+ * @see UG_xattr_fgetxattr_ex
+ */
 ssize_t UG_xattr_fgetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
    return UG_xattr_fgetxattr_ex( gateway, path, fent, name, value, value_len, true );
 }
 
-// getxattr(2) for the HTTP server and client
-// handles all xattrs--local and remote, builtin and non-built-in.
-// return the length of the xattr value on success
-// return the length of the xattr value if *value is NULL, but we were able to get the xattr
-// return -ENOMEM on OOM
-// return -ENOENT if the file doesn't exist
-// return -EACCES if we're not allowed to read the file or the attribute
-// return -ETIMEDOUT if the transfer could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the remote host couldn't process the request
+/**
+ * @brief getxattr(2) implementation for the HTTP server and client
+ *
+ * Handles all xattrs - local and remote, builtin and non-built-in.
+ * @return The length of the xattr value on success
+ * or the length of the xattr value if *value is NULL, but we were able to get the xattr
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT The file doesn't exist
+ * @retval -EACCES Not allowed to read the file or the attribute
+ * @retval -ETIMEDOUT The transfer could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The remote host couldn't process the request
+ */
 ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char *value, size_t size, uint64_t owner_id, uint64_t volume_id, bool query_remote ) {
 
    int rc = 0;
@@ -638,16 +695,22 @@ ssize_t UG_xattr_getxattr_ex( struct SG_gateway* gateway, char const* path, char
    return rc;
 }
 
+/**
+ * @brief getxattr(2) implementation
+ * @see UG_xattr_getxattr_ex
+ */
 ssize_t UG_xattr_getxattr( struct SG_gateway* gateway, char const* path, char const* name, char* value, size_t size, uint64_t owner_id, uint64_t volume_id ) {
    return UG_xattr_getxattr_ex( gateway, path, name, value, size, owner_id, volume_id, true );
 }
 
 
-// handle built-in setxattr
-// return 0 if handled
-// return 1 if not handled
-// return -ENOMEM on OOM
-// fent must be read-locked
+/**
+ * @brief Handle built-in setxattr
+ * @attention fent must be read-locked
+ * @retval 0 Success
+ * @retval 1 Not handled
+ * @retval -ENOMEM Out of Memory
+ */
 static ssize_t UG_xattr_fsetxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char const* value, size_t value_len, int flags ) {
 
    int rc = 0;
@@ -663,13 +726,14 @@ static ssize_t UG_xattr_fsetxattr_builtin( struct SG_gateway* gateway, char cons
    return rc;
 }
 
-
-// local setxattr, for when we're the coordinator of the file.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Local setxattr, for when we're the coordinator of the file.
+ * @attention inode->entry must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ */
 static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name, char const* value, size_t value_len, int flags ) {
 
     int rc = 0;
@@ -735,16 +799,18 @@ static int UG_xattr_setxattr_local( struct SG_gateway* gateway, char const* path
 }
 
 
-// remote setxattr, for when we're NOT the coordinator of the file
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// NOTE: inode->entry must be at least read-locked
+/**
+ * @brief Remote setxattr, for when we're NOT the coordinator of the file
+ * @attention inode->entry must be at least read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO HTTP 400-level error
+ */
 static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name, char const* value, size_t value_len, int flags ) {
 
     int rc = 0;
@@ -783,18 +849,21 @@ static int UG_xattr_setxattr_remote( struct SG_gateway* gateway, char const* pat
 }
 
 
-// fsetxattr implementation, used by the client, the HTTP server, and fskit
-// handles both remote and local xattrs, as well as built-in and non-built-in.
-// return 0 if handled
-// return 1 if not handled
-// return -ENOMEM on OOM
-// return -EPERM if this gateway is anonymous
-// return -ETIMEDOUT on timeout
-// return -EREMOTEIO on failure to process remotely
-// return -EAGAIN if we're acting on stale data
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// fent must be write-locked
+/**
+ * @brief fsetxattr implementation, used by the client, the HTTP server, and fskit
+ *
+ * Handles both remote and local xattrs, as well as built-in and non-built-in.
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval 1 Not handled
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM This gateway is anonymous
+ * @retval -ETIMEDOUT Timeout
+ * @retval -EREMOTEIO Failure to process remotely
+ * @retval -EAGAIN Acting on stale data
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ */
 int UG_xattr_fsetxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, char const* value, size_t size, int flags ) {
 
    int rc = 0;
@@ -864,18 +933,21 @@ UG_xattr_fsetxattr_out:
 }
 
 
-// setxattr(2)
-// works for the HTTP server and client, but not for fskit
-// return -ENOMEM on OOM
-// return -ENOENT if the file doesn't exist
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -EACCES if we're not allowed to write to the file
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// return -ESTALE if ask_remote is False and we're not the coordinator
+/**
+ * @brief setxattr(2) implementation
+ *
+ * Works for the HTTP server and client, but not for fskit
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT The file doesn't exist
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ * @retval -EACCES Not allowed to write to the file
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO HTTP 400-level error
+ * @retval -ESTALE ask_remote is False and we're not the coordinator
+ */
 int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume, bool query_remote ) {
 
    int rc = 0;
@@ -917,16 +989,22 @@ int UG_xattr_setxattr_ex( struct SG_gateway* gateway, char const* path, char con
    return rc;
 }
 
+/**
+ * @brief setxattr(2) implementation
+ * @see UG_xattr_setxattr_ex
+ */
 int UG_xattr_setxattr( struct SG_gateway* gateway, char const* path, char const *name, char const *value, size_t size, int flags, uint64_t user, uint64_t volume ) {
    return UG_xattr_setxattr_ex( gateway, path, name, value, size, flags, user, volume, true );
 }
 
 
-// handle built-in listxattr
-// return the length of the listing on success, or if *buf is NULL or buf_len is 0
-// return -ENOMEM on OOM
-// return -ERANGE if the buf isn't big enough
-// fent must be read-locked
+/**
+ * @brief Handle built-in listxattr
+ * @attention fent must be read-locked
+ * @return The length of the listing on success, or if *buf is NULL or buf_len is 0
+ * @retval -ENOMEM Out of Memory
+ * @retval -ERANGE The buf isn't big enough
+ */
 static ssize_t UG_xattr_flistxattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len ) {
 
    size_t builtin_len = UG_xattr_builtin_len_all();
@@ -944,16 +1022,18 @@ static ssize_t UG_xattr_flistxattr_builtin( struct SG_gateway* gateway, char con
 }
 
 
-// Implementation of flistxattr(2) for client, HTTP server, and fskit
-// return the length of the listing on success
-// return -ENOMEM on OOM
-// return -ERANGE if the buffer isn't big enough
-// return -EACCES if we can't read the entry
-// return -ENOENT if the entry doesn't exist
-// return -ETIMEDOUT on network timeout
-// return -EREMOTEIO on remote host processing failure
-// return -ESTALE if the query_remote is False and we're not the coordinator
-// fent must be read-locked
+/**
+ * @brief Implementation of flistxattr(2) for client, HTTP server, and fskit
+ * @attention fent must be read-locked
+ * @return The length of the listing on success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ERANGE The buffer isn't big enough
+ * @retval -EACCES Can't read the entry
+ * @retval -ENOENT The entry doesn't exist
+ * @retval -ETIMEDOUT Network timeout
+ * @retval -EREMOTEIO Remote host processing failure
+ * @retval -ESTALE The query_remote is False and we're not the coordinator
+ */
 ssize_t UG_xattr_flistxattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len, bool query_remote ) {
 
    int rc = 0;
@@ -1045,23 +1125,29 @@ UG_xattr_flistxattr_out:
    return rc;
 }
 
+/**
+ * @brief Implementation of flistxattr(2) for client, HTTP server, and fskit
+ * @see UG_xattr_flistxattr_ex
+ */
 ssize_t UG_xattr_flistxattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char* buf, size_t buf_len ) {
    return UG_xattr_flistxattr_ex( gateway, path, fent, buf, buf_len, true );
 }
 
 
-// listxattr(2)--get back a list of xattrs from the MS (for the client and HTTP server)
-// return the number of bytes copied on success, and fill in *list (if non-null) with \0-separated names for xattrs (up to size bytes)
-// return the number of bytes needed for *list, if *list is NULL
-// return -ENOMEM on OOM
-// return -ENOENT if the file doesn't exist
-// return -ERANGE if list is not NULL, but too small
-// return -EACCES if we're not allowed to write to the file
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// return -ESTALE if ask_remote is False, and we're not the coordinator
+/**
+ * @brief listxattr(2) implementation, get back a list of xattrs from the MS (for the client and HTTP server)
+ * @return The number of bytes copied on success, and fill in *list (if non-null) with \0-separated names for xattrs (up to size bytes)
+ * or the number of bytes needed for *list, if *list is NULL
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT The file doesn't exist
+ * @retval -ERANGE List is not NULL, but too small
+ * @retval -EACCES Not allowed to write to the file
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO on HTTP 400-level error
+ * @retval -ESTALE ask_remote is False, and not the coordinator
+ */
 ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume, bool query_remote ) {
 
    int rc = 0;
@@ -1095,20 +1181,26 @@ ssize_t UG_xattr_listxattr_ex( struct SG_gateway* gateway, char const* path, cha
    return rc;
 }
 
+/**
+ * @brief listxattr(2) implementation, get back a list of xattrs from the MS (for the client and HTTP server)
+ * @see UG_xattr_listxattr_ex
+ */
 ssize_t UG_xattr_listxattr( struct SG_gateway* gateway, char const* path, char *list, size_t size, uint64_t user, uint64_t volume ) {
    return UG_xattr_listxattr_ex( gateway, path, list, size, user, volume, true );
 }
 
 
-// handle built-in removexattr
-// return 0 on success
-// return 1 if not handled
-// return the length of the xattr value on success
-// return the length of the xattr value of *value is NULL, but the xattr is built-in
-// return -ENOMEM on OOM
-// return -ENOENT if the file doesn't exist
-// return -EACCES if we're not allowed to read the file or attribute
-// fent must be read-locked
+/**
+ * @brief Handle built-in removexattr
+ * @attention fent must be read-locked
+ * @return The length of the xattr value on success
+ * or the length of the xattr value of *value is NULL, but the xattr is built-in
+ * @retval 0 Success
+ * @retval 1 Not handled
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT The file doesn't exist
+ * @retval -EACCES Not allowed to read the file or attribute
+ */
 static ssize_t UG_xattr_fremovexattr_builtin( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name ) {
 
    int rc = 0;
@@ -1125,17 +1217,19 @@ static ssize_t UG_xattr_fremovexattr_builtin( struct SG_gateway* gateway, char c
 }
 
 
-// local removexattr, for when we're the coordinator of the file.
-// NOTE: the xattr must have already been removed from the file
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// NOTE: inode->entry must be at least read-locked
+/**
+ * @brief Local removexattr, for when we're the coordinator of the file.
+ * @attention The xattr must have already been removed from the file
+ * @attention inode->entry must be at least read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO HTTP 400-level error
+ */
 static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name ) {
 
     int rc = 0;
@@ -1240,16 +1334,18 @@ static int UG_xattr_removexattr_local( struct SG_gateway* gateway, char const* p
 }
 
 
-// remote removexattr, for when we're NOT the coordinator of the file
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// NOTE: inode->entry must be at least read-locked
+/**
+ * @brief Remote removexattr, for when we're NOT the coordinator of the file
+ * @attention inode->entry must be at least read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO HTTP 400-level error
+ */
 static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* path, struct UG_inode* inode, char const* name ) {
 
     int rc = 0;
@@ -1290,20 +1386,22 @@ static int UG_xattr_removexattr_remote( struct SG_gateway* gateway, char const* 
 }
 
 
-// Implementation of fremovexattr for the client, HTTP server, and fskit
-// return 0 on success
-// return 1 if the xattr was removed, but was not a built-in one (i.e. fskit has to handle it too)
-// return -ENOMEM on OOM
-// return -EPERM if this is an anonymous gateway
-// return -ERANGE if the buffer isn't big enough
-// return -EACCES if we can't write to this file
-// return -ENOENT if the file doesn't exist
-// return -ETIMEDOUT if the transfer could not complete in time
-// return -EAGAIN if we're acting on stale data
-// return -ENOATTR if the attribute doesn't exist
-// return -EREMOTEIO if the the remote servers couldn't process the request
-// return -ESTALE if query_remote is False and we're not the coordinator
-// fent must be write-locked
+/**
+ * @brief Implementation of fremovexattr for the client, HTTP server, and fskit
+ * fent must be write-locked
+ * @retval 0 Success
+ * @retval 1 The xattr was removed, but was not a built-in one (i.e. fskit has to handle it too)
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM This is an anonymous gateway
+ * @retval -ERANGE The buffer isn't big enough
+ * @retval -EACCES Can't write to this file
+ * @retval -ENOENT The file doesn't exist
+ * @retval -ETIMEDOUT The transfer could not complete in time
+ * @retval -EAGAIN if we're acting on stale data
+ * @retval -ENOATTR The attribute doesn't exist
+ * @retval -EREMOTEIO The remote servers couldn't process the request
+ * @retval -ESTALE query_remote is False and we're not the coordinator
+ */
 int UG_xattr_fremovexattr_ex( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name, bool query_remote ) {
 
    int rc = 0;
@@ -1378,23 +1476,29 @@ UG_xattr_fremovexattr_out:
    return rc;
 }
 
+/**
+ * @brief Implementation of fremovexattr for the client, HTTP server, and fskit
+ * @see UG_xattr_fremovexattr_ex
+ */
 int UG_xattr_fremovexattr( struct SG_gateway* gateway, char const* path, struct fskit_entry* fent, char const* name ) {
    return UG_xattr_fremovexattr_ex( gateway, path, fent, name, true );
 }
 
 
-// removexattr(2)--delete an xattr on the MS and locally
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EPERM if this is an anonymous gateway
-// return -ENOENT if the file doesn't exist
-// return -ERANGE if list is not NULL, but too small
-// return -EACCES if we're not allowed to write to the file
-// return -ETIMEDOUT if the tranfser could not complete in time
-// return -EAGAIN if we were signaled to retry the request
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EPROTO on HTTP 400-level error
-// return -ESTALE if query_remote is False and we're not the coordinator
+/**
+ * @brief removexattr(2)--delete an xattr on the MS and locally
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM This is an anonymous gateway
+ * @retval -ENOENT The file doesn't exist
+ * @retval -ERANGE List is not NULL, but too small
+ * @retval -EACCES Not allowed to write to the file
+ * @retval -ETIMEDOUT The tranfser could not complete in time
+ * @retval -EAGAIN Signaled to retry the request
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EPROTO HTTP 400-level error
+ * @retval -ESTALE query_remote is False and we're not the coordinator
+ */
 int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char const *name, uint64_t user, uint64_t volume, bool query_remote ) {
 
    int rc = 0;
@@ -1432,6 +1536,10 @@ int UG_xattr_removexattr_ex( struct SG_gateway* gateway, char const* path, char 
    return rc;
 }
 
+/**
+ * @brief removexattr(2)--delete an xattr on the MS and locally
+ * @see UG_xattr_removexattr_ex
+ */
 int UG_xattr_removexattr( struct SG_gateway* gateway, char const* path, char const* name, uint64_t user, uint64_t volume ) {
    return UG_xattr_removexattr_ex( gateway, path, name, user, volume, true );
 }

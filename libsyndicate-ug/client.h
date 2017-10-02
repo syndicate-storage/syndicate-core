@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/client.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for client.cpp related functions
+ *
+ * @see libsyndicate-ug/client.cpp
+ */
+
 // top-level application-facing Syndicate User Gateway API
 
 #ifndef _UG_CLIENT_H_

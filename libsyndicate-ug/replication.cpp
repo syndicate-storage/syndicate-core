@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/replication.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway replication related functions
+ *
+ * @see libsyndicate-ug/replication.h
+ */
+
 #include "replication.h"
 #include "inode.h"
 #include "core.h"
@@ -24,42 +34,45 @@
 #define REPLICA_IN_PROGRESS     1
 #define REPLICA_SUCCESS         2
 
-// snapshot of inode fields needed for replication and garbage collection 
+/// Snapshot of inode fields needed for replication and garbage collection 
 struct UG_replica_context {
   
-   struct UG_state* state;              // pointer to UG
+   struct UG_state* state;                      ///< Pointer to UG
 
-   char* fs_path;                       // path to the file to replicate
-   SG_messages::Request* controlplane_request;  // control-plane component
-   struct SG_chunk serialized_manifest; // serialized manifest, if we're replicating the manifest
-   struct SG_client_request_async* datareq;     // data-plane stream generator 
+   char* fs_path;                               ///< Path to the file to replicate
+   SG_messages::Request* controlplane_request;  ///< Control-plane component
+   struct SG_chunk serialized_manifest;         ///< Serialized manifest, if we're replicating the manifest
+   struct SG_client_request_async* datareq;     ///< Data-plane stream generator 
 
-   struct md_entry inode_data;          // exported inode
-   uint64_t* affected_blocks;           // block IDs affected by the write
-   size_t num_affected_blocks;          // length of the above list
+   struct md_entry inode_data;                  ///< Exported inode
+   uint64_t* affected_blocks;                   ///< Block IDs affected by the write
+   size_t num_affected_blocks;                  ///< Length of the above list
    
-   struct SG_manifest write_delta;      // write delta to send to the coordinator
+   struct SG_manifest write_delta;              ///< Write delta to send to the coordinator
 
-   struct UG_RG_context* rg_context;    // RPC contexts to all RGs
+   struct UG_RG_context* rg_context;            ///< RPC contexts to all RGs
    
-   bool flushed_blocks;                 // if true, then the blocks have all been flushed to disk and can be replicated 
-   bool sent_vacuum_log;                // if true, then we've told the MS about the manifest and blocks we're about to replicate 
-   bool replicated_blocks;              // if true, then we've replicated blocks and manifests
-   bool sent_ms_update;                 // if true, then we've sent the new inode metadata to the MS
+   bool flushed_blocks;                         ///< If true, then the blocks have all been flushed to disk and can be replicated 
+   bool sent_vacuum_log;                        ///< If true, then we've told the MS about the manifest and blocks we're about to replicate 
+   bool replicated_blocks;                      ///< If true, then we've replicated blocks and manifests
+   bool sent_ms_update;                         ///< If true, then we've sent the new inode metadata to the MS
 
    // for use while sending blocks... 
-   size_t cur_block;
-   int cur_block_fd;
-   bool sent_manifest;
-   off_t manifest_offset;
-   size_t total_data_upload_len;
+   size_t cur_block;                            ///< current block (use while sending blocks)
+   int cur_block_fd;                            ///< current block file descriptor (use while sending blocks)
+   bool sent_manifest;                          ///< If true, the manifest was sent
+   off_t manifest_offset;                       ///< The manifest offset
+   size_t total_data_upload_len;                ///< Total size of the data upload
 };
 
 
-// data-plane stream function for libcurl 
-// returns number of bytes written on success
-// returns CURL_READFUNC_ABORT on failure 
-// *cls is a UG_replica_context 
+/**
+ * @brief Data-plane stream function for libcurl 
+ * @note cls is a UG_replica_context
+ * @see UG_replica_content
+ * @return Number of bytes written on success
+ * @retvals CURL_READFUNC_ABORT Failure
+ */
 size_t UG_replica_dataplane_stream( char* buf, size_t count, size_t nmemb, void* cls ) {
 
    struct SG_client_request_async* datareq = (struct SG_client_request_async*)cls;
@@ -158,7 +171,7 @@ size_t UG_replica_dataplane_stream( char* buf, size_t count, size_t nmemb, void*
    return total_read;
 }
 
-// new dataplane stream 
+/// Create a new dataplane stream 
 struct SG_client_request_async* UG_replica_dataplane_stream_new( struct UG_replica_context* rctx ) {
 
    struct SG_client_request_async* datareq = SG_client_request_async_new();
@@ -170,17 +183,19 @@ struct SG_client_request_async* UG_replica_dataplane_stream_new( struct UG_repli
    return datareq;
 }
 
-// new replica context
+/// Create a new replica context
 struct UG_replica_context* UG_replica_context_new() {
    return SG_CALLOC( struct UG_replica_context, 1 );
 }
 
-
-// sign and serialize a manifest to a chunk 
-// return 0 on success, and populate *chunk 
-// return -ENOMEM on OOM 
-// return -EPERM if the signing or serialization failed 
-// return -ENODATA if we failed to serialize with the driver
+/**
+ * @brief Sign and serialize a manifest to a chunk
+ * @param[out] *raw_chunk The populated chunk
+ * @retval Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EPERM The signing or serialization failed 
+ * @retval -ENODATA Failed to serialize with the driver
+ */
 static int UG_replica_sign_serialize_manifest_to_chunk( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* manifest, struct SG_chunk* raw_chunk ) {
 
    int rc = 0;
@@ -250,9 +265,12 @@ static int UG_replica_sign_serialize_manifest_to_chunk( struct SG_gateway* gatew
 }
 
 
-// generate chunk info from a manifest chunk
-// return 0 on success, and populate *chunk_info 
-// return -ENOMEM on OOM 
+/**
+ * @brief Generate chunk info from a manifest chunk
+ * @param[out] *chunk_info Populated chunk information
+ * @retval Success
+ * @retval -ENOMEM Out of Memory 
+ */
 static int UG_replica_make_manifest_chunk_info( struct SG_chunk* manifest_chunk, int64_t mtime_sec, int32_t mtime_nsec, struct SG_manifest_block* chunk_info ) {
 
    int rc = 0;
@@ -277,12 +295,16 @@ static int UG_replica_make_manifest_chunk_info( struct SG_chunk* manifest_chunk,
 }
 
 
-// generate chunk info from a dirty block.
-// the block needs to have been flushed to disk.
-// NOTE: not thread-safe w.r.t. the block; the block must *not* be modified while this method is being called!
-// return 0 on success, and populate *chunk_info 
-// return -ENOMEM on OOM 
-// return -EPERM if the block could not be mapped into RAM
+/**
+ * @brief Generate chunk info from a dirty block.
+ *
+ * The block needs to have been flushed to disk.
+ * @param[out] *chunk_info Populated chunk information
+ * @attention Not thread-safe w.r.t. the block; the block must *not* be modified while this method is being called!
+ * @retval Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EPERM The block could not be mapped into RAM
+ */
 static int UG_replica_make_block_chunk_info( struct UG_dirty_block* block, uint64_t block_id, int64_t block_version, struct SG_manifest_block* chunk_info ) {
 
    unsigned char hash[SG_BLOCK_HASH_LEN];
@@ -313,9 +335,12 @@ static int UG_replica_make_block_chunk_info( struct UG_dirty_block* block, uint6
 }
 
 
-// given the whole manifest and the blocks to replicate, calculate the delta to send to the coordinator.
-// return 0 on success, and populate *write_delta
-// return -ENOMEM on OOM
+/**
+ * @brief Given the whole manifest and the blocks to replicate, calculate the delta to send to the coordinator.
+ * @param[out] *write_delta The populated write_delta
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_replica_make_write_delta( struct SG_manifest* whole_manifest, UG_dirty_block_map_t* flushed_blocks, struct SG_manifest* write_delta ) {
 
    int rc = 0;
@@ -349,13 +374,18 @@ static int UG_replica_make_write_delta( struct SG_manifest* whole_manifest, UG_d
 }
 
 
-// create the replica control-plane message.
-// This can be a PUTCHUNKS command, in which case, the message will contain blocks and (if we're the coordinator) the manifest
-//    all blocks in flushed_blocks need to be dirty in this case
-// This can also be a RENAME_HINT command, in which case,the new_path argument and manifest will be used.
-// return 0 on success, and populate *request and *serialized_manifest.  Does *NOT* calculate size and offset fields in the request
-// return -ENOMEM on OOM 
-// return -EINVAL on invalid arguments
+/**
+ * @brief Create the replica control-plane message.
+ *
+ * This can be a PUTCHUNKS command, in which case, the message will contain blocks and (if we're the coordinator) the manifest
+ * All blocks in flushed_blocks need to be dirty in this case
+ * This can also be a RENAME_HINT command, in which case,the new_path argument and manifest will be used.
+ * @param[out] *request Populate the request (does not calculate size and offset fields in the request)
+ * @param[out] *serialize_manifest Populate serialized_manifest
+ * @return 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Invalid arguments
+ */
 static int UG_replica_context_make_controlplane_message( struct UG_state* ug, uint64_t request_type, char const* fs_path, struct UG_inode* inode, struct SG_manifest* manifest,
                                                          UG_dirty_block_map_t* flushed_blocks, char const* new_path, SG_messages::Request* request, struct SG_chunk* serialized_manifest ) {
    
@@ -477,12 +507,16 @@ UG_replica_context_make_controlplane_message_fail:
 }
 
 
-// create the replica data-plane message, using an already-initialized control-plane request.
-// write out the serialized data-plane message to disk, and add chunk information (size, offset, type) to the control-plane request.
-// NOTE: each block in flushed_blocks must be dirty and already flushed to disk (i.e. it must have a file descriptor)
-// return 0 on success, and populate the size and offset fields for each block in the control-plane request *request
-// return -errno on fs-related errors.
-// return -ENAMETOOLONG on temporary path overflow
+/**
+ * @brief Create the replica data-plane message, using an already-initialized control-plane request.
+ *
+ * Write out the serialized data-plane message to disk, and add chunk information (size, offset, type) to the control-plane request.
+ * @note Each block in flushed_blocks must be dirty and already flushed to disk (i.e. it must have a file descriptor)
+ * @param[out] *request Populate the size and offset fields for each block in the control-plane request
+ * @retval 0 Success
+ * @retval -errno fs-related errors.
+ * @retval -ENAMETOOLONG Temporary path overflow
+ */
 static int UG_replica_context_make_dataplane_message( struct UG_state* ug, SG_messages::Request* request, struct SG_chunk* manifest_chunk, UG_dirty_block_map_t* flushed_blocks, size_t* total_data_len ) {
 
    int rc = 0;
@@ -608,13 +642,16 @@ UG_replica_context_make_dataplane_message_fail:
 }
 
 
-// set up a replica context from an inode's dirty blocks and its current *whole* manifest.
-// flushed_blocks is allowed to be NULL, in which case only the manifest will be replicated.
-// NOTE: inode->entry should be read-locked
-// NOTE: if non-NULL, then flushed_blocks must all be dirty and in RAM
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on invalid input (i.e. a non-dirty inode)
+/**
+ * @brief Set up a replica context from an inode's dirty blocks and its current *whole* manifest.
+ *
+ * @attention inode->entry should be read-locked
+ * @note flushed_blocks is allowed to be NULL, in which case only the manifest will be replicated.
+ * @note if non-NULL, then flushed_blocks must all be dirty and in RAM
+ * @retval Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Invalid input (i.e. a non-dirty inode)
+ */
 int UG_replica_context_init_ex( struct UG_replica_context* rctx, struct UG_state* ug, uint64_t request_type, char const* fs_path,
                                char const* new_path, struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
    
@@ -766,7 +803,7 @@ int UG_replica_context_init_ex( struct UG_replica_context* rctx, struct UG_state
 }
 
 
-// short-hand for making a PUTCHUNKS request
+/// Short-hand for making a PUTCHUNKS request
 int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* ug, char const* fs_path,
                              struct UG_inode* inode, struct SG_manifest* manifest, UG_dirty_block_map_t* flushed_blocks ) {
 
@@ -774,7 +811,7 @@ int UG_replica_context_init( struct UG_replica_context* rctx, struct UG_state* u
 }
 
 
-// short-hand for making a RENAME_HINT request
+/// Short-hand for making a RENAME_HINT request
 int UG_replica_context_init_rename_hint( struct UG_replica_context* rctx, struct UG_state* ug, char const* old_path, char const* new_path,
                                          struct UG_inode* inode, struct SG_manifest* manifest ) {
 
@@ -783,8 +820,10 @@ int UG_replica_context_init_rename_hint( struct UG_replica_context* rctx, struct
 
    
 
-// free up a replica context 
-// always succeeds 
+/**
+ * @brief Free up a replica context 
+ * @return 0
+ */
 int UG_replica_context_free( struct UG_replica_context* rctx ) {
    
    SG_safe_free( rctx->fs_path ); 
@@ -801,11 +840,14 @@ int UG_replica_context_free( struct UG_replica_context* rctx ) {
    return 0;
 }
 
-// append a file's vacuum log on the MS
-// does *NOT* set rctx->sent_vacuum_log
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -errno on connection errors 
+/**
+ * @brief Append a file's vacuum log on the MS
+ *
+ * Does *NOT* set rctx->sent_vacuum_log
+ * @retval Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Connection errors
+ */
 static int UG_replicate_vacuum_log( struct SG_gateway* gateway, struct UG_replica_context* rctx ) {
    
    int rc = 0;
@@ -835,21 +877,26 @@ static int UG_replicate_vacuum_log( struct SG_gateway* gateway, struct UG_replic
 }
 
 
-// replicate the blocks and manifest to a given gateway.
-// (0) make sure all blocks are flushed to disk cache
-// (1) if we're the coordinator, append to this file's vacuum log on the MS 
-// (2) replicate the blocks and manifest to each replica gateway
-// (3) if we're the coordinator, send the new inode information to the MS
-// free up blocks and manifest information as they succeed, so the caller can try a different gateway on a subsequent call resulting from a partial replication failure.
-// return 0 on success
-// return -EIO if this method failed to flush data to disk
-// return -EAGAIN if this method should be called again, with the same arguments
-// return -ENOMEM on OOM
-// return -ETIMEDOUT if the tranfser could not complete in time 
-// return -EREMOTEIO if the HTTP error is >= 500
-// return -EINVAL for improper arguments
-// return -ENODATA if the HTTP error was a 400-level error
-// return other -errno on socket- and recv-related errors
+/**
+ * @brief Replicate the blocks and manifest to a given gateway.
+ *
+``` 
+   (0) make sure all blocks are flushed to disk cache
+   (1) if we're the coordinator, append to this file's vacuum log on the MS 
+   (2) replicate the blocks and manifest to each replica gateway
+   (3) if we're the coordinator, send the new inode information to the MS
+```
+ * Free up blocks and manifest information as they succeed, so the caller can try a different gateway on a subsequent call resulting from a partial replication failure.
+ * @retval Success
+ * @retval -EIO Method failed to flush data to disk
+ * @retval -EAGAIN Method should be called again, with the same arguments
+ * @retval -ENOMEM Out of Memory
+ * @retval -ETIMEDOUT The tranfser could not complete in time 
+ * @retval -EREMOTEIO The HTTP error is >= 500
+ * @retval -EINVAL Improper arguments
+ * @retval -ENODATA The HTTP error was a 400-level error
+ * @retval Other -errno on socket- and recv-related errors
+ */
 int UG_replicate( struct SG_gateway* gateway, struct UG_replica_context* rctx ) {
    
    int rc = 0;
@@ -946,10 +993,12 @@ int UG_replicate( struct SG_gateway* gateway, struct UG_replica_context* rctx ) 
 }
 
 
-// explicitly declare that we've made progress on replication.
-// this call is meant to allow other components to implement different aspects of replication 
-// (i.e. syncing to disk, talking to the MS, etc.), so the replication subsystem doesn't 
-// try to do so.
+/**
+ * @brief Explicitly declare that we've made progress on replication.
+ *
+ * This call is meant to allow other components to implement different aspects of replication 
+ * (i.e. syncing to disk, talking to the MS, etc.), so the replication subsystem doesn't try to do so.
+ */
 int UG_replica_context_hint( struct UG_replica_context* rctx, uint64_t flags ) {
 
    if( flags & UG_REPLICA_HINT_NO_MS_UPDATE ) {

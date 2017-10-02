@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/impl.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway implementation related functions
+ *
+ * @see libsyndicate-ug/impl.h
+ */
+
 #include "driver.h"
 #include "impl.h"
 #include "read.h"
@@ -23,9 +33,11 @@
 #include "consistency.h"
 
 
-// connect to the CDN
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Connect to the CDN
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_impl_connect_cache( struct SG_gateway* gateway, CURL* curl, char const* url, void* cls ) {
 
    int rc = 0;
@@ -44,13 +56,16 @@ static int UG_impl_connect_cache( struct SG_gateway* gateway, CURL* curl, char c
 }
 
 
-// update a file's manifest, in response to a remote call
-// write_delta must contain the new file size 
-// return 0 on success
-// return -ENOENT if not found
-// return -ESTALE if not local
-// return -errno on error 
-// NOTE: the permissions will already have been checked by the server
+/**
+ * @brief Update a file's manifest, in response to a remote call
+ *
+ * write_delta must contain the new file size 
+ * @retval 0 Success
+ * @retval -ENOENT Not found
+ * @retval -ESTALE Not local
+ * @retval -errno Error
+ * @note The permissions will already have been checked by the server
+ */
 static int UG_impl_manifest_patch( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_manifest* write_delta, void* cls ) {
    
    int rc = 0;
@@ -107,12 +122,14 @@ static int UG_impl_manifest_patch( struct SG_gateway* gateway, struct SG_request
 }
 
 
-// stat a file--build a manifest request, and set its mode
-// return 0 on success 
-// return -ESTALE if the inode is not local 
-// return -ENOENT if we don't have it
-// return -ENOMEM on OOM
-// return -errno on error 
+/**
+ * @brief Stat a file, build a manifest request, and set its mode
+ * @retval 0 Success 
+ * @retval -ESTALE The inode is not local 
+ * @retval -ENOENT Don't have it
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Error
+ */
 static int UG_impl_stat( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_request_data* entity_info, mode_t* mode, void* cls ) {
   
    int rc = 0;
@@ -165,12 +182,14 @@ static int UG_impl_stat( struct SG_gateway* gateway, struct SG_request_data* req
 }
 
 
-// stat a file's block--build a manifest request, and set its mode
-// return 0 on success 
-// return -ESTALE if the inode is not local 
-// return -ENOENT if we don't have it
-// return -ENOMEM on OOM
-// return -errno on error 
+/**
+ * @brief Stat a file's block, build a manifest request, and set its mode
+ * @retval 0 Success 
+ * @retval -ESTALE The inode is not local 
+ * @retval -ENOENT Don't have it
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Error
+ */ 
 static int UG_impl_stat_block( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_request_data* entity_info, mode_t* mode, void* cls ) {
   
    int rc = 0;
@@ -261,13 +280,17 @@ UG_impl_stat_block_out:
 }
 
 
-// remote request to rename a file.
-// there can be at most one ongoing rename at a given moment.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EBUSY if the given path is being renamed already
-// return -ESTALE if the node is not local
-// return -errno on error 
+/**
+ * @brief Remote request to rename a file.
+ *
+ * @note There can be at most one ongoing rename at a given moment.
+ * @see UG_rename
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EBUSY The given path is being renamed already
+ * @retval -ESTALE The node is not local
+ * @retval -errno Error
+ */
 static int UG_impl_rename( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* serialized_manifest, char const* new_path, void* cls ) {
    
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
@@ -276,9 +299,11 @@ static int UG_impl_rename( struct SG_gateway* gateway, struct SG_request_data* r
 }
 
 
-// truncate a file 
-// return 0 on success 
-// return -errno on error 
+/**
+ * @brief Truncate a file 
+ * @retval 0 Success 
+ * @retval -errno Error
+ */
 static int UG_impl_truncate( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t new_size, void* cls ) {
    
    int rc = 0;
@@ -298,9 +323,11 @@ static int UG_impl_truncate( struct SG_gateway* gateway, struct SG_request_data*
    return rc;
 }
 
-// detach a file 
-// return 0 on success
-// return -errno on error 
+/**
+ * @brief Detach a file 
+ * @retval 0 Success
+ * @retval -errno Error
+ */
 static int UG_impl_detach( struct SG_gateway* gateway, struct SG_request_data* reqdat, void* cls ) {
    
    int rc = 0;
@@ -342,9 +369,11 @@ static int UG_impl_detach( struct SG_gateway* gateway, struct SG_request_data* r
 }
 
 
-// on config reload, re-calculate the set of replica gateway IDs
-// return 0 on success 
-// return negative on error
+/**
+ * @brief On config reload, re-calculate the set of replica gateway IDs
+ * @retval 0 Success 
+ * @retval <0 Error
+ */
 static int UG_impl_config_change( struct SG_gateway* gateway, int driver_reload_rc, void* cls ) {
    
    int rc = 0;
@@ -360,11 +389,14 @@ static int UG_impl_config_change( struct SG_gateway* gateway, int driver_reload_
 }
 
 
-// server listxattr implementation
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ESTALE if we're not the coordinator
-// return negative on error
+/**
+ * @brief Server listxattr implementation
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ESTALE Not the coordinator
+ * @retval <0 Error
+ * @see UG_xattr_listxattr_ex
+ */
 static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk** xattr_names, size_t* num_xattrs, void* cls ) {
 
    int rc = 0;
@@ -441,11 +473,13 @@ static int UG_impl_listxattr( struct SG_gateway* gateway, struct SG_request_data
 } 
 
 
-// getxattr implementation
-// return 0 on success
-// return -ENOMEM on OOM
-// return negative on error
-// TODO: don't handle if we don't coordinate the file
+/**
+ * @brief getxattr implementation
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Error
+ * @todo For UG_impl_getxattr, modify to not handle if we don't coordinate the file
+ */
 static int UG_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* xattr_value, void* cls ) {
 
    ssize_t len = 0;
@@ -477,11 +511,13 @@ static int UG_impl_getxattr( struct SG_gateway* gateway, struct SG_request_data*
 }
 
 
-// setxattr implementation 
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ESTALE if we're not this entry's coordinator
-// return negative on error 
+/**
+ * @brief setxattr implementation 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ESTALE Not this entry's coordinator
+ * @retval <0 Error
+ */
 static int UG_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* value, void* cls ) {
 
    int rc = 0;
@@ -496,12 +532,14 @@ static int UG_impl_setxattr( struct SG_gateway* gateway, struct SG_request_data*
 }
 
 
-// removexattr implementation 
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ESTALE if we're not this entry's coordinator 
-// return negative on error 
-// TODO: bail if not local
+/**
+ * @brief removexattr implementation 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ESTALE Not this entry's coordinator 
+ * @retval <0 Error 
+ * @todo For UG_impl_removexattr, bail if not local
+ */
 static int UG_impl_removexattr( struct SG_gateway* gateway, struct SG_request_data* reqdat, void* cls ) {
 
    int rc = 0;
@@ -515,8 +553,10 @@ static int UG_impl_removexattr( struct SG_gateway* gateway, struct SG_request_da
    return 0;
 } 
 
-// set up the gateway's method implementation 
-// always succeeds
+/**
+ * @brief Set up the gateway's method implementation 
+ * @return 0
+ */
 int UG_impl_install_methods( struct SG_gateway* gateway ) {
    
    SG_impl_connect_cache( gateway, UG_impl_connect_cache );

@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/fs.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway filesystem related functions
+ *
+ * @see libsyndicate-ug/fs.h
+ */
+
 #include "fs.h"
 #include "consistency.h"
 #include "read.h"
@@ -24,12 +34,16 @@
 #include "sync.h"
 #include "vacuumer.h"
 
-// export an fskit_entry to an md_entry, i.e. to create it on the MS.  Use the given gateway to get the coordinator, volume, and read/write freshness values.
-// only set fields in dest that can be filled in from src
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL on invalid inode type
-// NOTE: src must be read-locked
+/**
+ * @brief Export an fskit_entry to an md_entry
+ *
+ * For example, create it on the MS.  Use the given gateway to get the coordinator, volume, and read/write freshness values.
+ * Only set fields in dest that can be filled in from src
+ * @attention src must be read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL Invalid inode type
+ */
 static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_entry* src, uint64_t parent_id, struct SG_gateway* gateway ) {
    
    struct ms_client* ms = SG_gateway_ms( gateway );
@@ -98,24 +112,29 @@ static int UG_fs_export( struct md_entry* dest, char const* name, struct fskit_e
 }
 
 
-// create or make a directory
-// generate metadata for the inode, and send it off to the MS.
-// obtain the metadata from either caller_inode_data (in which case, mode will be ignored), or generate data consistent with an empty file (using mode).
-// * if the caller supplies caller_inode_data, then the following fields will be filled in automatically:
-// -- file_id
-// -- parent_id
-// -- version
-// -- write_nonce
-// -- xattr_nonce
-// -- xattr_hash
-// -- capacity
-// -- generation
-// -- num_children
-// -- ent_sig
-// -- ent_sig_len
-// return -errno on failure (i.e. it exists, we don't have permission, we get a network error, etc.)
-// NOTE: fent will be write-locked by fskit
-// NOTE: for files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
+/**
+ * @brief Create or make a directory
+ *
+```
+    Generate metadata for the inode, and send it off to the MS.
+    Obtain the metadata from either caller_inode_data (in which case, mode will be ignored), or generate data consistent with an empty file (using mode).
+    If the caller supplies caller_inode_data, then the following fields will be filled in automatically:
+     -- file_id
+     -- parent_id
+     -- version
+     -- write_nonce
+     -- xattr_nonce
+     -- xattr_hash
+     -- capacity
+     -- generation
+     -- num_children
+     -- ent_sig
+     -- ent_sig_len
+```
+ * @note For files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
+ * @attention fent will be write-locked by fskit
+ * @retval -errno Failure (i.e. it exists, we don't have permission, we get a network error, etc.)
+ */
 static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, mode_t mode, struct md_entry* caller_inode_data, struct UG_inode** ret_inode_data ) {
 
    struct md_entry inode_data;
@@ -189,10 +208,14 @@ static int UG_fs_create_or_mkdir( struct fskit_core* fs, struct fskit_route_meta
 }
 
 
-// fskit create callback: try to create the entry on the MS.
-// return 0 on success, and create the file on the MS
-// return negative on failure (i.e. it exists, we don't have permission, we get a network error, etc.)
-// NOTE: fent will be write-locked by fskit
+/**
+ * @brief fskit create callback
+ *
+ * Try to create the entry on the MS.
+ * @attention fent will be write-locked by fskit
+ * @retval 0 Success, the file on the MS
+ * @retval <0 Failure (i.e. it exists, we don't have permission, we get a network error, etc.)
+ */
 static int UG_fs_create( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, mode_t mode, void** ret_inode_data, void** ret_handle_data ) {
    
    int rc = 0;
@@ -239,10 +262,12 @@ static int UG_fs_create( struct fskit_core* fs, struct fskit_route_metadata* rou
 }
 
 
-// fskit mkdir callback 
-// return 0 on success, and create the dir on the MS
-// return negative on failure (i.e. it exists, we don't have permission, we got a network error, etc.)
-// NOTE: fent will be write-locked by fskit
+/**
+ * @brief fskit mkdir callback 
+ * @attention fent will be write-locked by fskit
+ * @retval 0 Success, the dir on the MS
+ * @retval <0 Failure (i.e. it exists, we don't have permission, we got a network error, etc.)
+ */
 static int UG_fs_mkdir( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, mode_t mode, void** ret_inode_data ) {
    
    int rc = 0;
@@ -266,11 +291,14 @@ static int UG_fs_mkdir( struct fskit_core* fs, struct fskit_route_metadata* rout
 }
 
 
-// fskit open/opendir callback
-// refresh path information for the fent 
-// return 0 on success
-// return negative on failure (i.e. network error, OOM)
-// NOTE: fent must *not* be locked (the consistency discipline must not alter its lock state)
+/**
+ * @brief fskit open/opendir callback
+ *
+ * Refresh path information for the fent 
+ * @attention fent must *not* be locked (the consistency discipline must not alter its lock state)
+ * @retval 0 Success
+ * @retval <0 Failure (i.e. network error, Out of Memory)
+ */
 static int UG_fs_open( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, int flags, void** handle_data ) {
    
    int rc = 0;
@@ -339,11 +367,14 @@ static int UG_fs_open( struct fskit_core* fs, struct fskit_route_metadata* route
 }
 
 
-// fskit close callback (i.e. FUSE release)--free up the handle
-// if it's a file handle, then try to fsync it for good measure.  ERRORS WILL BE MASKED
-// NOTE: it is incorrect for a program to rely on close or flush to synchronize data to the RGs.
-// correct programs should call fsync().  Calling fsync() here does *not* guarantee that data will
-// be persistent, since there is no way to re-try a close().
+/**
+ * @brief fskit close callback (i.e. FUSE release), free up the handle
+ *
+ * If it's a file handle, then try to fsync it for good measure.  ERRORS WILL BE MASKED
+ * @note It is incorrect for a program to rely on close or flush to synchronize data to the RGs.
+ * correct programs should call fsync().  Calling fsync() here does *not* guarantee that data will
+ * be persistent, since there is no way to re-try a close().
+ */
 static int UG_fs_close( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, void* handle_data ) {
    
    struct UG_file_handle* handle = (struct UG_file_handle*)handle_data;
@@ -367,9 +398,12 @@ static int UG_fs_close( struct fskit_core* fs, struct fskit_route_metadata* rout
 }
 
 
-// fskit stat callback.
-// go refresh the path, and pull in any immediate children if it's a directory.
-// NOTE: fent must *not* be locked (the consistency discipline must not alter its lock state)
+/**
+ * @brief fskit stat callback
+ *
+ * Refresh the path, and pull in any immediate children if it's a directory.
+ * @attention fent must *not* be locked (the consistency discipline must not alter its lock state)
+ */
 static int UG_fs_stat( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, struct stat* sb ) {
    
    int rc = 0;
@@ -416,13 +450,17 @@ static int UG_fs_stat( struct fskit_core* fs, struct fskit_route_metadata* route
 }
 
 
-// truncate locally--ask the MS to update the size and version, vacuum now-removed blocks, and replicate the new manifest.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EISDIR if the inode is a directory
-// return -errno on network error
-// NOTE: inode->entry must be write-locked 
-// NOTE: this method will do nothing if it is on the creat(2) I/O path, since it doesn't make much sense for Syndicate to truncate immediately after creating.
+/**
+ * @brief Truncate locally
+ *
+ * Truncate locally, ask the MS to update the size and version, vacuum now-removed blocks, and replicate the new manifest.
+ * @attention inode->entry must be write-locked 
+ * @note This method will do nothing if it is on the creat(2) I/O path, since it doesn't make much sense for Syndicate to truncate immediately after creating.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EISDIR The inode is a directory
+ * @retval -errno Network error
+ */
 static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, off_t new_size ) {
    
    int rc = 0;
@@ -663,13 +701,15 @@ static int UG_fs_trunc_local( struct SG_gateway* gateway, char const* fs_path, s
 }
 
 
-// ask another gateway to truncate a file for us.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EISDIR if the entry is a directory.
-// return -EREMOTEIO on failed network I/O
-// return the non-zero error code from the remote truncate if the remote truncate failed
-// NOTE: inode->entry should be write-locked
+/**
+ * @brief Ask another gateway to truncate a file for us.
+ * @attention inode->entry should be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EISDIR The entry is a directory.
+ * @retval -EREMOTEIO Failed network I/O
+ * @retval !0 Error code from the remote truncate if the remote truncate failed
+ */
 static int UG_fs_trunc_remote( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, off_t new_size ) {
    
    int rc = 0;
@@ -749,13 +789,16 @@ static int UG_fs_trunc_remote( struct SG_gateway* gateway, char const* fs_path, 
 }
 
 
-// fskit route for truncating files.
-// In the UG, this simply tells the MS that the size has changed.
-// return 0 on success
-// return -EPERM if the gateway is anonymous
-// return -ENOMEM on OOM 
-// return -errno on failure to connect to the MS
-// NOTE: fent will be write-locked by fskit
+/**
+ * @brief fskit route for truncating files.
+ *
+ * In the UG, this simply tells the MS that the size has changed.
+ * @attention fent will be write-locked by fskit
+ * @retval 0 Success
+ * @retval -EPERM The gateway is anonymous
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to connect to the MS
+ */
 static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, off_t new_size, void* inode_cls ) {
    
    int rc = 0;
@@ -776,14 +819,18 @@ static int UG_fs_trunc( struct fskit_core* fs, struct fskit_route_metadata* rout
 }
 
 
-// ask the MS to detach a file or directory.  If we succeed, clear any cached state.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -ENOENT if this inode is already being deleted
-// return -EAGAIN if we should try again
-// return -EREMOTEIO on remote error (e.g. on the MS or RGs)
-// return -errno on network error 
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Ask the MS to detach a file or directory.
+ *
+ * If we succeed, clear any cached state.
+ * @attention inode->entry must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOENT This inode is already being deleted
+ * @retval -EAGAIN Try again
+ * @retval -EREMOTEIO Remote error (e.g. on the MS or RGs)
+ * @retval -errno Network error
+ */ 
 static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, bool renamed, struct UG_inode* inode ) {
    
    int rc = 0;
@@ -889,13 +936,16 @@ static int UG_fs_detach_local( struct SG_gateway* gateway, char const* fs_path, 
 }
 
 
-// ask a remote gateway to detach an inode for us, if the inode is a file.
-// if the inode is a directory, ask the MS directly.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EAGAIN if we timed out 
-// return -EREMOTEIO on network error
-// return non-zero error code from the remote unlink if it failed remotely
+/**
+ * @brief Ask a remote gateway to detach an inode for us
+ *
+ * If the inode is a directory, ask the MS directly.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EAGAIN Timed out 
+ * @retval -EREMOTEIO Network error
+ * @retval !0 Error code from the remote unlink if it failed remotely
+ */
 static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path, bool renamed, struct UG_inode* inode ) {
    
    int rc = 0;
@@ -967,18 +1017,21 @@ static int UG_fs_detach_remote( struct SG_gateway* gateway, char const* fs_path,
 }
 
 
-// fskit route for detaching a file or directory.
-// In the UG, this simply tells the MS to delete the entry.
-// if we're the coordinator, and this is a file, then garbage-collect all of its blocks.
-// This method is used when the gateway is in operation, since because Syndicate does not 
-// support hard links, this method will get called only when the user unlinks or rmdirs and inode.
-// We switch over to UG_fs_destroy when cleaning up on exit.
-// return 0 on success 
-// return -EPERM if the gateway is anonymous
-// return -ENOMEM on OOM 
-// return -EAGAIN if the caller should try detaching again
-// return -errno on failure to connect to the MS 
-// NOTE: fent should not be locked at all (it will be unreferenceable)
+/**
+ * @brief fskit route for detaching a file or directory.
+ *
+ * In the UG, this simply tells the MS to delete the entry.
+ * If we're the coordinator, and this is a file, then garbage-collect all of its blocks.
+ * This method is used when the gateway is in operation, since because Syndicate does not 
+ * support hard links, this method will get called only when the user unlinks or rmdirs and inode.
+ * We switch over to UG_fs_destroy when cleaning up on exit.
+ * @attention fent should not be locked at all (it will be unreferenceable)
+ * @retval 0 Success 
+ * @retval -EPERM The gateway is anonymous
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The caller should try detaching again
+ * @retval -errno Failure to connect to the MS
+ */
 static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, void* inode_cls ) {
    
    int rc = 0;
@@ -1038,9 +1091,12 @@ static int UG_fs_detach_and_destroy( struct fskit_core* fs, struct fskit_route_m
 }
 
 
-// fskit route for destroying a file or directory inode data 
-// This is used only for shutting down the gateway and freeing memory.
-// return 0 on success 
+/**
+ * @brief fskit route for destroying a file or directory inode data 
+ *
+ * This is used only for shutting down the gateway and freeing memory.
+ * @retval 0 Success
+ */
 static int UG_fs_destroy( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, void* inode_cls ) {
    
    struct UG_inode* inode = (struct UG_inode*)inode_cls;
@@ -1067,9 +1123,11 @@ static int UG_fs_destroy( struct fskit_core* fs, struct fskit_route_metadata* ro
 }
 
 
-// get the xattr hashes and inode metadata for the old and new inodes on rename
-// return 0 on success
-// reutrn -ENOMEM on OOM
+/**
+ * @brief Get the xattr hashes and inode metadata for the old and new inodes on rename
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_fs_rename_inode_export( struct fskit_core* fs,
                                       char const* old_path, struct fskit_entry* old_parent, struct UG_inode* old_inode, struct md_entry* old_fent_metadata,
                                       char const* new_path, struct fskit_entry* new_parent, struct UG_inode* new_inode, struct md_entry* new_fent_metadata ) {
@@ -1177,13 +1235,16 @@ static int UG_fs_rename_inode_export( struct fskit_core* fs,
    return 0;
 }
 
-// ask the MS to rename an inode for us.
-// old_parent and new_parent must be at least read-locked
-// we must be the coordinator of old_inode
-// return 0 on success
-// return -ENOMEM on OOM
-// return negative on network error
-// NOTE: old_inode->entry should be write-locked by fskit
+/**
+ * @brief Ask the MS to rename an inode for us.
+ *
+ * @attention old_parent and new_parent must be at least read-locked
+ * @attention Must be the coordinator of old_inode
+ * @attention old_inode->entry should be write-locked by fskit
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval <0 Network error
+ */
 static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_parent, char const* old_path, struct UG_inode* old_inode, struct fskit_entry* new_parent, char const* new_path, struct UG_inode* new_inode ) {
    
    int rc = 0;
@@ -1445,14 +1506,17 @@ static int UG_fs_rename_local( struct fskit_core* fs, struct fskit_entry* old_pa
 }
 
 
-// ask another gateway to rename an inode, if the inode is a file.
-// if the inode is a directory, just ask the MS directly.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EREMOTEIO on failed network I/O
-// return -EAGAIN if the request timed out, or should be retried 
-// return the non-zero error code if the rename failed on the remote gateway
-// NOTE: inode->entry should be write-locked by fskit
+/**
+ * @brief Ask another gateway to rename an inode
+ *
+ * If the inode is a directory, just ask the MS directly.
+ * @attention inode->entry should be write-locked by fskit
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EREMOTEIO Failed network I/O
+ * @retval -EAGAIN The request timed out, or should be retried 
+ * @retval !0 Error code if the rename failed on the remote gateway
+ */
 static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_parent, char const* fs_path, struct UG_inode* inode, struct fskit_entry* new_parent, char const* new_path, struct UG_inode* new_inode ) {
    
    int rc = 0;
@@ -1521,12 +1585,15 @@ static int UG_fs_rename_remote( struct fskit_core* fs, struct fskit_entry* old_p
 }
 
 
-// fskit route for renaming a file or directory.
-// In the UG, this simply tells the MS to rename the entry if we're the coordinator, or tell the coordinator to do so if we're not.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -errno if we had a network error
-// fent and dest will both be write-locked
+/**
+ * @brief fskit route for renaming a file or directory.
+ *
+ * In the UG, this simply tells the MS to rename the entry if we're the coordinator, or tell the coordinator to do so if we're not.
+ * @attention fent and dest will both be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Network error
+ */
 static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* new_path, struct fskit_entry* dest ) {
    
    int rc = 0;
@@ -1563,11 +1630,13 @@ static int UG_fs_rename( struct fskit_core* fs, struct fskit_route_metadata* rou
 }
 
 
-// fskit route for handling getxattr 
-// return > 0 on success
-// return 0 if not built-in
-// return negative on error (see xattr.cpp)
-// fent must be read-locked
+/**
+ * @brief fskit route for handling getxattr 
+ * @attention fent must be read-locked
+ * @retval > 0 Success
+ * @retval 0 Not built-in
+ * @retval <0 Error (see xattr.cpp)
+ */
 static int UG_fs_fgetxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name, char* value, size_t value_len ) {
 
    int rc = 0;
@@ -1579,11 +1648,14 @@ static int UG_fs_fgetxattr( struct fskit_core* fs, struct fskit_route_metadata* 
 }
 
 
-// fskit route for handling listxattr 
-// merges "normal" fskit xattrs with builtins 
-// return > 0 on success
-// return -ERANGE if not big enough
-// fent must be read-locked
+/**
+ * @brief fskit route for handling listxattr 
+ *
+ * Merges "normal" fskit xattrs with builtins 
+ * @attention fent must be read-locked
+ * @retval 0 Success
+ * @retval -ERANGE if not big enough
+ */
 static int UG_fs_flistxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len ) {
 
    int rc = 0;
@@ -1595,12 +1667,15 @@ static int UG_fs_flistxattr( struct fskit_core* fs, struct fskit_route_metadata*
 }
 
 
-// fskit route for handling setxattr 
-// handles built-in xattrs, and forwards the rest to local fskit
-// calls the MS to replicate xattrs.
-// return 0 on success
-// return -ERANGE if buffer is not big enough 
-// fent must be write-locked
+/**
+ * @brief fskit route for handling setxattr 
+ *
+ * Handles built-in xattrs, and forwards the rest to local fskit
+ * Calls the MS to replicate xattrs.
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -ERANGE Buffer is not big enough
+ */
 static int UG_fs_fsetxattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name, char const* value, size_t value_len, int flags ) {
 
    int rc = 0;
@@ -1612,10 +1687,12 @@ static int UG_fs_fsetxattr( struct fskit_core* fs, struct fskit_route_metadata* 
 }
 
 
-// fskit route for removexattr
-// return 0 if handled
-// return 1 if not handled
-// return negative on error 
+/**
+ * @brief fskit route for removexattr
+ * @retval 0 Success
+ * @retval 1 Not handled
+ * @retval <0 Error
+ */
 static int UG_fs_fremovexattr( struct fskit_core* fs, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char const* name ) {
 
    int rc = 0;
@@ -1626,9 +1703,11 @@ static int UG_fs_fremovexattr( struct fskit_core* fs, struct fskit_route_metadat
    return rc;
 }
 
-// insert fskit entries into the fskit core 
-// return 0 on success.
-// return -ENOMEM on OOM 
+/**
+ * @brief Insert fskit entries into the fskit core 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_fs_install_methods( struct fskit_core* core, struct UG_state* state ) {
    
    int rh = 0;
@@ -1757,9 +1836,11 @@ int UG_fs_install_methods( struct fskit_core* core, struct UG_state* state ) {
 }
 
 
-// remove all fskit methods, but install a detach method that simply frees the inode
-// return 0 on success
-// return -errno on failure 
+/**
+ * @brief Remove all fskit methods, but install a detach method that simply frees the inode
+ * @retval 0 Success
+ * @retval -errno Failure
+ */
 int UG_fs_install_shutdown_methods( struct fskit_core* fs ) {
    
    // stop all fs calls
@@ -1782,7 +1863,10 @@ int UG_fs_install_shutdown_methods( struct fskit_core* fs ) {
    return 0;
 }
 
-// remove all fskit methods 
+/**
+ * @brief Remove all fskit methods
+ * @see fskit_unroute_all
+ */
 int UG_fs_uninstall_methods( struct fskit_core* fs ) {
    
    return fskit_unroute_all( fs );

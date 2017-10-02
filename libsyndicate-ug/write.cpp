@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/write.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway write related functions
+ *
+ * @see libsyndicate-ug/write.h
+ */
+
 #include "write.h"
 #include "read.h"
 #include "consistency.h"
@@ -21,9 +31,11 @@
 #include "sync.h"
 #include "replication.h"
 
-// update timestamps on an inode on write/truncate
-// always succeeds
-// NOTE: inode->entry must be write-locked!
+/**
+ * @brief Update timestamps on an inode on write/truncate
+ * @attention inode->entry must be write-locked!
+ * @return 0
+ */
 int UG_write_timestamp_update( struct UG_inode* inode, struct timespec* ts ) {
    
    fskit_entry_set_mtime( UG_inode_fskit_entry( inode ), ts );
@@ -31,9 +43,11 @@ int UG_write_timestamp_update( struct UG_inode* inode, struct timespec* ts ) {
 }
 
 
-// update the write nonce on an inode, on write/truncate 
-// always succeeds 
-// NOTE: inode->entry must be write-locked!
+/**
+ * @brief Update the write nonce on an inode, on write/truncate 
+ * @return 0 
+ * @attention inode->entry must be write-locked!
+ */
 int UG_write_nonce_update( struct UG_inode* inode ) {
    
    int64_t write_nonce = UG_inode_write_nonce( inode );
@@ -44,11 +58,13 @@ int UG_write_nonce_update( struct UG_inode* inode ) {
 }
 
 
-// set up block buffer for an existing block that will be partially overwritten.
-// the block will be gifted the buf
-// return 0 on success
-// return -ENOMEM on OOM 
-// inode->entry must be read-locked
+/**
+ * @brief Set up block buffer for an existing block that will be partially overwritten.
+ * @note The block will be gifted the buf
+ * @attention inode->entry must be read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */ 
 static int UG_write_setup_partial_block_buffer( struct UG_inode* inode, uint64_t block_id, char* buf, uint64_t buf_len, UG_dirty_block_map_t* blocks ) {
    
    int rc = 0;
@@ -91,11 +107,15 @@ static int UG_write_setup_partial_block_buffer( struct UG_inode* inode, uint64_t
 }
 
 
-// set up reads to existing but partially-written blocks, in a zero-copy manner.  *dirty_blocks must NOT contain the partial block information yet.
-// A block is partially-written if the write buffer represented by (buf_len, offset) encompasses part of it.
-// return 0 on success
-// return -errno on failure 
-// NOTE: inode->entry must be read-locked 
+/**
+ * @brief Set up reads to existing but partially-written blocks, in a zero-copy manner.
+ *
+ * A block is partially-written if the write buffer represented by (buf_len, offset) encompasses part of it.
+ * *dirty_blocks must NOT contain the partial block information yet.
+ * @attention inode->entry must be read-locked 
+ * @retval 0 Success
+ * @retval -errno Failure
+ */ 
 int UG_write_read_partial_setup( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, size_t buf_len, off_t offset, UG_dirty_block_map_t* dirty_blocks ) {
    
    int rc = 0;
@@ -200,13 +220,16 @@ int UG_write_read_partial_setup( struct SG_gateway* gateway, char const* fs_path
    return 0;
 }
 
-// allocate and download the existing but partially-overwitten blocks of the write.
-// merge the relevant portions of buf into them.
-// dirty_blocks must NOT contain the affected blocks--they will be allocated and put in place by this method.
-// return 0 on success 
-// return -EINVAL if we don't have block info in the inode's block manifest for the unaligned blocks
-// return -errno on failure 
-// NOTE: inode->entry must be read-locked
+/**
+ * @brief Allocate and download the existing but partially-overwitten blocks of the write.
+ *
+ * Merge the relevant portions of buf into them.
+ * dirty_blocks must NOT contain the affected blocks--they will be allocated and put in place by this method.
+ * @attention inode->entry must be read-locked
+ * @retval 0 Success 
+ * @retval -EINVAL No block info in the inode's block manifest for the unaligned blocks
+ * @retval -errno Failure
+ */
 static int UG_write_read_partial_blocks( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, size_t buf_len, off_t offset, UG_dirty_block_map_t* dirty_blocks ) {
    
    int rc = 0;
@@ -267,11 +290,14 @@ static int UG_write_read_partial_blocks( struct SG_gateway* gateway, char const*
 }
 
 
-// merge written data to partially-overwritten blocks
-// blocks in unaligned_dirty_blocks must be in RAM, contain the first and last block touched by the write.
-// return 0 on success
-// return -ENOENT if a requested unaligned block is not found in dirty_blocks
-// return -EINVAL if the unaligned dirty block is not in RAM
+/**
+ * @brief Merge written data to partially-overwritten blocks
+ *
+ * Blocks in unaligned_dirty_blocks must be in RAM, contain the first and last block touched by the write.
+ * @retval 0 Success
+ * @retval -ENOENT Requested unaligned block is not found in dirty_blocks
+ * @retval -EINVAL The unaligned dirty block is not in RAM
+ */
 static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset, uint64_t block_size, UG_dirty_block_map_t* unaligned_dirty_blocks ) {
    
    struct UG_dirty_block* dirty_block = NULL;
@@ -436,11 +462,14 @@ static int UG_write_partial_merge_data( char* buf, size_t buf_len, off_t offset,
 }
 
 
-// set up writes to aligned blocks, constructing dirty blocks from offsets in buf (i.e. zero-copy write)
-// dirty_blocks must NOT contain any of the blocks over which this write applies
-// return 0 on success
-// return -ENOMEM on OOM 
-// NOTE: inode->entry must be read-locked at least
+/**
+ * @brief Set up writes to aligned blocks, constructing dirty blocks from offsets in buf (i.e. zero-copy write)
+ *
+ * dirty_blocks must NOT contain any of the blocks over which this write applies
+ * @attention inode->entry must be read-locked at least
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */ 
 static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, off_t offset, uint64_t block_size, UG_dirty_block_map_t* dirty_blocks ) {
    
    int rc = 0;
@@ -540,16 +569,21 @@ static int UG_write_aligned_setup( struct UG_inode* inode, char* buf, size_t buf
 }
 
 
-// merge dirty blocks back into an inode, i.e. on write, or on failure to replicate.
-// this flushes each block to disk, and updates its hash in the inode's manifest.
-// coalesce while we do it--free up blocks that do not have to be replicated.
-// (i.e. file was reversioned --> drop all blocks beyond the size; block was overwritten --> drop old block).
-// preserve vacuum information for every block we overwrite (NOTE: blocks will only be overwritten on conflict if overwrite is true)
-// if overwrite is false, then free dirty_blocks that are already present in the inode.
-// return 0 on success--all blocks in new_dirty_blocks will be either freed, or re-inserted into inode.
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be write-locked 
-// NOTE: this modifies new_dirty_blocks by removing successfully-merged dirty blocks.  new_dirty_blocks will contain all *unmerged* dirty blocks on return.
+/**
+ * @brief Merge dirty blocks back into an inode
+ *
+ * For example, merge on write, or on failure to replicate.
+ * This flushes each block to disk, and updates its hash in the inode's manifest.
+ * Coalesce while we do it--free up blocks that do not have to be replicated.
+ * (i.e. file was reversioned --> drop all blocks beyond the size; block was overwritten --> drop old block).
+ * Preserve vacuum information for every block we overwrite (NOTE: blocks will only be overwritten on conflict if overwrite is true)
+ * If overwrite is false, then free dirty_blocks that are already present in the inode.
+ * All blocks in new_dirty_blocks will be either freed, or re-inserted into inode.
+ * @attention inode->entry must be write-locked 
+ * @note This modifies new_dirty_blocks by removing successfully-merged dirty blocks.  new_dirty_blocks will contain all *unmerged* dirty blocks on return.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, UG_dirty_block_map_t* new_dirty_blocks, uint64_t offset, uint64_t len, bool overwrite ) {
    
    UG_dirty_block_map_t::iterator tmp_itr;
@@ -700,15 +734,18 @@ int UG_write_dirty_blocks_merge( struct SG_gateway* gateway, char const* fs_path
 }
 
 
-// fskit callback for write.
-// write data, locally.  Buffer data to RAM if possible, and flush to the disk cache if we need to.
-// refresh the manifest before writing.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EROFS if there are no replica gateways known to us
-// return -EPERM if this gateway is anonymous
-// return -errno on failure to read unaligned blocks or flush data to cache
-// NOTE: fent should not be locked
+/**
+ * @brief fskit callback for write.
+ *
+ * Write data, locally.  Buffer data to RAM if possible, and flush to the disk cache if we need to.
+ * Refresh the manifest before writing.
+ * @attention fent should not be locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EROFS No known replica gateways
+ * @retval -EPERM Gateway is anonymous
+ * @retval -errno Failure to read unaligned blocks or flush data to cache
+ */
 int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len, off_t offset, void* handle_data ) {
   
    SG_debug("Write %zu bytes at %jd\n", buf_len, offset );
@@ -928,13 +965,17 @@ int UG_write_impl( struct fskit_core* core, struct fskit_route_metadata* route_m
 }
 
 
-// patch an inode's manifest.  Evict affected dirty blocks, cached blocks, and garbage blocks (the latter if the dirty block that got evicted was responsible for its creation).
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EPERM if we're not the coordinator
-// return -EROFS if there are no known replica gateways
-// return -EINVAL on invalid request
-// NOTE: inode->entry must be write-locked and ref'ed; it will be unlocked intermittently
+/**
+ * @brief Patch an inode's manifest.
+ *
+ * Evict affected dirty blocks, cached blocks, and garbage blocks (the latter if the dirty block that got evicted was responsible for its creation).
+ * @attention inode->entry must be write-locked and ref'ed; it will be unlocked intermittently
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EPERM Not the coordinator
+ * @retval -EROFS No known replica gateways
+ * @retval -EINVAL Invalid request
+ */
 int UG_write_patch_manifest( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_inode* inode, struct SG_manifest* write_delta ) {
    
    int rc = 0;

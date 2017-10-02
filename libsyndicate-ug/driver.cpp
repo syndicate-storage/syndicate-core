@@ -14,17 +14,30 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/driver.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway driver related functions
+ *
+ * @see libsyndicate-ug/driver.h
+ */
+
 #include <libsyndicate/proc.h>
 
 #include "core.h"
 #include "driver.h"
 
-// convert a URL into a CDN-ified URL 
-// return 0 on success, and fill in *chunk with the URL 
-// return -ENOMEM on OOM 
-// return -EIO if the driver did not fulfill the request (driver error)
-// return -EAGAIN if there are no free driver processes
-// NOTE: this method is called by the Syndicate "impl_connect_cache" callback implementation in the UG.
+/**
+ * @brief Convert a URL into a CDN-ified URL
+ * @note This method is called by the Syndicate "impl_connect_cache" callback implementation in the UG.
+ * @param[out] *chunk Fill in chunk with the URL
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EIO The driver did not fulfill the request (driver error)
+ * @retval -EAGAIN There are no free driver processes
+ */
 int UG_driver_cdn_url( struct UG_state* core, char const* in_url, char** out_url ) {
 
    int rc = 0;
@@ -98,11 +111,14 @@ UG_driver_cdn_url_finish:
 }
 
 
-// gateway callback to deserialize a chunk
-// return 0 on success, and fill in *chunk
-// return -ENOMEM on OOM 
-// return -EIO if the driver did not fulfill the request (driver error)
-// return -EAGAIN if we couldn't request the data, for whatever reason (i.e. no free processes)
+/**
+ * @brief Gateway callback to deserialize a chunk
+ * @param[out] *out_chunk Populated chunk
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EIO The driver did not fulfill the request (driver error)
+ * @retval -EAGAIN Couldn't request the data, for whatever reason (i.e. no free processes)
+ */
 int UG_driver_chunk_deserialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk, void* cls ) {
    
    int rc = 0;
@@ -227,11 +243,13 @@ UG_driver_chunk_deserialize_finish:
 }
 
 
-// gateway callback to serialize a chunk
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -EIO if we failed to communicate with the driver (i.e. driver error)
-// return -EAGAIN if there were no free workers
+/**
+ * @brief Gateway callback to serialize a chunk
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EIO Failed to communicate with the driver (i.e. driver error)
+ * @retval -EAGAIN There were no free workers
+ */
 int UG_driver_chunk_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct SG_chunk* in_chunk, struct SG_chunk* out_chunk, void* cls ) {
    
    int rc = 0;
@@ -332,12 +350,16 @@ UG_driver_chunk_serialize_finish:
 }
 
 
-// begin a get_chunk request.
-// pass back the process handle
-// return 0 on success, and set *proc_h
-// return -EINVAL if there is not a `get_proc` driver implementation
-// return -EIO on driver error
-// return -EAGAIN if there are no free workers
+/**
+ * @brief Begin a get_chunk request.
+ *
+ * Pass back the process handle
+ * param[out] *proc_h Populate information about the process
+ * @retval 0 Success
+ * @retval -EINVAL No `get_proc` driver implementation
+ * @retval -EIO Driver error
+ * @retval -EAGAIN No free workers
+ */
 int UG_driver_get_chunk_begin( struct SG_gateway* gateway, struct SG_request_data* reqdat, char const* RG_url, struct SG_proc** proc_h ) {
 
    int rc = 0;
@@ -414,11 +436,14 @@ UG_driver_get_chunk_begin_finish:
 }
 
 
-// finish fetching a chunk from an RG
-// return 0 on success and populate *chunk
-// return -EIO on failure to communicate with the driver
-// return -ENOENT if the worker had a problem
-// return -ENOMEM on OOM
+/**
+ * @brief Finish fetching a chunk from an RG
+ * @param[out] *chunk Requested chunk
+ * @retval 0 Success and populate *chunk
+ * @retval -EIO on failure to communicate with the driver
+ * @retval -ENOENT if the worker had a problem
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_driver_get_chunk_end( struct SG_gateway* gateway, struct SG_proc* proc_h, struct SG_chunk* chunk ) {
 
    int rc = 0;

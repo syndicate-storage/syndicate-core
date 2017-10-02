@@ -14,54 +14,70 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/inode.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway inode related functions
+ *
+ * @see libsyndicate-ug/inode.h
+ */
+
 #include "inode.h"
 #include "block.h"
 
-// UG-specific inode information, for fskit
+/// UG-specific inode information, for fskit
 struct UG_inode {
 
-   char* name;                          // name of this inode (allowed, since Syndicate does not support links)
-   struct SG_manifest manifest;         // latest manifest of this file's blocks (includes coordinator_id and file_version)
+   char* name;                                  ///< Name of this inode (allowed, since Syndicate does not support links)
+   struct SG_manifest manifest;                 ///< Latest manifest of this file's blocks (includes coordinator_id and file_version)
 
-   unsigned char ms_xattr_hash[ SHA256_DIGEST_LENGTH ]; // latest xattr hash
-   int64_t generation;          // last-known generation number of this file
+   unsigned char ms_xattr_hash[ SHA256_DIGEST_LENGTH ]; ///< Latest xattr hash
+   int64_t generation;                          ///< Last-known generation number of this file
 
-   int64_t write_nonce;         // latest write nonce
-   int64_t xattr_nonce;         // latest xattr nonce
+   int64_t write_nonce;                         ///< Latest write nonce
+   int64_t xattr_nonce;                         ///< Latest xattr nonce
 
-   struct timespec refresh_time;                // time of last refresh from the ms
-   struct timespec write_refresh_time;          // time of last remote-fresh request to the file's coordinator
-   struct timespec manifest_refresh_time;       // time of last manifest refresh
-   struct timespec children_refresh_time;       // if this is a directory, this is the time the children were last reloaded
-   int32_t max_read_freshness;         // how long since last refresh, in millis, this inode is to be considered fresh for reading
-   int32_t max_write_freshness;        // how long since last refresh, in millis, this inode is to be considered fresh from a remote update (0 means "always fresh")
+   struct timespec refresh_time;                ///< Time of last refresh from the ms
+   struct timespec write_refresh_time;          ///< Time of last remote-fresh request to the file's coordinator
+   struct timespec manifest_refresh_time;       ///< Time of last manifest refresh
+   struct timespec children_refresh_time;       ///< If this is a directory, this is the time the children were last reloaded
+   int32_t max_read_freshness;                  ///< How long since last refresh, in millis, this inode is to be considered fresh for reading
+   int32_t max_write_freshness;                 ///< How long since last refresh, in millis, this inode is to be considered fresh from a remote update (0 means "always fresh")
 
-   bool read_stale;     // if true, this file must be revalidated before the next read
-   bool write_stale;    // if true, this file must be revalidated before the next write
-   bool dirty;          // if true, then we need to flush data on fsync()
+   bool read_stale;                             ///< If true, this file must be revalidated before the next read
+   bool write_stale;                            ///< If true, this file must be revalidated before the next write
+   bool dirty;                                  ///< If true, then we need to flush data on fsync()
 
-   int64_t ms_num_children;     // the number of children the MS says this inode has
-   int64_t ms_capacity;         // maximum index number of a child in the MS
+   int64_t ms_num_children;                     ///< The number of children the MS says this inode has
+   int64_t ms_capacity;                         ///< Maximum index number of a child in the MS
 
-   bool vacuuming;              // if true, then we're currently vacuuming this file
-   bool vacuumed;               // if true, then we've already tried to vacuum this file upon discovery (false means we should try again)
+   bool vacuuming;                              ///< If true, then we're currently vacuuming this file
+   bool vacuumed;                               ///< If true, then we've already tried to vacuum this file upon discovery (false means we should try again)
 
-   UG_dirty_block_map_t* dirty_blocks;  // set of locally-modified blocks that must be replicated, either on the next fsync() or last close()
+   UG_dirty_block_map_t* dirty_blocks;          ///< Set of locally-modified blocks that must be replicated, either on the next fsync() or last close()
 
-   struct SG_manifest replaced_blocks;  // set of blocks replaced by writes, that need to be garbage-collected (contains only metadata)
+   struct SG_manifest replaced_blocks;          ///< Set of blocks replaced by writes, that need to be garbage-collected (contains only metadata)
 
-   UG_inode_fsync_queue_t* sync_queue;  // queue of fsync requests on this inode
+   UG_inode_fsync_queue_t* sync_queue;          ///< Queue of fsync requests on this inode
 
-   struct fskit_entry* entry;           // the fskit entry that owns this inode
+   struct fskit_entry* entry;                   ///< The fskit entry that owns this inode
 
-   bool renaming;                       // if true, then this inode is in the process of getting renamed.  Concurrent renames will fail with EBUSY
-   bool deleting;                       // if true, then this inode is in the process of being deleted.  Concurrent opens and stats will fail
-   bool creating;                       // if true, then this inode is in the process of being created.  Truncate will be a no-op in this case.
+   bool renaming;                               ///< If true, then this inode is in the process of getting renamed.  Concurrent renames will fail with EBUSY
+   bool deleting;                               ///< If true, then this inode is in the process of being deleted.  Concurrent opens and stats will fail
+   bool creating;                               ///< If true, then this inode is in the process of being created.  Truncate will be a no-op in this case.
 };
 
 
-// rlock an inode, using its fskit entry
-// this is meant for external API consumers, like other gateways.
+/**
+ * @brief Read lock an inode, using its fskit entry
+ *
+ * This is meant for external API consumers, like other gateways.
+ * @return Result of fskit_entry_rlock
+ * @retval -EINVAL inode->entry is NULL
+ * @see fskit_entry_rlock
+ */
 int UG_inode_rlock( struct UG_inode* inode ) {
     if( inode->entry == NULL ) {
        return -EINVAL;
@@ -69,8 +85,14 @@ int UG_inode_rlock( struct UG_inode* inode ) {
     return fskit_entry_rlock( inode->entry );
 }
 
-// wlock an inode, using its fskit entry
-// this is meant for external API consumers, like other gateways
+/**
+ * @brief Write lock an inode, using its fskit entry
+ *
+ * This is meant for external API consumers, like other gateways.
+ * @return Result of fskit_entry_wlock
+ * @retval -EINVAL inode->entry is NULL
+ * @see fskit_entry_wlock
+ */
 int UG_inode_wlock( struct UG_inode* inode ) {
    if( inode->entry == NULL ) {
       return -EINVAL;
@@ -79,8 +101,14 @@ int UG_inode_wlock( struct UG_inode* inode ) {
 }
 
 
-// unlock an inode, using its fskit entry
-// this is meant for external API consumers, like other gateways
+/**
+ * @brief Unlock an inode, using its fskit entry
+ *
+ * This is meant for external API consumers, like other gateways.
+ * @return Result of fskit_entry_unlock
+ * @retval -EINVAL inode->entry is NULL
+ * @see fskit_entry_unlock
+ */
 int UG_inode_unlock( struct UG_inode* inode ) {
    if( inode->entry == NULL ) {
       return -EINVAL;
@@ -89,10 +117,13 @@ int UG_inode_unlock( struct UG_inode* inode ) {
 }
 
 
-// initialize common inode data
-// type should be MD_ENTRY_FILE or MD_ENTRY_DIR
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Initialize common inode data
+ *
+ * @param[in] type MD_ENTRY_FILE or MD_ENTRY_DIR
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_inode_init_common( struct UG_inode* inode, char const* name, int type ) {
 
    memset( inode, 0, sizeof(struct UG_inode) );
@@ -133,10 +164,12 @@ static int UG_inode_init_common( struct UG_inode* inode, char const* name, int t
    return 0;
 }
 
-// initialize an inode, from an entry and basic data
-// entry must be write-locked
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Initialize an inode, from an entry and basic data
+ * @attention entry must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry* entry, uint64_t volume_id, uint64_t coordinator_id, int64_t file_version ) {
 
    int rc = 0;
@@ -180,13 +213,15 @@ int UG_inode_init( struct UG_inode* inode, char const* name, struct fskit_entry*
 }
 
 
-// initialize an inode from an exported inode data and an fskit_entry
-// NOTE: file ID in inode_data and fent must match, as must their types
-// the inode's manifest will be stale, since it currently has no data.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if the data is invalid (i.e. file IDs don't match, and such)
-// fent must be at least read-locked
+/**
+ * @brief Initialize an inode from an exported inode data and an fskit_entry
+ * @attention File ID in inode_data and fent must match, as must their types
+ * The inode's manifest will be stale, since it currently has no data.
+ * fent must be at least read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The data is invalid (i.e. file IDs don't match)
+ */
 int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_data, struct fskit_entry* fent ) {
 
    int rc = 0;
@@ -245,8 +280,10 @@ int UG_inode_init_from_export( struct UG_inode* inode, struct md_entry* inode_da
 }
 
 
-// common fskit entry initialization from an exported inode
-// return 0 on success (always succeeds)
+/**
+ * @brief Common fskit entry initialization from an exported inode
+ * @retval 0 Success (always succeeds)
+ */
 int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode_data ) {
 
    struct timespec ts;
@@ -271,11 +308,13 @@ int UG_inode_fskit_common_init( struct fskit_entry* fent, struct md_entry* inode
    return 0;
 }
 
-// generate a new fskit entry for a directory
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if inode_data doesn't represent a file
-// fent must be write-locked
+/**
+ * @brief Generate a new fskit entry for a directory
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL inode_data doesn't represent a file
+ */
 static int UG_inode_fskit_dir_init( struct fskit_entry* fent, struct fskit_entry* parent, struct md_entry* inode_data ) {
 
    int rc = 0;
@@ -297,11 +336,13 @@ static int UG_inode_fskit_dir_init( struct fskit_entry* fent, struct fskit_entry
    return 0;
 }
 
-// generate a new fskit entry for a regular file
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if inode_data doesn't represent a file
-// fent must be write-locked
+/**
+ * @brief Generate a new fskit entry for a regular file
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL inode_data doesn't represent a file
+*/
 static int UG_inode_fskit_file_init( struct fskit_entry* fent, struct md_entry* inode_data ) {
 
    int rc = 0;
@@ -322,10 +363,12 @@ static int UG_inode_fskit_file_init( struct fskit_entry* fent, struct md_entry* 
 }
 
 
-// build an fskit entry from an exported inode
-// return 0 on success
-// return -ENOMEM on OOM
-// fent must be write-locked
+/**
+ * @brief Build an fskit entry from an exported inode
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_fskit_entry_init( struct fskit_core* fs, struct fskit_entry* fent, struct fskit_entry* parent, struct md_entry* inode_data ) {
 
    int rc = 0;
@@ -379,9 +422,11 @@ int UG_inode_fskit_entry_init( struct fskit_core* fs, struct fskit_entry* fent, 
    return 0;
 }
 
-// free an inode
-// NOTE: destroys its dirty blocks
-// always succeeds
+/**
+ * @brief Free an inode
+ * @note Destroys its dirty blocks
+ * @return 0
+ */
 int UG_inode_free( struct UG_inode* inode ) {
 
    SG_safe_free( inode->name );
@@ -400,11 +445,13 @@ int UG_inode_free( struct UG_inode* inode ) {
 }
 
 
-// set up a file handle
-// NOTE: inode->entry must be read-locked
-// return 0 on success
-// return -EINVAL if the inode is malformed (NOTE: indicates a bug!)
-// return -ENOMEM on OOM
+/**
+ * @brief Set up a file handle
+ * @attention inode->entry must be read-locked
+ * @retval 0 Success
+ * @retval -EINVAL The inode is malformed (NOTE: indicates a bug!)
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_file_handle_init( struct UG_file_handle* fh, struct UG_inode* inode, int flags ) {
 
    if( inode->entry == NULL ) {
@@ -418,9 +465,11 @@ int UG_file_handle_init( struct UG_file_handle* fh, struct UG_inode* inode, int 
 }
 
 
-// free a file handle
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Free a file handle
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_file_handle_free( struct UG_file_handle* fh ) {
 
    memset( fh, 0, sizeof(struct UG_file_handle) );
@@ -429,10 +478,15 @@ int UG_file_handle_free( struct UG_file_handle* fh ) {
 }
 
 
-// export all non-builtin xattrs for an inode.
-// return 0 on success, filling in *ret_xattr_names, *ret_xattr_values, and *ret_xattr_value_lengths if there are xattrs in this inode.
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be read-locked
+/**
+ * @brief Export all non-builtin xattrs for an inode.
+ * @attention inode->entry must be read-locked
+ * @param[out] *ret_xattr_names Extended attribute names
+ * @param[out] *ret_xattr_values Extended attribute values
+ * @param[out] *ret_xattr_value_lengths Extended attribute value lengths
+ * @retval 0 Success, filling in *ret_xattr_names, *ret_xattr_values, and *ret_xattr_value_lengths if there are xattrs in this inode.
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_export_xattrs( struct fskit_core* fs, struct UG_inode* inode, char*** ret_xattr_names, char*** ret_xattr_values, size_t** ret_xattr_value_lengths ) {
 
    int rc = 0;
@@ -567,10 +621,13 @@ UG_inode_export_xattrs_fail:
 }
 
 
-// calculate the xattr hash for an inode
-// return 0 on success, and fill in xattr_hash (which must be SHA256_DIGEST_LENGTH bytes or more)
-// return -ENOMEM on OOM
-// return -EINVAL if we do not have any xattrs for this (i.e. we should only have xattrs if we're the coordintaor)
+/**
+ * @brief Calculate the xattr hash for an inode
+ * @param[out] *xattr_hash Hash which must be SHA256_DIGEST_LENGTH bytes or more
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Do not have any xattrs for this (i.e. we should only have xattrs if we're the coordinator)
+ */
 int UG_inode_export_xattr_hash( struct fskit_core* fs, uint64_t gateway_id, struct UG_inode* inode, unsigned char* xattr_hash ) {
 
    int rc = 0;
@@ -614,11 +671,13 @@ int UG_inode_export_xattr_hash( struct fskit_core* fs, uint64_t gateway_id, stru
    return rc;
 }
 
-// export an inode to an md_entry
-// NOTE: does *not* set the xattr hash or signature
-// return 0 on success
-// return -ENOMEM on OOM
-// NOTE: src->entry must be read-locked
+/**
+ * @brief Export an inode to an md_entry
+ * @note Does *not* set the xattr hash or signature
+ * @attention src->entry must be read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t parent_id ) {
 
    // get type
@@ -690,10 +749,12 @@ int UG_inode_export( struct md_entry* dest, struct UG_inode* src, uint64_t paren
    return 0;
 }
 
-// does an exported inode's type match the inode's type?
-// return 1 if so
-// return 0 if not
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check whether an exported inode's type matches the inode's type
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ */
 int UG_inode_export_match_type( struct UG_inode* dest, struct md_entry* src ) {
 
    int type = fskit_entry_get_type( dest->entry );
@@ -718,9 +779,12 @@ int UG_inode_export_match_type( struct UG_inode* dest, struct md_entry* src ) {
 }
 
 
-// does an exported inode's size match the inode's size?
-// return 1 if so, 0 if not
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check whether an exported inode's size matches the inode's size
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ */
 int UG_inode_export_match_size( struct UG_inode* dest, struct md_entry* src ) {
 
    // size matches?
@@ -735,9 +799,12 @@ int UG_inode_export_match_size( struct UG_inode* dest, struct md_entry* src ) {
 }
 
 
-// does an exported inode's version match an inode's version?
-// return 1 if so, 0 if not
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check if an exported inode's version matches an inode's version
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ */
 int UG_inode_export_match_version( struct UG_inode* dest, struct md_entry* src ) {
 
    // version matches?
@@ -752,9 +819,12 @@ int UG_inode_export_match_version( struct UG_inode* dest, struct md_entry* src )
 }
 
 
-// does an exported inode's file ID match an inode's file ID?
-// return 1 if so, 0 if not
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check if an exported inode's file ID matches an inode's file ID
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ */
 int UG_inode_export_match_file_id( struct UG_inode* dest, struct md_entry* src ) {
 
    // file ID matches?
@@ -769,9 +839,12 @@ int UG_inode_export_match_file_id( struct UG_inode* dest, struct md_entry* src )
 }
 
 
-// does an exported inode's volume ID match an inode's volume ID?
-// return 1 if so, 0 if not
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check whether an exported inode's volume ID matches an inode's volume ID
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ */
 int UG_inode_export_match_volume_id( struct UG_inode* dest, struct md_entry* src ) {
 
    // file ID matches?
@@ -786,24 +859,29 @@ int UG_inode_export_match_volume_id( struct UG_inode* dest, struct md_entry* src
 }
 
 
-// does an exported inode's name match the inode's name?
-// return 1 if so, 0 if not
-// return -ENOMEM on OOM
-// NOTE: dest->entry must be read-locked
+/**
+ * @brief Check if an exported inode's name matches the inode's name
+ * @attention dest->entry must be read-locked
+ * @retval 1 True
+ * @retval 0 False
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_export_match_name( struct UG_inode* dest, struct md_entry* src ) {
 
    return (strcmp( dest->name, src->name ) == 0);
 }
 
 
-// import inode metadata from an md_entry
-// inode must already be initialized
-// NOTE: dest's type, file ID, version, name, and size must match src's, if dest has an associated entry.
-// The caller must make sure of this out-of-band, since changing these requires some kind of I/O or directory structure clean-up
-// return 0 on success
-// return -EINVAL if the types, IDs, versions, sizes, or names don't match (and dest has entry data)
-// return -EPERM if dest or src or dest->entry are NULL
-// NOTE: dest->entry must be write-locked
+/**
+ * @brief Import inode metadata from an md_entry
+ *
+ * inode must already be initialized and dest's type, file ID, version, name, and size must match src's, if dest has an associated entry.
+ * The caller must make sure of this out-of-band, since changing these requires some kind of I/O or directory structure clean-up
+ * @attention dest->entry must be write-locked
+ * @retval 0 Success
+ * @retval -EINVAL The types, IDs, versions, sizes, or names don't match (and dest has entry data)
+ * @retval -EPERM dest or src or dest->entry are NULL
+ */
 int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
 
    if( src == NULL || dest == NULL ) {
@@ -904,11 +982,13 @@ int UG_inode_import( struct UG_inode* dest, struct md_entry* src ) {
 }
 
 
-// create or mkdir--publish metadata, set up an fskit entry, and allocate its inode
-// return 0 on success
-// return -errno on failure (i.e. it exists, we don't have permission, we get a network error, etc.)
-// NOTE: fent will be write-locked by fskit
-// NOTE: for files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
+/**
+ * @brief Create or mkdir--publish metadata, set up an fskit entry, and allocate its inode
+ * @note fent will be write-locked by fskit
+ * @note For files, this will disable truncate (so the subsequent trunc(2) that follows a creat(2) does not incur an extra round-trip)
+ * @retval 0 Success
+ * @retval -errno Failure (i.e. it exists, we don't have permission, we get a network error, etc.)
+ */
 int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, struct md_entry* ent_data, struct UG_inode** ret_inode_data ) {
 
    SG_debug("UG_inode_publish %" PRIX64 "\n", fskit_entry_get_file_id(fent) );
@@ -1004,8 +1084,11 @@ int UG_inode_publish( struct SG_gateway* gateway, struct fskit_entry* fent, stru
 }
 
 
-// does an inode's manifest have a more recent modtime than the given one?
-// return true if so; false if not
+/**
+ * @brief Check if an inode's manifest has a more recent modtime than the given one
+ * @retval 1 True
+ * @retval 0 False
+ */
 bool UG_inode_manifest_is_newer_than( struct SG_manifest* manifest, int64_t mtime_sec, int32_t mtime_nsec ) {
 
    struct timespec old_manifest_ts;
@@ -1023,16 +1106,20 @@ bool UG_inode_manifest_is_newer_than( struct SG_manifest* manifest, int64_t mtim
 }
 
 
-// merge new manifest block data into an inode's manifest (i.e. from reloading it remotely, or handling a remote write).
-// evict now-stale cached data and overwritten dirty blocks.
-// remove now-invalid garbage block data.
-// return 0 on success, and populate the inode's manifest with the given manifest's block data
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be write-locked
-// NOTE: this method is idempotent, and will partially-succeed if it returns -ENOMEM.  Callers are encouraged to try and retry until it succeeds
-// NOTE: this method is a commutative and associative on manifests--given manifests A, B, and C, doesn't matter what order they get merged
-// NOTE: (i.e. merge( merge(A, B), C ) == merge( A, merge( B, C ) ) and merge( A, B ) == merge( B, A ))
-// NOTE: does *NOT* merge size, does *NOT* merge modtime, and does *NOT* attempt to truncate
+/**
+ * @brief Merge new manifest block data into an inode's manifest (i.e. from reloading it remotely, or handling a remote write).
+ *
+ * Evict now-stale cached data and overwritten dirty blocks.
+ * Remove now-invalid garbage block data.
+ * @attention inode->entry must be write-locked
+ * @note This method is idempotent, and will partially-succeed if it returns -ENOMEM.  Callers are encouraged to try and retry until it succeeds
+ * @note This method is a commutative and associative on manifests--given manifests A, B, and C, doesn't matter what order they get merged
+ * @note (i.e. merge( merge(A, B), C ) == merge( A, merge( B, C ) ) and merge( A, B ) == merge( B, A ))
+ * @note Does *NOT* merge size, does *NOT* merge modtime, and does *NOT* attempt to truncate
+ * @param[out] *new_manifest The new manifest
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_manifest_merge_blocks( struct SG_gateway* gateway, struct UG_inode* inode, struct SG_manifest* new_manifest ) {
 
    int rc = 0;
@@ -1117,10 +1204,15 @@ int UG_inode_manifest_merge_blocks( struct SG_gateway* gateway, struct UG_inode*
 }
 
 
-// remove dirty blocks from the inode, and put them into *modified
-// return 0 on success, and fill in *modified. the inode will no longer have modified dirty blocks
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Remove dirty blocks from the inode
+ *
+ * @note The inode will no longer have modified dirty blocks
+ * @attention inode->entry must be write-locked
+ * @param[out] *modified Modified blocks
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_dirty_blocks_extract( struct UG_inode* inode, UG_dirty_block_map_t* modified ) {
 
    for( UG_dirty_block_map_t::iterator itr = UG_inode_dirty_blocks( inode )->begin(); itr != UG_inode_dirty_blocks( inode )->end(); itr++ ) {
@@ -1155,12 +1247,16 @@ int UG_inode_dirty_blocks_extract( struct UG_inode* inode, UG_dirty_block_map_t*
 }
 
 
-// return extracted dirty blocks to an inode.  clear them out of *extracted as we do so.
-// You should call this in the same critical section as UG_inode_dirty_blocks_extract()
-// return 0 on success
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be write-locked; locked in the same context as the _extract_ method was called
-// NOTE: this method is idempotent.  call it multiple times if it fails
+/**
+ * @brief Return extracted dirty blocks to an inode
+ *
+ * Clear them out of *extracted as we do so.
+ * You should call this in the same critical section as UG_inode_dirty_blocks_extract()
+ * @attention inode->entry must be write-locked; locked in the same context as the _extract_ method was called
+ * @note This method is idempotent.  Call it multiple times if it fails
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_dirty_blocks_return( struct UG_inode* inode, UG_dirty_block_map_t* extracted ) {
 
    int rc = 0;
@@ -1187,16 +1283,18 @@ int UG_inode_dirty_blocks_return( struct UG_inode* inode, UG_dirty_block_map_t* 
 }
 
 
-// put a block to an inode's dirty-block set (it can be dirty or not dirty)
-// fails if there is already a block cached with a different version.
-// succeeds if there is already a block cached, but with the same version.
-// does not affect the inode's manifest or replaced_block sets.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if the block is dirty
-// return -EEXIST if the block would replace a different block, and replace was false
-// NOTE: inode->entry must be write-locked
-// NOTE: inode takes ownership of dirty_block's contents.
+/**
+ * @brief Put block to an inode's dirty-block set (it can be dirty or not dirty)
+ * @note Fails if there is already a block cached with a different version.
+ * Succeeds if there is already a block cached, but with the same version.
+ * Does not affect the inode's manifest or replaced_block sets.
+ * @attention inode->entry must be write-locked
+ * @note inode takes ownership of dirty_block's contents.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The block is dirty
+ * @retval -EEXIST The block would replace a different block, and replace was false
+ */
 int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block, bool replace ) {
 
    struct md_syndicate_cache* cache = SG_gateway_cache( gateway );
@@ -1277,10 +1375,13 @@ int UG_inode_dirty_block_put( struct SG_gateway* gateway, struct UG_inode* inode
 }
 
 
-// preserve an inode's old manifest timestamp on modification,
-// so we can garbage-collect the old manifest when we fsync() the inode.
-// always succeeds
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Preserve an inode's old manifest timestamp on modification
+ *
+ * So we can garbage-collect the old manifest when we fsync() the inode.
+ * @attention inode->entry must be write-locked
+ * @return 0
+ */
 static int UG_inode_preserve_old_manifest_timestamp( struct UG_inode* inode ) {
 
    int64_t manifest_mtime_sec = 0;
@@ -1307,15 +1408,18 @@ static int UG_inode_preserve_old_manifest_timestamp( struct UG_inode* inode ) {
 }
 
 
-// Update the inode's manifest to include the dirty block info.
-// Remember old block information for blocks that must be garbage-collected.
-// return 0 on success.  The inode takes ownership of dirty_block.
-// return 0 if the block is already present in the manifest (in which case dirty_block is freed)
-// return -ENOMEM on OOM
-// return -EINVAL if dirty_block is not dirty or not flushed
-// NOTE: inode->entry must be write-locked!
-// NOTE: inode takes ownership of dirty_block's contents
-// NOTE: the block must have been flushed to disk.
+/**
+ * @brief Update the inode's manifest to include the dirty block info.
+ *
+ * The inode takes ownership of dirty_block. Remember old block information for blocks that must be garbage-collected.
+ * @attention inode->entry must be write-locked!
+ * @note inode takes ownership of dirty_block's contents
+ * @note The block must have been flushed to disk.
+ * @retval 0 Success
+ * @retval 0 The block is already present in the manifest (in which case dirty_block is freed)
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL dirty_block is not dirty or not flushed
+ */
 int UG_inode_dirty_block_update_manifest( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block ) {
 
    int rc = 0;
@@ -1412,17 +1516,20 @@ UG_inode_block_update_manifest_out:
 }
 
 
-// commit a single dirty block to an inode, optionally replacing an older version of the block.
-// the block must have been flushed to disk.
-// update the inode's manifest to include the dirty block info.
-// evict the old version of the block, if it is cached.
-// remember old block information for blocks that must be garbage-collected.
-// return 0 on success.  The inode takes ownership of dirty_block.
-// return 0 if the block is already present in the manifest (in which case dirty_block is freed)
-// return -ENOMEM on OOM
-// return -EINVAL if dirty_block is not dirty or not flushed
-// NOTE: inode->entry must be write-locked!
-// NOTE: inode takes ownership of dirty_block's contents
+/**
+ * @brief Commit a single dirty block to an inode, optionally replacing an older version of the block.
+ *
+ * The block must have been flushed to disk.  The inode takes ownership of dirty_block.
+ * Update the inode's manifest to include the dirty block info.
+ * Evict the old version of the block, if it is cached.
+ * Remember old block information for blocks that must be garbage-collected.
+ * @attention inode->entry must be write-locked!
+ * @note inode takes ownership of dirty_block's contents
+ * @retval 0 Success.
+ * @retval 0 The block is already present in the manifest (in which case dirty_block is freed)
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL dirty_block is not dirty or not flushed
+ */
 int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* inode, struct UG_dirty_block* dirty_block ) {
 
    int rc = 0;
@@ -1471,10 +1578,13 @@ int UG_inode_dirty_block_commit( struct SG_gateway* gateway, struct UG_inode* in
 }
 
 
-// replace the manifest of an inode
-// free the old one.
-// always succeeds
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Replace the manifest of an inode
+ *
+ * Free the old one.
+ * @attention inode->entry must be write-locked
+ * @return 0
+ */
 int UG_inode_manifest_replace( struct UG_inode* inode, struct SG_manifest* manifest ) {
 
    struct SG_manifest old_manifest;
@@ -1488,10 +1598,13 @@ int UG_inode_manifest_replace( struct UG_inode* inode, struct SG_manifest* manif
 }
 
 
-// find all blocks in the inode that would be removed by a truncation
-// return 0 on success, and populate *removed
-// return -ENOMEM on OOM
-// NOTE: inode->entry must be at least read-locked.
+/**
+ * @brief Find all blocks in the inode that would be removed by a truncation
+ * param[out] *removed The would-be removed blocks
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @attention inode->entry must be at least read-locked.
+ */
 int UG_inode_truncate_find_removed( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, struct SG_manifest* removed ) {
 
    int rc = 0;
@@ -1535,13 +1648,19 @@ int UG_inode_truncate_find_removed( struct SG_gateway* gateway, struct UG_inode*
 }
 
 
-// remove all blocks beyond a given size (if there are any), and set the inode to the new size
-// drop cached blocks, drop dirty blocks, remove blocks from the manifest
-// if removed is not NULL, populate it with removed blocks
-// return 0 on success, and set new_version (if != 0), write_nonce (if != 0), and new_manifest_timestamp (if not NULL)
-// NOTE: inode->entry must be write-locked
-// NOTE: if this method fails with -ENOMEM, and *removed is not NULL, the caller should free up *removed
-// NOTE: if new_version is 0, the version will *not* be changed
+/**
+ * @brief Remove all blocks beyond a given size (if there are any), and set the inode to the new size
+ *
+ * Drop cached blocks, drop dirty blocks, remove blocks from the manifest
+ * If removed is not NULL, populate it with removed blocks
+ * @attention inode->entry Must be write-locked
+ * @note This method fails with -ENOMEM, and *removed is not NULL, the caller should free up *removed
+ * @note new_version is 0, the version will *not* be changed
+ * @param[out] new_version The new version if != 0
+ * @param[out] nonce The nonce if != 0
+ * @param[out] new_manifest_timestamp The new manifest timestamp if != NULL
+ * @retval 0 Success
+ */
 int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t new_size, int64_t new_version, int64_t write_nonce, struct timespec* new_manifest_timestamp ) {
 
    int rc = 0;
@@ -1610,9 +1729,12 @@ int UG_inode_truncate( struct SG_gateway* gateway, struct UG_inode* inode, off_t
    return 0;
 }
 
-// resolve a path to an inode and it's parent's information
-// return a pointer to the locked fskit_entry on success, and set *parent_id
-// return NULL on error, and set *rc to non-zero
+/**
+ * @brief Resolve a path to an inode and it's parent's information
+ * @param[out] *parent_id The parent id
+ * @return A pointer to the locked fskit_entry on success, and set *parent_id
+ * @retval NULL on error, and set *rc to non-zero
+ */
 struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, char const* fs_path, bool writelock, int* rc, uint64_t* parent_id ) {
 
    struct resolve_parent {
@@ -1649,9 +1771,11 @@ struct fskit_entry* UG_inode_resolve_path_and_parent( struct fskit_core* fs, cha
 }
 
 
-// export an fskit_entry inode from the filesystem
-// return 0 on success, and fill in inode_data and *renaming from the inode
-// return -ENOMEM on OOM
+/**
+ * @brief Export an fskit_entry inode from the filesystem
+ * @retval 0 Success, and fill in inode_data and *renaming from the inode
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_export_fs( struct fskit_core* fs, char const* fs_path, struct md_entry* inode_data ) {
 
    int rc = 0;
@@ -1676,9 +1800,11 @@ int UG_inode_export_fs( struct fskit_core* fs, char const* fs_path, struct md_en
 }
 
 
-// push a sync context to the sync queue
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Push a sync context to the sync queue
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_inode_sync_queue_push( struct UG_inode* inode, struct UG_sync_context* sync_context ) {
 
    try {
@@ -1690,8 +1816,10 @@ int UG_inode_sync_queue_push( struct UG_inode* inode, struct UG_sync_context* sy
    }
 }
 
-// pop a sync context from the sync queue and return it
-// return NULL if empty
+/**
+ * @brief Pop a sync context from the sync queue and return it
+ * @retval NULL Empty
+ */
 struct UG_sync_context* UG_inode_sync_queue_pop( struct UG_inode* inode ) {
 
    struct UG_sync_context* ret = NULL;
@@ -1704,8 +1832,10 @@ struct UG_sync_context* UG_inode_sync_queue_pop( struct UG_inode* inode ) {
    return ret;
 }
 
-// clear the list of replaced blocks; e.g. on successful replication
-// always succeeds
+/**
+ * @brief Clear the list of replaced blocks; e.g. on successful replication
+ * @return 0
+ */
 int UG_inode_clear_replaced_blocks( struct UG_inode* inode ) {
 
    SG_manifest_clear( &inode->replaced_blocks );
@@ -1714,43 +1844,66 @@ int UG_inode_clear_replaced_blocks( struct UG_inode* inode ) {
 }
 
 // getters
+/// Allocate an inode
 struct UG_inode* UG_inode_alloc( int count ) {
    return SG_CALLOC( struct UG_inode, count );
 }
 
+/// Get an inode's volume ID
 uint64_t UG_inode_volume_id( struct UG_inode* inode ) {
    return SG_manifest_get_volume_id( &inode->manifest );
 }
 
+/// Get an inode's coordinator ID
 uint64_t UG_inode_coordinator_id( struct UG_inode* inode ) {
    return SG_manifest_get_coordinator( &inode->manifest );
 }
 
+/**
+ * @brief Get the name of an inode
+ *
+ * @return A string copy of the inode->name
+ * @retval NULL The name was not set
+ * @see UG_inode_name_ref
+ */
 char* UG_inode_name( struct UG_inode* inode ) {
    return SG_strdup_or_null( inode->name );
 }
 
+/**
+ * @brief Get the inode name
+ *
+ * @return The inode->name directly (not a string copy)
+ * @see UG_inode_name
+ */
 char* UG_inode_name_ref( struct UG_inode* inode ) {
    return inode->name;
 }
 
+/// Get the inode's file ID
 uint64_t UG_inode_file_id( struct UG_inode* inode ) {
    return SG_manifest_get_file_id( &inode->manifest );
 }
 
+/// Get the inode's file version
 int64_t UG_inode_file_version( struct UG_inode* inode ) {
    return SG_manifest_get_file_version( &inode->manifest );
 }
 
+/// Get the inode's write_nonce
 int64_t UG_inode_write_nonce( struct UG_inode* inode ) {
    return inode->write_nonce;
 }
 
+/// Get the inode's xattr_nonce
 int64_t UG_inode_xattr_nonce( struct UG_inode* inode ) {
    return inode->xattr_nonce;
 }
 
-// NOTE: inode->entry must be at least read-locked
+/**
+ * @brief Get the inode's file size
+ * @attention inode->entry must be at least read-locked
+ */
 uint64_t UG_inode_size( struct UG_inode* inode ) {
    // embed a sanity check (TODO: DRY)
    if( (unsigned)fskit_entry_get_size( inode->entry ) != (unsigned)SG_manifest_get_file_size( &inode->manifest ) ) {
@@ -1763,24 +1916,29 @@ uint64_t UG_inode_size( struct UG_inode* inode ) {
    return SG_manifest_get_file_size( &inode->manifest );
 }
 
+/// Update the inode's ms_xattr_hash
 void UG_inode_ms_xattr_hash( struct UG_inode* inode, unsigned char* ms_xattr_hash ) {
    if( inode->ms_xattr_hash != NULL ) {
        memcpy( inode->ms_xattr_hash, ms_xattr_hash, SHA256_DIGEST_LENGTH );
    }
 }
 
+/// Get the inode's manifest
 struct SG_manifest* UG_inode_manifest( struct UG_inode* inode ) {
    return &inode->manifest;
 }
 
+/// Get the inode's replaced_blocks
 struct SG_manifest* UG_inode_replaced_blocks( struct UG_inode* inode ) {
    return &inode->replaced_blocks;
 }
 
+/// Get the inode's dirty_blocks
 UG_dirty_block_map_t* UG_inode_dirty_blocks( struct UG_inode* inode ) {
    return inode->dirty_blocks;
 }
 
+/// Get the old manifest modtime (from replaced_blocks)
 struct timespec UG_inode_old_manifest_modtime( struct UG_inode* inode ) {
    struct timespec ts;
    ts.tv_sec = SG_manifest_get_modtime_sec( &inode->replaced_blocks );
@@ -1788,10 +1946,12 @@ struct timespec UG_inode_old_manifest_modtime( struct UG_inode* inode ) {
    return ts;
 }
 
+/// Get the inodes fskit entry
 struct fskit_entry* UG_inode_fskit_entry( struct UG_inode* inode ) {
    return inode->entry;
 }
 
+/// Check if the inode is read stale
 bool UG_inode_is_read_stale( struct UG_inode* inode, struct timespec* now ) {
    if( now != NULL ) {
       return (inode->read_stale || md_timespec_diff_ms( now, &inode->refresh_time ) > inode->max_read_freshness);
@@ -1801,6 +1961,7 @@ bool UG_inode_is_read_stale( struct UG_inode* inode, struct timespec* now ) {
    }
 }
 
+/// Check if the inode is write stale
 bool UG_inode_is_write_stale( struct UG_inode* inode, struct timespec* now ) {
    if( inode->max_write_freshness == 0 ) {
       // always fresh
@@ -1815,59 +1976,73 @@ bool UG_inode_is_write_stale( struct UG_inode* inode, struct timespec* now ) {
    }
 }
 
+/// Check if the inode is being renamed
 bool UG_inode_renaming( struct UG_inode* inode ) {
    return inode->renaming;
 }
 
+/// Check if the inode is being deleted
 bool UG_inode_deleting( struct UG_inode* inode ) {
    return inode->deleting;
 }
 
+/// Check if the inode is being created
 bool UG_inode_creating( struct UG_inode* inode ) {
    return inode->creating;
 }
 
+/// Get the inode's number of children
 int64_t UG_inode_ms_num_children( struct UG_inode* inode ) {
    return inode->ms_num_children;
 }
 
+/// Get the maximum index number of a child
 int64_t UG_inode_ms_capacity( struct UG_inode* inode ) {
    return inode->ms_capacity;
 }
 
+/// Get the time since the last read refresh
 int32_t UG_inode_max_read_freshness( struct UG_inode* inode ) {
    return inode->max_read_freshness;
 }
 
+/// Get the time since the last write refresh
 int32_t UG_inode_max_write_freshness( struct UG_inode* inode ) {
    return inode->max_write_freshness;
 }
 
+/// Get the last known generation number of the inode
 int64_t UG_inode_generation( struct UG_inode* inode ) {
    return inode->generation;
 }
 
+/// Get the inode's refresh time
 struct timespec UG_inode_refresh_time( struct UG_inode* inode ) {
    return inode->refresh_time;
 }
 
+/// Get the inode's manifest refresh time
 struct timespec UG_inode_manifest_refresh_time( struct UG_inode* inode ) {
    return inode->manifest_refresh_time;
 }
 
+/// Get the time since the children were last reloaded
 struct timespec UG_inode_children_refresh_time( struct UG_inode* inode ) {
    return inode->children_refresh_time;
 }
 
+/// Get the fsync queue size
 size_t UG_inode_sync_queue_len( struct UG_inode* inode ) {
    return inode->sync_queue->size();
 }
 
+/// Chech whether this inode is dirty
 bool UG_inode_is_dirty( struct UG_inode* inode ) {
    return inode->dirty;
 }
 
 // setters
+/// Set the inode's name
 int UG_inode_set_name( struct UG_inode* inode, char const* name ) {
    if( inode->name != NULL ) {
       char* name_dup = SG_strdup_or_null( name );
@@ -1881,26 +2056,42 @@ int UG_inode_set_name( struct UG_inode* inode, char const* name ) {
    return 0;
 }
 
+/// Set the inode's file version
 void UG_inode_set_file_version( struct UG_inode* inode, int64_t version ) {
    SG_manifest_set_file_version( &inode->manifest, version );
 }
 
+/// Set the inode's write_nonce
 void UG_inode_set_write_nonce( struct UG_inode* inode, int64_t wn ) {
    inode->write_nonce = wn;
 }
 
+/// Set the inode's xattr_nonce
 void UG_inode_set_xattr_nonce( struct UG_inode* inode, int64_t xn) {
    inode->xattr_nonce = xn;
 }
 
+/// Set the inode's ms_xattr_hash
 void UG_inode_set_ms_xattr_hash( struct UG_inode* inode, unsigned char* ms_xattr_hash ) {
    memcpy( inode->ms_xattr_hash, ms_xattr_hash, SHA256_DIGEST_LENGTH );
 }
 
+/**
+ * @brief Set the inode's refresh_time
+ *
+ * Called by UG_inode_set_refresh_time_now with the current time
+ * @see UG_inode_set_refresh_time_now
+ */
 void UG_inode_set_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
    inode->refresh_time = *ts;
 }
 
+/**
+ * @brief Reset the inode's refresh time
+ *
+ * Calls UG_inode_set_refresh_time with the current time
+ * @see UG_inode_set_refresh_time
+ */
 void UG_inode_set_refresh_time_now( struct UG_inode* inode ) {
 
    struct timespec now;
@@ -1908,10 +2099,22 @@ void UG_inode_set_refresh_time_now( struct UG_inode* inode ) {
    UG_inode_set_refresh_time( inode, &now );
 }
 
+/**
+ * @brief Set the inode's write refresh time
+ *
+ * Called by UG_inode_set_write_refresh_time_now with the current time
+ * @see UG_inode_set_write_refresh_time_now
+ */
 void UG_inode_set_write_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
    inode->write_refresh_time = *ts;
 }
 
+/**
+ * @brief Reset the inode's write refresh time
+ *
+ * Calls UG_inode_set_write_refresh_time with the current time
+ * @see UG_inode_set_write_refresh_time
+ */
 void UG_inode_set_write_refresh_time_now( struct UG_inode* inode ) {
 
    struct timespec now;
@@ -1919,10 +2122,22 @@ void UG_inode_set_write_refresh_time_now( struct UG_inode* inode ) {
    UG_inode_set_write_refresh_time( inode, &now );
 }
 
+/**
+ * @brief Set the inode's manifest refresh time
+ *
+ * Called by UG_inode_set_manifest_refresh_time_now with the current time
+ * @see UG_inode_set_manifest_refresh_time_now
+ */
 void UG_inode_set_manifest_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
    inode->manifest_refresh_time = *ts;
 }
 
+/**
+ * @brief Reset the inode's manifest refresh time
+ *
+ * Calls UG_inode_set_manifest_refresh_time with the current time
+ * @see UG_inode_set_manifest_refresh_time
+ */
 void UG_inode_set_manifest_refresh_time_now( struct UG_inode* inode ) {
 
    struct timespec now;
@@ -1930,12 +2145,22 @@ void UG_inode_set_manifest_refresh_time_now( struct UG_inode* inode ) {
    UG_inode_set_manifest_refresh_time( inode, &now );
 }
 
-
-
+/**
+ * @brief Set the inode's children refresh time
+ *
+ * Called by UG_inode_set_children_refresh_time_now with the current time
+ * @see UG_inode_set_children_refresh_time_now
+ */
 void UG_inode_set_children_refresh_time( struct UG_inode* inode, struct timespec* ts ) {
    inode->children_refresh_time = *ts;
 }
 
+/**
+ * @brief Reset the inode's children refresh time
+ *
+ * Calls UG_inode_set_children_refresh_time with the current time
+ * @see UG_inode_set_children_refresh_time
+ */
 void UG_inode_set_children_refresh_time_now( struct UG_inode* inode ) {
 
    struct timespec now;
@@ -1943,53 +2168,67 @@ void UG_inode_set_children_refresh_time_now( struct UG_inode* inode ) {
    UG_inode_set_children_refresh_time( inode, &now );
 }
 
+/// Set the modtime for the old manifest, replaced_blocks
 void UG_inode_set_old_manifest_modtime( struct UG_inode* inode, struct timespec* ts ) {
    SG_manifest_set_modtime( &inode->replaced_blocks, ts->tv_sec, ts->tv_nsec );
 }
 
+/// Set the time (how long) since the last read refresh
 void UG_inode_set_max_read_freshness( struct UG_inode* inode, int32_t rf ) {
    inode->max_read_freshness = rf;
 }
 
+/// Set the time (how long) since the last write refresh
 void UG_inode_set_max_write_freshness( struct UG_inode* inode, int32_t wf ) {
    inode->max_write_freshness = wf;
 }
 
+/// Set the inode's generation number
 void UG_inode_set_generation( struct UG_inode* inode, uint64_t gen ) {
    inode->generation = gen;
 }
 
+/// Set the maximum index number of a child
 void UG_inode_set_ms_capacity( struct UG_inode* inode, uint64_t cap ) {
    inode->ms_capacity = cap;
 }
 
+/// Set the inode's number of children
 void UG_inode_set_ms_num_children( struct UG_inode* inode, uint64_t num_children ) {
    inode->ms_num_children = num_children;
 }
 
+/// Set whether this inode shoud be revalidated before the next read
 void UG_inode_set_read_stale( struct UG_inode* inode, bool val ) {
    inode->read_stale = val;
 }
 
+/// Set this inode to a "being deleted" state
 void UG_inode_set_deleting( struct UG_inode* inode, bool val ) {
    inode->deleting = val;
 }
 
+/// Set this inode to a "being created" state
 void UG_inode_set_creating( struct UG_inode* inode, bool val ) {
    inode->creating = val;
 }
 
+/// Set this inode to a "dirty" state
 void UG_inode_set_dirty( struct UG_inode* inode, bool val ) {
    inode->dirty = val;
 }
 
+/// Set this inode's fskit entry
 void UG_inode_set_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent ) {
    inode->entry = ent;
 }
 
-// NOTE: requires inode->entry to be write-locked
+/**
+ * @brief Set the size associated with this inode
+ * @attention Requires inode->entry to be write-locked
+ * @note The entry can sometimes be NULL, such as when we're initializing the root inode 
+ */
 void UG_inode_set_size( struct UG_inode* inode, uint64_t new_size ) {
-   // the entry can sometimes be NULL, such as when we're initializing the root inode 
    if( inode->entry != NULL ) {
        fskit_entry_set_size( inode->entry, new_size );
    }
@@ -1997,16 +2236,24 @@ void UG_inode_set_size( struct UG_inode* inode, uint64_t new_size ) {
    SG_manifest_set_size( &inode->manifest, new_size );
 }
 
-// attach an fskit_entry to an inode, and the inode to the fskit_entry
-// ent must be write-locked
+/**
+ * @brief Bind an inode and fskit_entry
+ *
+ * Attach an fskit_entry to an inode, and the inode to the fskit_entry
+ * @attention ent must be write-locked
+ */
 void UG_inode_bind_fskit_entry( struct UG_inode* inode, struct fskit_entry* ent ) {
    UG_inode_set_fskit_entry( inode, ent );
    fskit_entry_set_user_data( ent, inode );
 }
 
 
-// preserve the old manifest timestamp: if it's not set, then copy it from the current manifest
-// NOTE: requires exclusive access to inode
+/**
+ * @brief Preserve the old manifest timestamp
+ *
+ * If it's not set, then copy it from the current manifest
+ * @note Requires exclusive access to inode
+ */
 void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode ) {
 
    if( SG_manifest_get_modtime_sec( &inode->replaced_blocks ) == 0 && SG_manifest_get_modtime_nsec( &inode->replaced_blocks ) == 0 ) {
@@ -2022,9 +2269,12 @@ void UG_inode_preserve_old_manifest_modtime( struct UG_inode* inode ) {
 }
 
 
-// count up how many non-dirty blocks there are in the inode's dirty block set 
-// (these blocks get cached here on read)
-// NOTE: inode->entry must be read-locked
+/**
+ * @brief Get the number of non-dirty (clean) blocks there are in the inode's dirty block set 
+ *
+ * @attention inode->entry must be read-locked
+ * @note These blocks get cached here on read
+ */
 uint64_t UG_inode_count_clean_blocks( struct UG_inode* inode ) {
     
     uint64_t count = 0;
@@ -2038,9 +2288,11 @@ uint64_t UG_inode_count_clean_blocks( struct UG_inode* inode ) {
 }
 
 
-// get the block ID of the nth non-dirty block
-// return (uint64_t)(-1) on failure
-// NOTE: inode->entry must be read-locked
+/**
+ * @brief Get the block ID of the nth non-dirty block
+ * @retval -1 Failure
+ * @attention inode->entry must be read-locked
+ */
 uint64_t UG_inode_find_clean_block_id( struct UG_inode* inode, uint64_t n ) {
     
    uint64_t block_id = -1;
@@ -2059,11 +2311,13 @@ uint64_t UG_inode_find_clean_block_id( struct UG_inode* inode, uint64_t n ) {
 }
 
 
-// evict a clean block from the dirty inode set 
-// return 0 on success
-// return -ENOENT on absent
-// return -EINVAL if dirty
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Evict a clean block from the dirty inode set 
+ * @retval 0 Success
+ * @retval -ENOENT Absent
+ * @retval -EINVAL Dirty
+ * @attention inode->entry must be write-locked
+ */
 int UG_inode_evict_clean_block( struct UG_inode* inode, uint64_t block_id ) {
 
     UG_dirty_block_map_t::iterator itr = inode->dirty_blocks->find(block_id);
@@ -2080,6 +2334,3 @@ int UG_inode_evict_clean_block( struct UG_inode* inode, uint64_t block_id ) {
     UG_dirty_block_free( dirty_block );
     return 0;
 }
-
-
-

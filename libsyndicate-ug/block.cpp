@@ -14,13 +14,25 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/block.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway block related functions
+ *
+ * @see libsyndicate-ug/block.h
+ */
+
 #include "block.h"
 #include "inode.h"
 
 
-// init dirty block by copying in a buffer
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Initialize a dirty block by copying in a buffer
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_dirty_block_init_ram( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, char const* buf, size_t buflen ) {
    
    int rc = 0;
@@ -51,9 +63,11 @@ int UG_dirty_block_init_ram( struct UG_dirty_block* dirty_block, struct SG_manif
 }
 
 
-// init dirty block by taking onwership of a buffer
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Init a dirty block by taking onwership of a buffer
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */ 
 int UG_dirty_block_init_ram_nocopy( struct UG_dirty_block* dirty_block, struct SG_manifest_block* info, char* buf, size_t buflen ) {
    
    int rc = 0;
@@ -76,8 +90,12 @@ int UG_dirty_block_init_ram_nocopy( struct UG_dirty_block* dirty_block, struct S
 }
 
 
-// set a dirty block's buffer.  Use with care.
-// only works if the block is *not* shared/RAM-allocated.  If unshared, frees the buffer first.
+/**
+ * @brief Set a dirty block's buffer.  Use with care.
+ *
+ * Only works if the block is *not* shared/RAM-allocated.  If unshared, frees the buffer first.
+ * @return 0
+ */
 int UG_dirty_block_set_buf( struct UG_dirty_block* dest, struct SG_chunk* new_buf ) {
 
    if( !UG_dirty_block_unshared( dest ) && UG_dirty_block_in_RAM( dest ) ) {
@@ -93,24 +111,33 @@ int UG_dirty_block_set_buf( struct UG_dirty_block* dest, struct SG_chunk* new_bu
    return 0;
 }
 
-// set version 
+/**
+ * @brief Set version
+ *
+ * Calls SG_manifest_block_set_version
+ * @see SG_manifest_block_set_version
+ */
 int UG_dirty_block_set_version( struct UG_dirty_block* blk, int64_t version ) {
    SG_manifest_block_set_version( &blk->info, version );
    return 0;
 }
 
-// load a block from the cache, into dirty_block->buf
-// if dirty_block->buf is allocated, this loads the deserialized block directly into it.
-// If it is not allocated, it will be with malloc.
-// transform it using the driver
-// do NOT mark it dirty.
-// dirty_block must be instantiated, but must not be in RAM
-// return 0 on success
-// return -ENOENT if not cached 
-// return -EIO if we failed to access the cache
-// return -ENOMEM on OOM
-// return -EINVAL if dirty_block is in RAM
-// return -ENODATA if we failed to serialize the block
+/**
+ * @brief Load a block from the cache
+ *
+ * Load into dirty_block->buf
+ * If dirty_block->buf is allocated, this loads the deserialized block directly into it.
+ * If it is not allocated, it will be with malloc.
+ * Transform it using the driver
+ * Do NOT mark it dirty.
+ * dirty_block must be instantiated, but must not be in RAM
+ * @retval 0 Success
+ * @retval -ENOENT Not cached 
+ * @retval -EIO Failed to access the cache
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL dirty_block is in RAM
+ * @retval -ENODATA Failed to serialize the block
+ */
 int UG_dirty_block_load_from_cache( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, uint64_t file_version, struct UG_dirty_block* dirty_block, struct SG_IO_hints* io_hints ) {
    
    int rc = 0;
@@ -198,8 +225,10 @@ int UG_dirty_block_load_from_cache( struct SG_gateway* gateway, char const* fs_p
    return 0;
 }
 
-// free dirty block 
-// always succeeds
+/**
+ * @brief Free dirty block 
+ * @return 0
+ */
 int UG_dirty_block_free( struct UG_dirty_block* dirty_block ) {
    
    SG_manifest_block_free( &dirty_block->info );
@@ -213,9 +242,13 @@ int UG_dirty_block_free( struct UG_dirty_block* dirty_block ) {
 }
 
 
-// free dirty block, but not the block data
-// this is useful for recovering from errors, when we don't want to free the buffer passed into the dirty block
-// always succeeds
+/**
+ * @brief Free dirty block, but not the block data
+ *
+ * This is useful for recovering from errors, when we don't want to free the buffer passed into the dirty block
+ * @see SG_manifest_block_free
+ * @return 0
+ */
 int UG_dirty_block_free_keepbuf( struct UG_dirty_block* dirty_block ) {
    
    SG_manifest_block_free( &dirty_block->info );
@@ -223,8 +256,11 @@ int UG_dirty_block_free_keepbuf( struct UG_dirty_block* dirty_block ) {
 }
 
 
-// free a block map 
-// always succeeds
+/**
+ * @brief Free a block map
+ * @see UG_dirty_block_free
+ * @return 0
+ */
 int UG_dirty_block_map_free( UG_dirty_block_map_t* dirty_blocks ) {
    
    for( UG_dirty_block_map_t::iterator itr = dirty_blocks->begin(); itr != dirty_blocks->end(); itr++ ) {
@@ -237,8 +273,11 @@ int UG_dirty_block_map_free( UG_dirty_block_map_t* dirty_blocks ) {
 }
 
 
-// free a block map, but don't touch the buffers 
-// always succeeds
+/**
+ * @brief Free a block map, but don't touch the buffers
+ * @see UG_dirty_block_free_keepbuf 
+ * @return 0
+ */
 int UG_dirty_block_map_free_keepbuf( UG_dirty_block_map_t* dirty_blocks ) {
    
    for( UG_dirty_block_map_t::iterator itr = dirty_blocks->begin(); itr != dirty_blocks->end(); itr++ ) {
@@ -251,8 +290,10 @@ int UG_dirty_block_map_free_keepbuf( UG_dirty_block_map_t* dirty_blocks ) {
 }
 
 
-// set the dirty flag on a dirty block 
-// always succeeds
+/**
+ * @brief Set the dirty flag on a dirty block 
+ * @return 0
+ */
 int UG_dirty_block_set_dirty( struct UG_dirty_block* dirty_block, bool dirty ) {
    
    dirty_block->dirty = dirty;
@@ -260,9 +301,12 @@ int UG_dirty_block_set_dirty( struct UG_dirty_block* dirty_block, bool dirty ) {
 }
 
 
-// set the unshared flag on a dirty block
-// this is the case if we gift data into a block
-// always succeeds 
+/**
+ * @brief Set the unshared flag on a dirty block
+ *
+ * This is the case if we gift data into a block
+ * @return 0
+ */
 int UG_dirty_block_set_unshared( struct UG_dirty_block* dirty_block, bool unshared ) {
 
    dirty_block->unshared = true;
@@ -270,14 +314,19 @@ int UG_dirty_block_set_unshared( struct UG_dirty_block* dirty_block, bool unshar
 }
 
 
-// flush a dirty block from RAM to disk.
-// return 0 on success, put the cache-write future into *dirty_block, and re-calculate the hash over the block's driver-serialized form
-// return -EINPROGRESS if this block is already being flushed
-// return -EINVAL if the block was already flushed, or is not in RAM, or is not dirty
-// return -ENODATA if we failed to serialize the block 
-// return -errno on cache failure
-// NOTE: be careful not to free dirty_block until the future has been finalized!
-// NOTE: not thread-safe--don't try flushing the same block twice
+/**
+ * @brief Flush a dirty block from RAM to disk.
+ *
+ * Put the cache-write future into *dirty_block, and re-calculate the hash over the block's driver-serialized form
+ * @param[out] *dirty_block The cache-write future
+ * @note Be careful not to free dirty_block until the future has been finalized!
+ * @note Not thread-safe--don't try flushing the same block twice
+ * @retval 0 Success
+ * @retval -EINPROGRESS This block is already being flushed
+ * @retval -EINVAL The block was already flushed, or is not in RAM, or is not dirty
+ * @retval -ENODATA Failed to serialize the block 
+ * @retval -errno Cache failure
+ */
 int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path, uint64_t file_id, int64_t file_version, struct UG_dirty_block* dirty_block, struct SG_IO_hints* io_hints ) {
    
    int rc = 0;
@@ -366,11 +415,15 @@ int UG_dirty_block_flush_async( struct SG_gateway* gateway, char const* fs_path,
 }
 
 
-// wait for a block to get flushed.  If the block is not dirty and is not flushing, return 0.
-// if free_chunk is set, free dirty_block's RAM buffer as well if we successfully flush
-// return 0 on success
-// return -EINVAL if the block is dirty, but the block is not being flushed.
-// return -errno on flush failure (in which case, none of the above side-effects occur)
+/**
+ * @brief Wait for a block to get flushed.
+ *
+ * If the block is not dirty and is not flushing, return 0.
+ * If free_chunk is set, free dirty_block's RAM buffer as well if we successfully flush
+ * @retval 0 Success
+ * @retval -EINVAL The block is dirty, but the block is not being flushed.
+ * @retval -errno Flush failure (in which case, none of the above side-effects occur)
+ */
 int UG_dirty_block_flush_finish_ex( struct UG_dirty_block* dirty_block, bool free_chunk ) {
    
    int rc = 0;
@@ -432,31 +485,41 @@ UG_dirty_block_flush_finish_ex_out:
 }
 
 
-// wait for a block to get flushed.
-// on success, put the block future's fd into the dirty_block, and free the dirty block's memory
-// return 0 on success
-// return -errno on flush failure 
+/**
+ * @brief Wait for a block to get flushed.
+ *
+ * Put the block future's fd into the dirty_block, and free the dirty block's memory
+ * @retval 0 Success
+ * @retval -errno Flush failure
+   @see UG_dirty_block_flush_finish_ex
+ */
 int UG_dirty_block_flush_finish( struct UG_dirty_block* dirty_block ) {
    
    return UG_dirty_block_flush_finish_ex( dirty_block, true );
 }
 
 
-// wait for a block to get flushed.
-// don't free the associated chunk, if present.
-// on success, put the block future's fd into the dirty_block, and free the dirty block's memory
-// return 0 on success
-// return -errno on flush failure 
+/**
+ * @brief Wait for a block to get flushed.
+ *
+ * Don't free the associated chunk, if present.
+ * Put the block future's fd into the dirty_block, and free the dirty block's memory
+ * @retval 0 Success
+ * @retval -errno Flush failure
+ * @see UG_dirty_block_flush_finish_ex
+ */ 
 int UG_dirty_block_flush_finish_keepbuf( struct UG_dirty_block* dirty_block ) {
    
    return UG_dirty_block_flush_finish_ex( dirty_block, false );
 }
 
 
-// unshare a block's buffer--make a private copy, and replace the buffer 
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if there is no associated RAM buffer for this dirty block, or if this block was already unshared
+/**
+ * @brief Unshare a block's buffer, make a private copy, and replace the buffer 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL There is no associated RAM buffer for this dirty block, or if this block was already unshare
+ */
 int UG_dirty_block_buf_unshare( struct UG_dirty_block* dirty_block ) {
    
    int rc = 0;
@@ -487,9 +550,12 @@ int UG_dirty_block_buf_unshare( struct UG_dirty_block* dirty_block ) {
 }
 
 
-// given an offset and a write length, find the IDs of the first aligned block and last aligned block.
-// that is, the IDs of the first and last block that correspond to whole blocks in the range [offset, offset + buf_len].
-// always succeeds 
+/**
+ * @brief Find the IDs of the first aligned block and last aligned block given an offset and a write length 
+ *
+ * The IDs of the first and last block that correspond to whole blocks in the range [offset, offset + buf_len].
+ * @return 0
+ */
 int UG_dirty_block_aligned( off_t offset, size_t buf_len, uint64_t block_size, uint64_t* aligned_start_id, uint64_t* aligned_end_id, off_t* aligned_start_offset, off_t* last_block_len ) {
    
    int rc = 0;
@@ -550,8 +616,11 @@ int UG_dirty_block_aligned( off_t offset, size_t buf_len, uint64_t block_size, u
 }
 
 
-// evict a block 
-// always succeeds 
+/**
+ * @brief Evict a block 
+ * @return 0
+ * @see md_cache_evict_block
+ */
 int UG_dirty_block_evict( struct md_syndicate_cache* cache, struct UG_inode* inode, struct UG_dirty_block* block ) {
 
    uint64_t flags = 0;
@@ -565,8 +634,12 @@ int UG_dirty_block_evict( struct md_syndicate_cache* cache, struct UG_inode* ino
 } 
 
 
-// evict and free a dirty block 
-// always succeeds
+/**
+ * @brief Evict and free a dirty block 
+ * @return 0
+ * @relatesalso UG_dirty_block_evict
+ * @relatesalso UG_dirty_block_free
+ */
 int UG_dirty_block_evict_and_free( struct md_syndicate_cache* cache, struct UG_inode* inode, struct UG_dirty_block* block ) {
   
    UG_dirty_block_evict( cache, inode, block );
@@ -576,15 +649,22 @@ int UG_dirty_block_evict_and_free( struct md_syndicate_cache* cache, struct UG_i
 
 
 // getters
+/// Get dirty block ID (block_id)
 uint64_t UG_dirty_block_id( struct UG_dirty_block* blk ) {
    return blk->info.block_id;
 }
 
+/// Get dirty block version (block_version)
 int64_t UG_dirty_block_version( struct UG_dirty_block* blk ) {
    return blk->info.block_version;
 }
 
-// NOTE: can only be called once the block has been (re)hashed
+/**
+ * @brief Get dirty block hash buffer
+ * @param[out] hash_buf The hash buffer
+ * @note can only be called once the block has been (re)hashed
+ * @return 0
+ */
 int UG_dirty_block_hash_buf( struct UG_dirty_block* blk, unsigned char* hash_buf ) {
 
    if( SG_manifest_block_hash( &blk->info ) == NULL ) {
@@ -595,62 +675,89 @@ int UG_dirty_block_hash_buf( struct UG_dirty_block* blk, unsigned char* hash_buf
    memcpy( hash_buf, SG_manifest_block_hash( &blk->info ), SG_BLOCK_HASH_LEN );
    return 0;
 }
-   
+
+/// Get durty block buffer (blk->buf)
 struct SG_chunk* UG_dirty_block_buf( struct UG_dirty_block* blk ) {
    return &blk->buf;
 }
 
-// open the block, based on whether or not it is caller- or cache-managed.
-// return the file handle on success
-// return -errno on failure
+/**
+ * @brief Open the block, based on whether or not it is caller- or cache-managed.
+ * @return The file handle on success
+ * @retval -errno Failure
+ */
 int UG_dirty_block_open( struct SG_gateway* gateway, uint64_t file_id, int64_t file_version, uint64_t block_id, int64_t block_version, int open_flags, uint64_t cache_flags ) {
 
    return md_cache_open_block( SG_gateway_cache( gateway ), file_id, file_version, block_id, block_version, open_flags, cache_flags );
 }
 
+/// Get dirty block info (blk->info)
 struct SG_manifest_block* UG_dirty_block_info( struct UG_dirty_block* blk ) {
    return &blk->info;
 }
 
+/// Get dirty block unshared (blk->unshared)
 bool UG_dirty_block_unshared( struct UG_dirty_block* blk ) {
    return blk->unshared;
 }
 
+/// Get block dirty (blk->dirty)
 bool UG_dirty_block_dirty( struct UG_dirty_block* blk ) {
    return blk->dirty;
 }
 
+/**
+ * @brief Get flushing state of block (blk->block_fut)
+ * @retval True Flushing
+ * @retval False Not flushing
+ */
 bool UG_dirty_block_is_flushing( struct UG_dirty_block* blk ) {
    return (blk->block_fut) != NULL;
 }
 
+/**
+ * @brief Get if block is flushed (blk->flushed)
+ * @retval True Flushed
+ * @retval False Not flushed
+ */
 bool UG_dirty_block_is_flushed( struct UG_dirty_block* blk ) {
    return blk->flushed;
 }
 
+/**
+ * @brief Get if block is in RAM
+ * @retval True In RAM
+ * @retval False Not in RAM
+ */
 bool UG_dirty_block_in_RAM( struct UG_dirty_block* blk ) {
    return (blk->buf.data != NULL);
 }
 
+/// Get block logical offset (logical_write_offset)
 uint64_t UG_dirty_block_get_logical_offset( struct UG_dirty_block* blk ) {
    return blk->logical_write_offset;
 }
 
+/// Get block logical length (logical_write_length)
 uint64_t UG_dirty_block_get_logical_len( struct UG_dirty_block* blk ) {
    return blk->logical_write_length;
 }
 
+/// Set the block logical write given an offset and length
 void UG_dirty_block_set_logical_write( struct UG_dirty_block* blk, uint64_t logical_offset, uint64_t logical_len ) {
    blk->logical_write_offset = logical_offset;
    blk->logical_write_length = logical_len;
 }
 
-// re-calculate the hash of the block
-// the block must be resident in memory, but not mmap'ed
-// store it into its block info
-// NOT ATOMIC
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Re-calculate the hash of the block
+ *
+ * The block must be resident in memory, but not mmap'ed
+ * Store it into its block info
+ * @note NOT ATOMIC
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_data, size_t serialized_data_len ) {
 
    unsigned char* hash = NULL;
@@ -674,10 +781,13 @@ int UG_dirty_block_rehash( struct UG_dirty_block* blk, char const* serialized_da
 }
 
 
-// serialize a block, and update its hash 
-// the block must be resident in memory
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Serialize a block, and update its hash 
+ *
+ * @note The block must be resident in memory
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data* reqdat, struct UG_dirty_block* block, struct SG_chunk* serialized_data ) {
 
    int rc = 0;
@@ -732,5 +842,3 @@ int UG_dirty_block_serialize( struct SG_gateway* gateway, struct SG_request_data
 
    return 0;
 }
-
-

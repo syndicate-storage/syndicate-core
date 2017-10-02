@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/core.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway core related functions
+ *
+ * @see libsyndicate-ug/core.h
+ */
+
 #include "core.h"
 #include "client.h"
 #include "impl.h"
@@ -28,47 +38,47 @@ char const* UG_DRIVER_ROLES[ UG_DRIVER_NUM_ROLES ] = {
    "deserialize"
 };
 
-// global UG state
+/// Global UG state
 struct UG_state {
    
-   struct SG_gateway* gateway;           // reference to the gateway core (which, in turn, points to UG_state)
+   struct SG_gateway* gateway;          ///< Reference to the gateway core (which, in turn, points to UG_state)
    
-   uint64_t* replica_gateway_ids;       // IDs of replica gateways to replicate data to
+   uint64_t* replica_gateway_ids;       ///< IDs of replica gateways to replicate data to
    size_t num_replica_gateway_ids;
    
-   struct fskit_core* fs;               // filesystem core 
+   struct fskit_core* fs;               ///< Filesystem core 
    
-   struct UG_vacuumer* vacuumer;        // vacuumer instance 
+   struct UG_vacuumer* vacuumer;        ///< Vacuumer instance 
    
-   pthread_rwlock_t lock;               // lock governing access to this structure
+   pthread_rwlock_t lock;               ///< Lock governing access to this structure
   
    // fskit route handles
-   int stat_rh;
-   int creat_rh;
-   int mkdir_rh;
-   int open_rh;
-   int read_rh;
-   int write_rh;
-   int trunc_rh;
-   int close_rh;
-   int sync_rh;
-   int detach_rh;
-   int rename_rh;
-   int getxattr_rh;
-   int setxattr_rh;
-   int removexattr_rh;
-   int listxattr_rh;
+   int stat_rh;                         ///< fskit route handle 
+   int creat_rh;                        ///< fskit route handle 
+   int mkdir_rh;                        ///< fskit route handle 
+   int open_rh;                         ///< fskit route handle 
+   int read_rh;                         ///< fskit route handle  
+   int write_rh;                        ///< fskit route handle  
+   int trunc_rh;                        ///< fskit route handle 
+   int close_rh;                        ///< fskit route handle 
+   int sync_rh;                         ///< fskit route handle 
+   int detach_rh;                       ///< fskit route handle 
+   int rename_rh;                       ///< fskit route handle 
+   int getxattr_rh;                     ///< fskit route handle 
+   int setxattr_rh;                     ///< fskit route handle 
+   int removexattr_rh;                  ///< fskit route handle 
+   int listxattr_rh;                    ///< fskit route handle 
    
-   bool running_thread;                 // if true, we've set up and started a thread to run the main loop ourselves 
-   pthread_t thread;                    // the main loop thread
+   bool running_thread;                 ///< If true, we've set up and started a thread to run the main loop ourselves 
+   pthread_t thread;                    ///< The main loop thread
    
-   struct md_wq* wq;                    // workqueue for deferred operations (like blowing away dead inodes)
+   struct md_wq* wq;                    ///< Workqueue for deferred operations (like blowing away dead inodes)
 
-   void* cls;                           // extra UG-implementation state
+   void* cls;                           ///< Extra UG-implementation state
 };
 
 
-// RG request context 
+/// RG request context 
 struct UG_RG_context {
 
    uint64_t* rg_ids;
@@ -77,9 +87,11 @@ struct UG_RG_context {
 };
 
 
-// create a duplicate listing of the replica gateway IDs 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Create a duplicate listing of the replica gateway IDs 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_state_list_replica_gateway_ids( struct UG_state* state, uint64_t** replica_gateway_ids, size_t* num_replica_gateway_ids ) {
    
    uint64_t* ret = NULL;
@@ -104,7 +116,10 @@ int UG_state_list_replica_gateway_ids( struct UG_state* state, uint64_t** replic
 }
 
 
-// how many RGs do we know about?
+/**
+ * @brief Get the number of RGs we know about
+ * @return Number of RGs
+ */
 size_t UG_state_num_replica_gateways( struct UG_state* state ) {
    UG_state_rlock(state);
    size_t ret = state->num_replica_gateway_ids;
@@ -113,9 +128,11 @@ size_t UG_state_num_replica_gateways( struct UG_state* state ) {
 }
 
 
-// reload the set of replica gateway IDs from the MS
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Reload the set of replica gateway IDs from the MS
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_state_reload_replica_gateway_ids( struct UG_state* state ) {
    
    int rc = 0;
@@ -151,15 +168,22 @@ int UG_state_reload_replica_gateway_ids( struct UG_state* state ) {
 }
 
 
-// make an RG context 
+/**
+ * @brief Make an RG context
+ *
+ * Calloc a struct UG_RG_context
+ */
 struct UG_RG_context* UG_RG_context_new() {
    return SG_CALLOC( struct UG_RG_context, 1 );
 }
 
-// set up an RG context
-// return 0 on success, and populate *rctx 
-// return -ENOMEM on OOM
-// return -EPERM on error
+/**
+ * @brief Set up an RG context
+ * @param[out] *rctx Populate an RG context
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM Error
+ */
 int UG_RG_context_init( struct UG_state* state, struct UG_RG_context* rctx ) {
 
    int rc = 0;
@@ -185,7 +209,9 @@ int UG_RG_context_init( struct UG_state* state, struct UG_RG_context* rctx ) {
 }
 
 
-// free an RG context's memory 
+/**
+ * @brief Free an RG context's memory
+ */ 
 int UG_RG_context_free( struct UG_RG_context* rctx ) {
 
    if( rctx != NULL ) {
@@ -197,31 +223,51 @@ int UG_RG_context_free( struct UG_RG_context* rctx ) {
 }
 
 
-// get the RG IDs
+/**
+ * @brief Get the RG IDs
+ * @return rctx->rg_ids
+ */
 uint64_t* UG_RG_context_RG_ids( struct UG_RG_context* rctx ) {
    return rctx->rg_ids;
 }
 
-// get the number of RGs
+/**
+ * @brief Get the number of RGs
+ * @return rctx->num_rgs
+ */
 size_t UG_RG_context_num_RGs( struct UG_RG_context* rctx ) {
    return rctx->num_rgs;
 }
 
-// get the status of a particular RG RPC
+/**
+ * @brief Get the status of a particular RG RPC
+ * @param[in] *rctx The RG context
+ * @param[in] i The index of RG status
+ * @return rctx->rg_status[i]
+ */
 int UG_RG_context_get_status( struct UG_RG_context* rctx, int i ) {
    return rctx->rg_status[i];
 }
 
-// set the status of a particular RG RPC
+/**
+ * @brief Set the status of a particular RG RPC
+ * @param[in] *rctx The RG context
+ * @param[in] i The index of RG status
+ * @param[in] status The context status to be set
+ * @return 0
+ */
 int UG_RG_context_set_status( struct UG_RG_context* rctx, int i, int status ) {
    rctx->rg_status[i] = status;
    return 0;
 }
 
-// send a request (controlplane/dataplane) to all RGs.
-// individual RG statuses will be recorded in rctx.
-// return 0 if all requests succeeded
-// return -EPERM if at least one request failed.
+/**
+ * @brief Send a request (controlplane/dataplane) to all RGs.
+ *
+ * Individual RG statuses will be recorded in rctx.
+ * @retval 0 All requests succeeded
+ * @retval -EPERM At least one request failed
+ */
 int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_messages::Request* controlplane_request, struct SG_client_request_async* datareq ) {
 
    int rc = 0;
@@ -385,25 +431,36 @@ int UG_RG_send_all( struct SG_gateway* gateway, struct UG_RG_context* rctx, SG_m
 }
 
 
-// read-lock state.  return 0 on success
+/**
+ * @brief Read-lock state
+ * @retval 0 Success
+ */
 int UG_state_rlock( struct UG_state* state ) {
    return pthread_rwlock_rdlock( &state->lock );
 }
 
-// write-lock state.  return 0 on success
+/**
+ * @brief Write-lock state
+ * @retval 0 Success
+ */
 int UG_state_wlock( struct UG_state* state ) {
    return pthread_rwlock_wrlock( &state->lock );
 }
 
-// unlock state. return 0 on success
+/**
+ * @brief Unlock state
+ * @retval 0 Success
+ */
 int UG_state_unlock( struct UG_state* state ) {
    return pthread_rwlock_unlock( &state->lock );
 }
 
 
-// easy way to set up the UG 
-// return a UG on success
-// return NULL on error
+/**
+ * @brief Easy way to set up the UG 
+ * @return A UG on success
+ * @retval NULL Error
+ */
 struct UG_state* UG_init( int argc, char** argv ) {
    
    struct UG_state* state = NULL;
@@ -426,9 +483,11 @@ struct UG_state* UG_init( int argc, char** argv ) {
 }
 
 
-// set up the UG, but with a set of behavior and type overrides 
-// return a UG on success
-// return NULL on error
+/**
+ * @brief Set up the UG, but with a set of behavior and type overrides 
+ * @retval A UG on success
+ * @retval NULL Error
+ */
 struct UG_state* UG_init_ex( int argc, char** argv, struct md_opts* overrides, void* cls ) {
    
    int rc = 0;
@@ -707,7 +766,9 @@ struct UG_state* UG_init_ex( int argc, char** argv, struct md_opts* overrides, v
 }
 
 
-// main loop wrapper for pthreads
+/**
+ * @brief Main loop wrapper for pthreads
+ */
 void* UG_main_pthread( void* arg ) {
    
    struct UG_state* state = (struct UG_state*)arg;
@@ -722,12 +783,15 @@ void* UG_main_pthread( void* arg ) {
 }
 
 
-// run the UG in a separate thread.
-// returns as soon as we start the new thread.
-// return 0 on success
-// return -EINVAL if we already started the UG
-// return -ENOMEM on OOM 
-// return -errno on failure to fork
+/**
+ * @brief Run the UG in a separate thread.
+ *
+ * Returns as soon as we start the new thread.
+ * @retval 0 Success
+ * @retval -EINVAL Already started the UG
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to fork
+ */
 int UG_start( struct UG_state* state ) {
    
    int rc = 0;
@@ -747,9 +811,13 @@ int UG_start( struct UG_state* state ) {
 }
 
 
-// run the gateway in this thread.  return when the gateway shuts down.
-// return 0 on success
-// return -errno on failure to initialize, or due to runtime error
+/**
+ * @brief Run the gateway in this thread
+ *
+ * Return when the gateway shuts down.
+ * @retval 0 Success
+ * @retval -errno Failure to initialize, or due to runtime error
+ */
 int UG_main( struct UG_state* state ) {
    
    int rc = 0;
@@ -760,8 +828,10 @@ int UG_main( struct UG_state* state ) {
 }
 
 
-// shut down the UG, given a state bundle passed from UG_init
-// always succeeds
+/**
+ * @brief Shut down the UG, given a state bundle passed from UG_init
+ * @return 0
+ */
 int UG_shutdown( struct UG_state* state ) {
    
    int rc = 0;
@@ -857,212 +927,331 @@ int UG_shutdown( struct UG_state* state ) {
    return 0;
 }
 
-// get a pointer to the gateway core 
+/**
+ * @brief Get a pointer to the gateway core
+ * @return state->gateway
+ */
 struct SG_gateway* UG_state_gateway( struct UG_state* state ) {
    return state->gateway;
 }
    
-// get a pointer to the filesystem core
+/**
+ * @brief Get a pointer to the filesystem core
+ * @return state->fs
+ */
 struct fskit_core* UG_state_fs( struct UG_state* state ) {
    return state->fs;
 }
 
-// get a pointer to the vacuumer core 
+/**
+ * @brief Get a pointer to the vacuumer core
+ * @return state->vacuumer
+ */
 struct UG_vacuumer* UG_state_vacuumer( struct UG_state* state ) {
    return state->vacuumer;
 }
 
-// get the owner ID of the gateway 
+/**
+ * @brief Get the owner ID of the gateway
+ *
+ * @see SG_gateway_user_id
+ */
 uint64_t UG_state_owner_id( struct UG_state* state ) {
    return SG_gateway_user_id( UG_state_gateway( state ) );
 }
 
-// get the volume ID of the gateway
+/**
+ * @brief Get the volume ID of the gateway
+ * @see ms_client_get_volume_id
+ */
 uint64_t UG_state_volume_id( struct UG_state* state ) {
    return ms_client_get_volume_id( SG_gateway_ms( UG_state_gateway( state ) ) );
 }
 
-// get the deferred workqueue 
+/**
+ * @brief Get the deferred workqueue
+ * @return state->wq
+ */
 struct md_wq* UG_state_wq( struct UG_state* state ) {
    return state->wq;
 }
 
-// get a ref to the UG driver
-// call only when at least read-locked 
+/**
+ * @brief Get a ref to the UG driver
+ *
+ * Call only when at least read-locked
+ * @see SG_gateway_driver
+ */
 struct SG_driver* UG_state_driver( struct UG_state* state ) {
    return SG_gateway_driver( state->gateway );
 }
 
-// get UG implementation state 
+/**
+ * @brief Get UG implementation state 
+ * @return state->cls
+ */
 void* UG_state_cls( struct UG_state* state ) {
    return state->cls;
 }
 
-// get stat route handle 
+/**
+ * @brief Get stat route handle
+ * @return state->stat_rh
+ */
 int UG_state_stat_rh( struct UG_state* state ) {
    return state->stat_rh;
 }
 
-// get creat route handle
+/**
+ * @brief Get creat route handle
+ * @return state->creat_rh
+ */
 int UG_state_creat_rh( struct UG_state* state ) {
    return state->creat_rh;
 }
 
-// get mkdir route handle
+/**
+ * @brief Get mkdir route handle
+ * @return state->mkdir_rh
+ */
 int UG_state_mkdir_rh( struct UG_state* state ) {
    return state->mkdir_rh;
 }
 
-// get open route handle
+/**
+ * @brief Get open route handle
+ * @return state->open_rh
+ */
 int UG_state_open_rh( struct UG_state* state ) {
    return state->open_rh;
 }
 
-// get read route handle
+/**
+ * @brief Get read route handle
+ * @return state->read_rh
+ */
 int UG_state_read_rh( struct UG_state* state ) {
    return state->read_rh;
 }
 
-// get write route handle
+/**
+ * @brief Get write route handle
+ * @return state->write_rh
+ */
 int UG_state_write_rh( struct UG_state* state ) {
    return state->write_rh;
 }
 
-// get trunc route handle 
+/**
+ * @brief Get trunc route handle
+ * @return state->trunc_rh
+ */
 int UG_state_trunc_rh( struct UG_state* state ) {
    return state->trunc_rh;
 }
 
-// get close route handle 
+/**
+ * @brief Get close route handle 
+ * @return state->close_rh
+ */
 int UG_state_close_rh( struct UG_state* state ) {
    return state->close_rh;
 }
 
-// get sync route handle
+/**
+ * @brief Get sync route handle
+ * @return state->sync_rh
+ */
 int UG_state_sync_rh( struct UG_state* state ) {
    return state->sync_rh;
 }
 
-// get detach route handle
+/**
+ * @brief Get detach route handle
+ * @return state->detach_rh
+ */
 int UG_state_detach_rh( struct UG_state* state ) {
    return state->detach_rh;
 }
 
-// get rename route handle
+/**
+ * @brief Get rename route handle
+ * @return state->rename_rh
+ */
 int UG_state_rename_rh( struct UG_state* state ) {
    return state->rename_rh;
 }
 
-// get getxattr route handle 
+/**
+ * @brief Get getxattr route handle
+ * @return state->getxattr_rh
+ */
 int UG_state_getxattr_rh( struct UG_state* state ) {
    return state->getxattr_rh;
 }
 
-// get setxattr route handle 
+/**
+ * @brief Get setxattr route handle
+ * @return state->setxattr_rh
+ */
 int UG_state_setxattr_rh( struct UG_state* state ) {
    return state->setxattr_rh;
 }
 
-// get listxattr route handle 
+/**
+ * @brief Get listxattr route handle
+ * @return state->listxattr_rh
+ */
 int UG_state_listxattr_rh( struct UG_state* state ) {
    return state->listxattr_rh;
 }
 
-// get removexattr route handle 
+/**
+ * @brief Get removexattr route handle
+ * @return state->removexattr_rh
+ */
 int UG_state_removexattr_rh( struct UG_state* state ) {
    return state->removexattr_rh;
 }
 
-// set UG implementation state (UG_state must be write-locked!)
+/**
+ * @brief Set UG implementation state
+ * @attention UG_state must be write-locked!
+ */
 void UG_state_set_cls( struct UG_state* state, void* cls ) {
    state->cls = cls;
 }
 
-// set stat route handle
+/**
+ * @brief Set stat route handle
+ * @return 0
+ */
 int UG_state_set_stat_rh( struct UG_state* state, int rh ) {
    state->stat_rh = rh;
    return 0;
 }
 
-// set creat route handle 
+/**
+ * @brief Set creat route handle
+ * @return 0
+ */
 int UG_state_set_creat_rh( struct UG_state* state, int rh ) {
    state->creat_rh = rh;
    return 0;
 }
 
-// set mkdir route handle
+/**
+ * @brief Set mkdir route handle
+ * @return 0
+ */
 int UG_state_set_mkdir_rh( struct UG_state* state, int rh ) {
    state->mkdir_rh = rh;
    return 0;
 }
 
-// set open route handle
+/**
+ * @brief Set open route handle
+ * @return 0
+ */
 int UG_state_set_open_rh( struct UG_state* state, int rh ) {
    state->open_rh = rh;
    return 0;
 }
 
-// set read route handle
+/**
+ * @brief Set read route handle
+ * @return 0
+ */
 int UG_state_set_read_rh( struct UG_state* state, int rh ) {
    state->read_rh = rh;
    return 0;
 }
 
-// set write route handle
+/**
+ * @brief Set write route handle
+ * @return 0
+ */
 int UG_state_set_write_rh( struct UG_state* state, int rh ) {
    state->write_rh = rh;
    return 0;
 }
 
-// set trunc route handle 
+/**
+ * @brief Set trunc route handle 
+ * @return 0
+ */
 int UG_state_set_trunc_rh( struct UG_state* state, int rh ) {
    state->trunc_rh = rh;
    return 0;
 }
 
-// set close route handle 
+/**
+ * @brief Set close route handle 
+ * @return 0
+ */
 int UG_state_set_close_rh( struct UG_state* state, int rh ) {
    state->close_rh = rh;
    return 0;
 }
 
-// set sync route handle
+/**
+ * @brief Set sync route handle
+ * @return 0
+ */
 int UG_state_set_sync_rh( struct UG_state* state, int rh ) {
    state->sync_rh = rh;
    return 0;
 }
 
-// set detach route handle
+/**
+ * @brief Set detach route handle
+ * @return 0
+ */
 int UG_state_set_detach_rh( struct UG_state* state, int rh ) {
    state->detach_rh = rh;
    return 0;
 }
 
-// set rename route handle
+/**
+ * @brief Set rename route handle
+ * @return 0
+ */
 int UG_state_set_rename_rh( struct UG_state* state, int rh ) {
    state->rename_rh = rh;
    return 0;
 }
 
-// set getxattr route handle 
+/**
+ * @brief Set getxattr route handle 
+ * @return 0
+ */
 int UG_state_set_getxattr_rh( struct UG_state* state, int rh ) {
    state->getxattr_rh = rh;
    return 0;
 }
 
-// set setxattr route handle 
+/**
+ * @brief Set setxattr route handle 
+ * @return 0
+ */
 int UG_state_set_setxattr_rh( struct UG_state* state, int rh ) {
    state->setxattr_rh = rh;
    return 0;
 }
 
-// set listxattr route handle 
+/**
+ * @brief Set listxattr route handle 
+ * @return 0
+ */
 int UG_state_set_listxattr_rh( struct UG_state* state, int rh ) {
    state->listxattr_rh = rh;
    return 0;
 }
 
-// set removexattr route handle 
+/**
+ * @brief Set removexattr route handle 
+ * @return 0
+ */
 int UG_state_set_removexattr_rh( struct UG_state* state, int rh ) {
    state->removexattr_rh = rh;
    return 0;

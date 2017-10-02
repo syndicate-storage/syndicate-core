@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/inode.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for inode.cpp related functions
+ *
+ * @see libsyndicate-ug/inode.cpp
+ */
+
 #ifndef _UG_INODE_H_
 #define _UG_INODE_H_
 
@@ -36,14 +46,14 @@ typedef queue< struct UG_sync_context* > UG_inode_fsync_queue_t;
 // UG-specific inode information, for fskit
 struct UG_inode;
 
-// UG-specific file handle information, for fskit
+/// UG-specific file handle information, for fskit
 struct UG_file_handle {
 
-   int flags;                           // open flags
+   int flags;                            ///< Open flags
 
-   struct UG_inode* inode_ref;          // reference to the parent inode (i.e. so we can release dirty blocks)
+   struct UG_inode* inode_ref;           ///< Reference to the parent inode (i.e. so we can release dirty blocks)
 
-   struct fskit_file_handle* handle_ref;        // refernece to the parent fskit file handle
+   struct fskit_file_handle* handle_ref; ///< Refernece to the parent fskit file handle
 };
 
 

@@ -14,21 +14,34 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/read.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway read related functions
+ *
+ * @see libsyndicate-ug/read.h
+ */
+
 #include "read.h"
 #include "block.h"
 #include "inode.h"
 #include "consistency.h"
 #include "client.h"
 
-// track which gateway to download a given block from
+/// track which gateway to download a given block from
 typedef map< uint64_t, int > UG_block_gateway_map_t;
 
-// set up a manifest and dirty block map to receive a block into a particular buffer 
-// the block put into *blocks takes ownership of buf, so the caller must not free it
-// NOTE: buf must be at least the size of a volume block.  IT WILL BE MODIFIED. 
-// return 0 on success
-// return -ENOMEM on OOM
-// inode->entry must be read-locked
+/**
+ * @brief Set up a manifest and dirty block map to receive a block into a particular buffer 
+ *
+ * The block that is put into *blocks takes ownership of buf, so the caller must not free it
+ * @attention inode->entry must be read-locked
+ * @note buf must be at least the size of a volume block.  IT WILL BE MODIFIED. 
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_read_setup_block_buffer( struct UG_inode* inode, uint64_t block_id, char* buf, uint64_t buf_len, UG_dirty_block_map_t* blocks ) {
    
    int rc = 0;
@@ -81,13 +94,13 @@ int UG_read_setup_block_buffer( struct UG_inode* inode, uint64_t block_id, char*
 }
 
 
-// is there an unaligned head?
+/// Check for an unaligned head
 static bool UG_read_has_unaligned_head( off_t offset, uint64_t block_size ) {
 
    return (offset % block_size) != 0;
 }
 
-// is there an unaligned tail?
+/// Check for an unaligned tail
 static bool UG_read_has_unaligned_tail( off_t offset, size_t len, uint64_t inode_size, uint64_t block_size ) {
 
    uint64_t first_block = 0;
@@ -104,12 +117,18 @@ static bool UG_read_has_unaligned_tail( off_t offset, size_t len, uint64_t inode
    return ((offset + len) % block_size != 0 && (first_block != last_block || offset % block_size == 0));
 }
 
-// set up reads to unaligned blocks.  *dirty_blocks must NOT contain the unaligned block information yet.
-// return the number of bytes that will be read on success, and put the block structure into *dirty_blocks.
-//    also, put the head and tail block sizes into *head_len and *tail_len, respectively.
-// return -ENOMEM on OOM
-// return -EINVAL if we don't have block info in the inode's block manifest for the unaligned blocks 
-// NOTE: inode->entry must be read-locked 
+/**
+ * @brief Set up reads to unaligned blocks.
+ *
+ * @attention inode->entry must be read-locked 
+ * @note *dirty_blocks must NOT contain the unaligned block information yet.
+ * @param[out] *dirty_blocks The block structure
+ * @param[out] *head_len The head block size
+ * @param[out] *tail_len The tail block size
+ * @return The number of bytes that will be read on success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Don't have block info in the inode's block manifest for the unaligned blocks
+ */
 int UG_read_unaligned_setup( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, size_t buf_len, off_t offset, UG_dirty_block_map_t* dirty_blocks, uint64_t* head_len, uint64_t* tail_len ) {
    
    int rc = 0;
@@ -226,11 +245,17 @@ int UG_read_unaligned_setup( struct SG_gateway* gateway, char const* fs_path, st
 }
 
 
-// set up reads to aligned blocks, in a zero-copy manner.  *dirty_blocks must NOT contain the aligned block information yet.
-// return the number of bytes to read on success, and put the block structure into *dirty_blocks
-// return -EINVAL if we don't have block info in the inode's block manifest for the aligned blocks 
-// return -errno on failure 
-// NOTE: inode->entry must be read-locked 
+/**
+ * @brief Set up reads to aligned blocks, in a zero-copy manner.
+ * 
+ * @attention inode->entry must be read-locked 
+ * @note *dirty_blocks must NOT contain the aligned block information yet.
+ * @param[out] *dirty_blocks The block structure
+ * @return The number of bytes to read
+ * @retval -EINVAL Don't have block info in the inode's block manifest for the aligned blocks 
+ * @retval -errno Failure
+ */
+// set up a request for aligned blocks 
 int UG_read_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, off_t offset, uint64_t block_size, UG_dirty_block_map_t* dirty_blocks ) {
    
    int rc = 0;
@@ -315,9 +340,13 @@ int UG_read_aligned_setup( struct UG_inode* inode, char* buf, size_t buf_len, of
 }
 
 
-// get the list of gateways to download from 
-// return 0 on success, and set *gateway_ids and *num_gateway_ids
-// return -ENOMEM on OOM
+/**
+ * @brief Get the list of gateways to download from
+ * @param[out] *ret_gateway_ids The gateway IDs
+ * @param[out] *ret_num_gateway_ids The number of gateway IDs
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_read_download_gateway_list( struct SG_gateway* gateway, uint64_t coordinator_id, uint64_t** ret_gateway_ids, size_t* ret_num_gateway_ids ) {
    
    struct UG_state* ug = (struct UG_state*)SG_gateway_cls( gateway );
@@ -363,11 +392,14 @@ int UG_read_download_gateway_list( struct SG_gateway* gateway, uint64_t coordina
 }
 
 
-// download multiple blocks at once.
-// return 0 on success, and populate *blocks and *num_blocks with the blocks requested in the block_requests manifest.
-// return -EINVAL if blocks has reserved chunk data that is unallocated, or does not have enough space
-// return -ENOMEM on OOM 
-// return -errno on failure to download
+/**
+ * @brief Download multiple blocks at once.
+ * @param[out] *blocks Requested blocks from the block_requests manifest
+ * @retval Success
+ * @retval -EINVAL Blocks has reserved chunk data that is unallocated, or does not have enough space
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to download
+ */
 int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* block_requests, UG_dirty_block_map_t* blocks ) {
    
    int rc = 0;
@@ -735,12 +767,18 @@ int UG_read_download_blocks( struct SG_gateway* gateway, char const* fs_path, st
 }
 
 
-// read a set of blocks from the cache, but optionally keep a tally of those that were *not* cached
-// every block in *blocks should be mapped to the read buffer
-// return 0 on success, and populate *blocks with the requested data and optionally *absent with data we didn't find.
-// return -ENOMEM on OOM
-// return -EINVAL if we're missing a block 
-// NOTE: each block in blocks must be pre-allocated 
+/**
+ * @brief Read a set of blocks from the cache
+ *
+ * Optionally keep a tally of those that were *not* cached
+ * Every block in *blocks should be mapped to the read buffer
+ * @attention Each block in blocks must be pre-allocated 
+ * @param[out] *blocks The requested data
+ * @param[out] *absent The data not found
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL Missing a block
+ */
 int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* block_requests,
                            UG_dirty_block_map_t* blocks, uint64_t offset, uint64_t len, struct SG_manifest* absent ) {
    
@@ -824,10 +862,16 @@ int UG_read_cached_blocks( struct SG_gateway* gateway, char const* fs_path, stru
 }
 
 
-// read a set of blocks from an inode's dirty blocks set, but optionally keep a tally of those that were *not* available in said set.
-// return 0 on success, and populate *blocks with the requested data and optionally *absent with the data we didn't find.
-// return -ENOMEM on OOM.
-// NOTE: inode must be read-locked
+/**
+ * @brief Read a set of blocks from an inode's dirty blocks set
+ *
+ * Optionally keep a tally of those that were *not* available in said set.
+ * @attention inode must be read-locked
+ * @param[out] *blocks The requested data
+ * @param[out] *absent The data not found
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_read_dirty_blocks( struct SG_gateway* gateway, struct UG_inode* inode, UG_dirty_block_map_t* blocks, struct SG_manifest* absent ) {
    
    int rc = 0;
@@ -874,11 +918,15 @@ int UG_read_dirty_blocks( struct SG_gateway* gateway, struct UG_inode* inode, UG
 }
 
 
-// read locally-available blocks 
-// try the inode's dirty blocks, and then disk cached blocks 
-// return 0 on success, and fill in *blocks on success
-// return -ENOMEM on OOM 
-// NOTE: inode->entry must be read-locked!
+/**
+ * @brief Read locally-available blocks 
+ *
+ * Try the inode's dirty blocks, and then disk cached blocks
+ * @attention inode->entry must be read-locked
+ * @param[out] *blocks The read blocks
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */ 
 int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, UG_dirty_block_map_t* blocks,
                           uint64_t offset, uint64_t len, struct SG_manifest* blocks_not_local ) {
    
@@ -939,11 +987,14 @@ int UG_read_blocks_local( struct SG_gateway* gateway, char const* fs_path, struc
 }
 
 
-// read remotely-available blocks from RGs
-// NOTE: this consumes the contents of blocks_not_local.  the caller can call this method repeatedly to retry on failure.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -errno on download error 
+/**
+ * @brief Read remotely-available blocks from RGs
+ *
+ * This consumes the contents of blocks_not_local.  the caller can call this method repeatedly to retry Failure.
+ * @retval Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Download error
+ */
 int UG_read_blocks_remote( struct SG_gateway* gateway, char const* fs_path, struct SG_manifest* blocks_not_local, UG_dirty_block_map_t* blocks ) {
    
    int rc = 0;
@@ -965,12 +1016,16 @@ int UG_read_blocks_remote( struct SG_gateway* gateway, char const* fs_path, stru
 }
 
 
-// read a set of blocks into RAM, given by the already-set-up *blocks
-// try the inode's dirty blocks, then the cached blocks, and finally download any that were not in the cache from remote_gateway_ids, trying each gateway in sequence.
-// return 0 on success, and fill in *blocks on success 
-// return -ENOMEM on OOM 
-// NOTE: the caller must still free blocks, even if this method fails, since this method tries to get even partial data
-// NOTE: inode->entry must be at least read-locked!
+/**
+ * @brief Read a set of blocks into RAM, given by the already-set-up *blocks
+ *
+ * Try the inode's dirty blocks, then the cached blocks, and finally download any that were not in the cache from remote_gateway_ids, trying each gateway in sequence.
+ * @attention The caller must still free blocks, even if this method fails, since this method tries to get even partial data
+ * @attention inode->entry must be at least read-locked!
+ * @param[out] *blocks The read blocks
+ * @retval Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_read_blocks( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, UG_dirty_block_map_t* blocks, uint64_t offset, uint64_t len ) {
    
    int rc = 0;
@@ -1016,9 +1071,11 @@ UG_read_blocks_end:
 }
 
 
-// fskit route to read data from a file 
-// return -errno on failure 
-// fent should not be locked
+/**
+ * @brief fskit route to read data from a file (i.e. read callback to fskit)
+ * @note fent should not be locked
+ * @retval -errno Failure
+ */
 int UG_read_impl( struct fskit_core* core, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent, char* buf, size_t buf_len, off_t offset, void* handle_data ) {
    
    int rc = 0;

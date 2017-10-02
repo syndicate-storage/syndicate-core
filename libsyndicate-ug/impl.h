@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/impl.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file impl.cpp (implementation) related functions
+ *
+ * @see libsyndicate-ug/impl.cpp
+ */
+
 #ifndef _UG_IMPL_H_
 #define _UG_IMPL_H_
 

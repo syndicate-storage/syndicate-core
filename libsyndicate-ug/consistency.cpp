@@ -14,27 +14,39 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/consistency.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway consistency related functions
+ *
+ * @see libsyndicate-ug/consistency.h
+ */
+
 #include "consistency.h"
 #include "read.h"
 
-// ms path entry context
+/// MS path entry context
 struct UG_path_ent_ctx {
 
-   char* fs_path;               // path to this entry
-   struct fskit_entry* fent;    // entry
+   char* fs_path;               ///< Path to this entry
+   struct fskit_entry* fent;    ///< Entry
 };
 
-// deferred remove-all context, for cleaning out a tree that has been removed remotely
+/// Deferred remove-all context, for cleaning out a tree that has been removed remotely
 struct UG_deferred_remove_ctx {
 
-   struct fskit_core* core;
-   char* fs_path;               // path to the entry to remove
-   fskit_entry_set* children;   // the (optional) children to remove (not yet garbage-collected)
+   struct fskit_core* core;     ///< fskit core
+   char* fs_path;               ///< Path to the entry to remove
+   fskit_entry_set* children;   ///< The (optional) children to remove (not yet garbage-collected)
 };
 
 static int UG_consistency_fetchxattrs_all( struct SG_gateway* gateway, ms_path_t* path_remote, struct ms_client_multi_result* remote_inodes );
 
-// helper to asynchronously try to unlink an inode and its children
+/**
+ * @brief Helper to asynchronously try to unlink an inode and its children
+ */
 static int UG_deferred_remove_cb( struct md_wreq* wreq, void* cls ) {
 
    struct UG_deferred_remove_ctx* ctx = (struct UG_deferred_remove_ctx*)cls;
@@ -83,10 +95,13 @@ static int UG_deferred_remove_cb( struct md_wreq* wreq, void* cls ) {
 }
 
 
-// Garbage-collect the given inode, and queue it for unlinkage.
-// If the inode is a directory, recursively garbage-collect its children as well, and queue them and their descendents for unlinkage
-// return 0 on success
-// NOTE: child must be write-locked
+/**
+ * @brief Garbage-collect the given inode, and queue it for unlinkage.
+ *
+ * If the inode is a directory, recursively garbage-collect its children as well, and queue them and their descendents for unlinkage
+ * @attention Child must be write-locked
+ * @retval 0 Success
+ */
 int UG_deferred_remove( struct UG_state* state, char const* child_path, struct fskit_entry* child ) {
 
    struct UG_deferred_remove_ctx* ctx = NULL;
@@ -140,12 +155,15 @@ int UG_deferred_remove( struct UG_state* state, char const* child_path, struct f
 }
 
 
-// go fetch the latest version of an inode directly from the MS
-// return 0 on success, and populate *ent
-// return -ENOMEM on OOM
-// return -EACCES on permission error from the MS
-// return -ENOENT if the entry doesn't exist on the MS
-// return -EREMOTEIO if the MS's reply was invalid, or we failed to talk to it
+/**
+ * @brief Go fetch the latest version of an inode directly from the MS
+ * @param[out] *ent Entry
+ * @retval 0 Success, and populate *ent
+ * @retval -ENOMEM Out of Memory
+ * @retval -EACCES Permission error from the MS
+ * @retval -ENOENT The entry doesn't exist on the MS
+ * @retval -EREMOTEIO The MS's reply was invalid, or we failed to talk to it
+ */
 int UG_consistency_inode_download( struct SG_gateway* gateway, uint64_t file_id, struct md_entry* ent ) {
 
    int rc = 0;
@@ -175,12 +193,17 @@ UG_consistency_inode_download_out:
 }
 
 
-// download a manifest, synchronously.  Try from the cache, and then from each gateway in gateway_ids, in order.
-// return 0 on success, and populate *manifest
-// return -ENOMEM on OOM
-// return -EINVAL if reqdat doesn't refer to a manifest
-// return -ENODATA if a manifest could not be fetched (i.e. no gateways online, all manifests obtained were invalid, etc.)
-// NOTE: does *not* check if the manifest came from a different gateway than the one contacted
+/**
+ * @brief Download the manifest from one of a list of gateways
+ *
+ * Try from the cache, and then from each gateway in gateway_ids, in order.
+ * @note Does *not* check if the manifest came from a different gateway than the one contacted
+ * @param[out] *manifest The manifest
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL reqdat doesn't refer to a manifest
+ * @retval -ENODATA if a manifest could not be fetched (i.e. no gateways online, all manifests obtained were invalid, etc.)
+ */
 int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_request_data* reqdat, uint64_t coordinator_id, uint64_t* gateway_ids, size_t num_gateway_ids, struct SG_manifest* manifest ) {
 
    int rc = 0;
@@ -238,13 +261,16 @@ int UG_consistency_manifest_download( struct SG_gateway* gateway, struct SG_requ
 }
 
 
-// Verify that a manifest is fresh.  Download and merge the latest manifest data for the referred inode if not.
-// local dirty blocks that were overwritten will be dropped and evicted on merge.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ENODATA if we could not fetch a manifest, but needed to
-// NOTE: entry at the end of fs_path should *NOT* be locked
-// NOTE: the caller should refresh the inode first, since the manifest timestamp may have changed on the MS
+/**
+ * @brief Verify that a manifest is fresh.  Download and merge the latest manifest data for the referred inode if not.
+ *
+ * Local dirty blocks that were overwritten will be dropped and evicted on merge.
+ * @note Entry at the end of fs_path should *NOT* be locked
+ * @note The caller should refresh the inode first, since the manifest timestamp may have changed on the MS
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA Could not fetch a manifest, but needed to
+ */
 int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const* fs_path ) {
 
    int rc = 0;
@@ -439,12 +465,15 @@ int UG_consistency_manifest_ensure_fresh( struct SG_gateway* gateway, char const
 }
 
 
-// replace one fskit_entry with another.
-// deferred-delete the old fent.
-// return 0 on success
-// return -errno on failure
-// return EAGAIN if we successfully attached, but failed to remove the old fent
-// NOTE: fent must be write-locked
+/**
+ * @brief Replace one fskit_entry with another.
+ *
+ * Deferred-delete the old fent.
+ * @attention fent must be write-locked
+ * @retval 0 Success
+ * @retval -errno Failure
+ * @retval EAGAIN Successfully attached, but failed to remove the old fent
+ */
 static int UG_consistency_fskit_entry_replace( struct SG_gateway* gateway, char const* fs_path, struct fskit_entry* parent, struct fskit_entry* fent, struct fskit_entry* new_fent ) {
 
    int rc = 0;
@@ -505,19 +534,22 @@ static int UG_consistency_fskit_entry_replace( struct SG_gateway* gateway, char 
 }
 
 
-// reload a single inode's metadata.
-// * if the types don't match, the inode (and its children) will be dropped and a new inode with the new type will be created in its place.
-// * if the versions don't match, then the inode will be reversioned
-// * for regular files, if the size changed, then the inode will be truncated (i.e. evicting blocks if the size shrank)
-// * if the names don't match, the name will be changed.
-// * if this is a regular file, and we're still the coordinator and the version has not changed, then no reload will take place (since we already have the latest information).
-// NOTE: fent must be write-locked
-// NOTE: parent must be write-locked
-// NOTE: fent might be replaced--don't access it after calling this method.
-// return 0 on success
-// return 1 if fent got replaced
-// return -ENOMEM on OOM
-// return -errno on error
+/**
+ * @brief Reload a single inode's metadata.
+ *
+ * If the types don't match, the inode (and its children) will be dropped and a new inode with the new type will be created in its place.
+ * If the versions don't match, then the inode will be reversioned
+ * For regular files, if the size changed, then the inode will be truncated (i.e. evicting blocks if the size shrank)
+ * If the names don't match, the name will be changed.
+ * If this is a regular file, and we're still the coordinator and the version has not changed, then no reload will take place (since we already have the latest information).
+ * @attention fent must be write-locked
+ * @attention parent must be write-locked
+ * @note fent might be replaced--don't access it after calling this method.
+ * @retval 0 Success
+ * @retval 1 fent got replaced
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Error
+ */
 int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path, struct fskit_entry* parent, struct fskit_entry* fent, char const* fent_name, struct md_entry* inode_data ) {
 
    int rc = 0;
@@ -727,10 +759,15 @@ int UG_consistency_inode_reload( struct SG_gateway* gateway, char const* fs_path
 }
 
 
-// free a graft--a chain of fskit_entry structures built from UG_consistency_fskit_path_graft_build.
-// do not detach the inodes--we don't want to run the unlink routes.
-// destroys graft_parent and all of its children.
-// always succeeds
+/**
+ * @brief Free a graft
+ *
+ * Free a graft, a chain of fskit_entry structures built from UG_consistency_fskit_path_graft_build.
+ * Do not detach the inodes, we don't want to run the unlink routes.
+ * Destroy graft_parent and all of its children.
+ * @see UG_consistency_fskit_path_graft_build
+ * @return 0
+ */
 static int UG_consistency_fskit_path_graft_free( struct fskit_core* fs, struct fskit_entry* graft_parent, struct md_entry* path_data, size_t path_len ) {
 
    if( graft_parent == NULL ) {
@@ -763,14 +800,19 @@ static int UG_consistency_fskit_path_graft_free( struct fskit_core* fs, struct f
 }
 
 
-// construct a graft--a chain of fskit_entry structures--from an ordered list of inode metadata.
-// do not attach it to fskit; just build it up.
-// remote_path->at(i) should match path_data[i].
-// if remote_path->at(i) is bound to anything, it should be bound to a malloc'ed fskit_xattr_set that contains the node's xattrs (fetched if this gateway is the coordinator)
-// return 0 on success, and set *graft_root to be the root of the graft.  graft_root will have no parent (i.e. a NULL parent for "..")
-// return -EINVAL on invalid data (i.e. the path_data contains a non-leaf directory, etc.)
-// return -ENOMEM on OOM
-// NOTE: don't destroy path_data just yet--keep it around so we know how to look up and free the graft later on, if need be
+/**
+ * @brief Construct a graft--a chain of fskit_entry structures--from an ordered list of inode metadata.
+ *
+ * Construct a graft--a chain of fskit_entry structures--from an ordered list of inode metadata.
+ * Do not attach it to fskit; just build it up.
+ * Remote_path->at(i) should match path_data[i].
+ * If remote_path->at(i) is bound to anything, it should be bound to a malloc'ed fskit_xattr_set that contains the node's xattrs (fetched if this gateway is the coordinator)
+ * @note Don't destroy path_data just yet--keep it around so we know how to look up and free the graft later on, if need be
+ * @param[out] *graft_root The root of the graft, it can have no parent (i.e. a NULL parent for "..")
+ * @retval 0 Success
+ * @retval -EINVAL Invalid data (i.e. the path_data contains a non-leaf directory, etc.)
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_consistency_fskit_path_graft_build( struct SG_gateway* gateway, ms_path_t* remote_path, struct md_entry* path_data, size_t path_len, struct fskit_entry** graft_root ) {
 
    int rc = 0;
@@ -889,12 +931,14 @@ static int UG_consistency_fskit_path_graft_build( struct SG_gateway* gateway, ms
 }
 
 
-// attach a graft to an fskit_entry, based on its parent's ID and the path that the graft was generated from.
-// return 0 on success
-// return -ENOENT if the parent could not be found
-// return -EEXIST if there is an existing entry with graft_root's name
-// return -ENOTDIR if the parent is not a directory
-// return -ENOMEM on OOM
+/**
+ * @brief Attach a graft to an fskit_entry, based on its parent's ID and the path that the graft was generated from.
+ * @retval 0 Success
+ * @retval -ENOENT The parent could not be found
+ * @retval -EEXIST There is an existing entry with graft_root's name
+ * @retval -ENOTDIR The parent is not a directory
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_consistency_fskit_path_graft_attach( struct SG_gateway* gateway, char const* fs_path, uint64_t parent_id, char const* graft_root_name, struct fskit_entry* graft_root ) {
 
    int rc = 0;
@@ -969,8 +1013,10 @@ static int UG_consistency_fskit_path_graft_attach( struct SG_gateway* gateway, c
 }
 
 
-// free a path's associated path contexts, and unref its entries
-// return 0 on success
+/**
+ * @brief Free a path's associated path contexts, and unref its entries
+ * @retval 0 Success
+ */
 static int UG_consistency_path_free( struct fskit_core* core, ms_path_t* path ) {
 
     // unref all
@@ -993,11 +1039,14 @@ static int UG_consistency_path_free( struct fskit_core* core, ms_path_t* path ) 
 }
 
 
-// build up an ms_path_t of locally-cached but stale fskit entries.
-// for each entry in path_local, bind the associated the fskit entry to the path.
-// NOTE: path_local is not guaranteed to be a contiguous path--we will skip fresh entries
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Build up an ms_path_t of locally-cached but stale fskit entries.
+ *
+ * For each entry in path_local, bind the associated the fskit entry to the path.
+ * @note path_local is not guaranteed to be a contiguous path, we will skip fresh entries
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_consistency_path_find_local_stale( struct SG_gateway* gateway, char const* fs_path, struct timespec* refresh_begin, ms_path_t* path_local ) {
 
    int rc = 0;
@@ -1097,12 +1146,15 @@ static int UG_consistency_path_find_local_stale( struct SG_gateway* gateway, cha
 }
 
 
-// reload cached stale metadata entries from inode data.
-// if the MS indicates that an inode got removed remotely, then delete the cached inode locally and all of its children (if it has any) and terminate.
-// NOTE: inode_data must be in the same order as the inodes that appear in fskit.
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if the order of inode_data is out-of-whack with fskit
+/**
+ * @brief Reload cached stale metadata entries from inode data.
+ *
+ * Ff the MS indicates that an inode got removed remotely, then delete the cached inode locally and all of its children (if it has any) and terminate.
+ * @note inode_data must be in the same order as the inodes that appear in fskit.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL The order of inode_data is out-of-whack with fskit
+ */
 static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char const* fs_path, ms_path_t* path_stale, struct md_entry* inode_data, size_t num_inodes ) {
 
    int rc = 0;
@@ -1286,9 +1338,12 @@ static int UG_consistency_path_stale_reload( struct SG_gateway* gateway, char co
 }
 
 
-// build up a path of download requests for remote entries
-// return 0 on success, and fill in *path_remote with remote inode data (could be empty)
-// return -ENOMEM on OOM
+/**
+ * @brief Build up a path of download requests for remote entries
+ * @param[out] *path_remote Fill with remote inode data (could be empty)
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_consistency_path_find_remote( struct SG_gateway* gateway, char const* fs_path, ms_path_t* path_remote ) {
 
    int rc = 0;
@@ -1437,8 +1492,11 @@ static int UG_consistency_path_find_remote( struct SG_gateway* gateway, char con
 }
 
 
-// clean up a remote path entry:
-// * if it contains anything, it will be an fskit_xattr_set.  free it.
+/**
+ * @brief Clean up a remote path entry
+ *
+ * If it contains anything, it will be an fskit_xattr_set.  Free it.
+ */
 static void UG_consistency_path_free_remote( void* cls ) {
 
     if( cls != NULL ) {
@@ -1449,12 +1507,15 @@ static void UG_consistency_path_free_remote( void* cls ) {
 }
 
 
-// reload a path of metadata
-// cached path entries will be revalidated--reloaded, or dropped if they are no longer present upstream
-// un-cached path entries will be downloaded and grafted into the fskit filesystem
-// return 0 on success
-// return -ENOMEM on OOM
-// return -errno on failure to connect
+/**
+ * @brief Reload the path's-worth of metadata
+ *
+ * Cached path entries will be revalidated--reloaded, or dropped if they are no longer present upstream.
+ * Un-cached path entries will be downloaded and grafted into the fskit filesystem
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -errno Failure to connect
+ */
 int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs_path ) {
 
    int rc = 0;
@@ -1644,12 +1705,14 @@ int UG_consistency_path_ensure_fresh( struct SG_gateway* gateway, char const* fs
 }
 
 
-// refresh a single inode's metadata
-// return 0 if the inode is already fresh, or is not changed remotely
-// return 1 if the inode was not fresh, but we fetched and merged the new data successfully
-// return -ESTALE if we were unable to remotely refresh the inode, and it was remotely stale
-// return -errno on failure
-// inode->entry must NOT be locked if locked is False.  If locked is True, then parent must be given
+/**
+ * @brief Refresh a single inode's metadata
+ * @attention inode->entry must NOT be locked if locked is False.  If locked is True, then parent must be given
+ * @retval 0 The inode is already fresh, or is not changed remotely
+ * @retval 1 The inode was not fresh, but we fetched and merged the new data successfully
+ * @retval -ESTALE Unable to remotely refresh the inode, and it was remotely stale
+ * @retval -errno Failure
+ */
 int UG_consistency_inode_ensure_fresh_ex( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode, bool locked, struct fskit_entry* dent ) {
 
    int rc = 0;
@@ -1851,15 +1914,24 @@ int UG_consistency_inode_ensure_fresh_ex( struct SG_gateway* gateway, char const
    return 1;
 }
 
+/**
+ * @brief Ensure a locally-cached inode is fresh
+ *
+ * Call UG_consistency_inode_ensure_fresh_ex and return result
+ * @see UG_consistency_inode_ensure_fresh_ex
+ */
 int UG_consistency_inode_ensure_fresh( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
    return UG_consistency_inode_ensure_fresh_ex( gateway, fs_path, inode, false, NULL );
 }
 
-// merge a list of md_entrys into an fskit_entry directory.
-// for conflicts, if a local entry is newer than the given cut-off, keep it.  Otherwise replace it.
-// return 0 on success
-// return -ENOMEM on OOM
-// NOTE: dent must be write-locked!
+/**
+ * @brief Merge a list of md_entrys into an fskit_entry directory.
+ *
+ * For conflicts, if a local entry is newer than the given cut-off, keep it.  Otherwise replace it.
+ * @attention dent must be write-locked!
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_path_dir, struct fskit_entry* dent, struct md_entry* ents, size_t num_ents, struct timespec* keep_cutoff ) {
 
    int rc = 0;
@@ -2052,10 +2124,14 @@ static int UG_consistency_dir_merge( struct SG_gateway* gateway, char const* fs_
 }
 
 
-// ensure that a directory has a fresh listing of children
-// if not, fetch the immediate children the named directory, and attach them all
-// return 0 on success
-// return -ENOMEM on OOM
+/**
+ * @brief Ensure that a directory has a fresh listing of children
+ *
+ * If not, fetch the immediate children, the named directory, and attach them all
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @todo Adjustments necessary for forcing listdir in UG_consistency_dir_ensure_fresh
+ */
 int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_path ) {
 
    int rc = 0;
@@ -2189,12 +2265,16 @@ int UG_consistency_dir_ensure_fresh( struct SG_gateway* gateway, char const* fs_
 }
 
 
-// fetch all xattrs for a file inode.
-// this is necessary for when we are the coordinator of the file, or are about to become it.
-// return 0 on success, and set *xattr_names, *xattr_values, and *xattr_value_lengths
-// return -ENOMEM on OOM
-// return -ENODATA if we failed to fetch the xattr bundle from the MS, for whatever reason
-// return -errno on network-level error
+/**
+ * @brief Fetch all xattrs for a file inode.
+ *
+ * This is necessary for when we are the coordinator of the file, or are about to become it.
+ * @param[out] *ret_xattr Set to include extended attribute names, values, and value lengths
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA Failed to fetch the xattr bundle from the MS
+ * @retval -errno Network-level error
+ */
 int UG_consistency_fetchxattrs( struct SG_gateway* gateway, uint64_t file_id, int64_t xattr_nonce, unsigned char* xattr_hash, fskit_xattr_set** ret_xattrs ) {
 
    int rc = 0;
@@ -2255,13 +2335,16 @@ int UG_consistency_fetchxattrs( struct SG_gateway* gateway, uint64_t file_id, in
 }
 
 
-// fetch all xattrs for the files for which we are the coordinator, and merge them into the path.
-// remote_inodes->ents[i] will match path_remote->at(i), and we will put the resulting xattr bundle into path_remote->at(i)
-// we do not have the xattr hash for these nodes yet, so just go with the one from the signed MS entry we put there.
-// return 0 on success, and pair the fskit_xattr_set with each inode's data in the result.
-// return -ENOMEM on OOM
-// return -ENODATA if we failed to fetch the xattr bundle from the MS, for whatever reason
-// return -errno on network-level error
+/**
+ * @brief Fetch all xattrs for the files for which we are the coordinator, and merge them into the path.
+ *
+ * Remote_inodes->ents[i] will match path_remote->at(i), and we will put the resulting xattr bundle into path_remote->at(i)
+ * We do not have the xattr hash for these nodes yet, so just go with the one from the signed MS entry we put there.
+ * @retval 0 Success, and pair the fskit_xattr_set with each inode's data in the result.
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENODATA Failed to fetch the xattr bundle from the MS, for whatever reason
+ * @retval -errno Network-level error
+ */
 static int UG_consistency_fetchxattrs_all( struct SG_gateway* gateway, ms_path_t* path_remote, struct ms_client_multi_result* remote_inodes ) {
 
    int rc = 0;
@@ -2289,13 +2372,15 @@ static int UG_consistency_fetchxattrs_all( struct SG_gateway* gateway, ms_path_t
 }
 
 
-// ask a remote coordinator to verify that its data is still present
-// return 0 on success
-// return -ENOMEM on OOM
-// return -EINVAL if we're the coordinator
-// return -EREMOTEIO on network error
-// return -EAGAIN on timeout
-// return non-zero error code from the remote refresh if it failed for some reason
+/**
+ * @brief Ask a remote coordinator to verify that its data is still present
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EINVAL This is the coordinator
+ * @retval -EREMOTEIO Network error
+ * @retval -EAGAIN Timeout
+ * @retval !0 Error code from the remote refresh if it failed
+ */
 int UG_consistency_request_refresh( struct SG_gateway* gateway, char const* fs_path ) {
 
    int rc = 0;

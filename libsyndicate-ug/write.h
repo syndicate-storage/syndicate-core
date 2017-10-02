@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/write.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for write.cpp related functions
+ *
+ * @see libsyndicate-ug/write.cpp
+ */
+
 #ifndef _UG_WRITE_H_
 #define _UG_WRITE_H_
 

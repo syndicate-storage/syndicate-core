@@ -14,70 +14,84 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/vacuumer.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway vacuumer related functions
+ *
+ * @see libsyndicate-ug/vacuumer.h
+ */
+
 
 #include "vacuumer.h"
 #include "consistency.h"
 #include "core.h"
 #include "replication.h"
 
-// state for vacuuming data
+/// State for vacuuming data
 struct UG_vacuum_context {
    
-   char* fs_path;                               // path to the inode
-   struct md_entry inode_data;                  // exported inode
-   struct SG_manifest* old_blocks;              // blocks to remove
+   char* fs_path;                               ///< Path to the inode
+   struct md_entry inode_data;                  ///< Exported inode
+   struct SG_manifest* old_blocks;              ///< Blocks to remove
 
-   struct UG_RG_context* rg_context;            // connection to all RGs
-   SG_messages::Request* vacuum_request;        // request to send to all RGs
-   bool sent_delete;                            // did we send the request successfully? 
+   struct UG_RG_context* rg_context;            ///< Connection to all RGs
+   SG_messages::Request* vacuum_request;        ///< Request to send to all RGs
+   bool sent_delete;                            ///< Did we send the request successfully? 
 
-   int64_t delay;                               // delay delta for retry_deadline
-   struct timespec retry_deadline;              // earliest time in the future when we can try this context again (if it failed)
+   int64_t delay;                               ///< Delay delta for retry_deadline
+   struct timespec retry_deadline;              ///< Earliest time in the future when we can try this context again (if it failed)
 
-   sem_t sem;                                   // caller can block on this to wait for the vacuum request to finish
-   volatile bool wait;                          // if set, the caller will wait for the context to finish
+   sem_t sem;                                   ///< Caller can block on this to wait for the vacuum request to finish
+   volatile bool wait;                          ///< If set, the caller will wait for the context to finish
 
-   bool unlinking;                              // delete *everything*, including the current manifest
-   bool result_clean;                           // set to true if there's no more data to vacuum
+   bool unlinking;                              ///< Delete *everything*, including the current manifest
+   bool result_clean;                           ///< Set to true if there's no more data to vacuum
 
-   int64_t manifest_modtime_sec;                // manifest timestamp being vacuumed 
-   int32_t manifest_modtime_nsec;
+   int64_t manifest_modtime_sec;                ///< Manifest timestamp being vacuumed 
+   int32_t manifest_modtime_nsec;               ///< Manifest timestamp being vacuumed 
 };
 
-// global vacuum state 
+/// Global vacuum state 
 struct UG_vacuumer {
    
-   pthread_t thread;
+   pthread_t thread;                            ///< Thread
    
-   UG_vacuum_queue_t* vacuum_queue;             // queue of vacuum requests to perform
-   pthread_rwlock_t lock;                       // lock governing access to the vacuum queue 
+   UG_vacuum_queue_t* vacuum_queue;             ///< Queue of vacuum requests to perform
+   pthread_rwlock_t lock;                       ///< Lock governing access to the vacuum queue 
    
-   sem_t sem;                                   // used to wake up the vacuumer when there's work to be done
+   sem_t sem;                                   ///< Used to wake up the vacuumer when there's work to be done
    
-   volatile bool running;                       // is this thread running?
-   volatile bool quiesce;                       // stop taking requests?
-   volatile bool exited;                        // set to true if exited
+   volatile bool running;                       ///< Is this thread running?
+   volatile bool quiesce;                       ///< Stop taking requests?
+   volatile bool exited;                        ///< Set to true if exited
    
-   struct SG_gateway* gateway;                  // parent gateway
+   struct SG_gateway* gateway;                  ///< Parent gateway
 };
 
-
+/// Create a vacuumer
 struct UG_vacuumer* UG_vacuumer_new() {
    return SG_CALLOC( struct UG_vacuumer, 1 );
 }
 
+/// Create a vacuumer context
 struct UG_vacuum_context* UG_vacuum_context_new() {
    return SG_CALLOC( struct UG_vacuum_context, 1 );
 }
 
 
-// set up a vacuum context
-// prepare to vacuum only the blocks listed in replaced_blocks 
-// if replaced_blocks is NULL, then look up the set of blocks from the MS and vacuum those.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EINVAL if this is a directory
-// NOTE: inode->entry must be at least read-locked
+/**
+ * @brief Set up a vacuum context
+ *
+ * Prepare to vacuum only the blocks listed in replaced_blocks 
+ * If replaced_blocks is NULL, then look up the set of blocks from the MS and vacuum those.
+ * @attention inode->entry must be at least read-locked
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EINVAL This is a directory
+ */
 int UG_vacuum_context_init( struct UG_vacuum_context* vctx, struct UG_state* ug, char const* fs_path, struct UG_inode* inode, struct SG_manifest* replaced_blocks ) {
    
    int rc = 0;
@@ -153,7 +167,10 @@ int UG_vacuum_context_init( struct UG_vacuum_context* vctx, struct UG_state* ug,
 }
 
 
-// set the manifest modtime for a vacuum context, overwriting whatever was given in the set of old blocks 
+/**
+ * @brief Set the manifest modtime for a vacuum context, overwriting whatever was given in the set of old blocks
+ * @return 0
+ */ 
 int UG_vacuum_context_set_manifest_modtime( struct UG_vacuum_context* vctx, int64_t sec, int32_t nsec ) {
    vctx->manifest_modtime_sec = sec;
    vctx->manifest_modtime_nsec = nsec;
@@ -161,14 +178,20 @@ int UG_vacuum_context_set_manifest_modtime( struct UG_vacuum_context* vctx, int6
 }
 
 
-// allow deletion of the current manifest 
+/**
+ * @brief Allow deletion of the current manifest 
+ * @return 0
+ */ 
 int UG_vacuum_context_set_unlinking( struct UG_vacuum_context* vctx, bool unlinking ) {
    vctx->unlinking = unlinking;
    return 0;
 }
 
 
-// free up a vacuum context 
+/**
+ * @brief Free up a vacuum context 
+ * @return 0
+ */ 
 int UG_vacuum_context_free( struct UG_vacuum_context* vctx ) {
    
    md_entry_free( &vctx->inode_data );
@@ -189,11 +212,14 @@ int UG_vacuum_context_free( struct UG_vacuum_context* vctx ) {
 }
 
 
-// gift a vacuum context's block data to an inode.
-// This merges them into the inode's set of vacuum-able blocks, such that on conflict, the inode's
-// blocks are accepted instead of the vacuum context's.
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Gift a vacuum context's block data to an inode.
+ * 
+ * This merges them into the inode's set of vacuum-able blocks, such that on conflict, the inode's
+ * blocks are accepted instead of the vacuum context's.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_vacuum_context_restore( struct UG_vacuum_context* vctx, struct UG_inode* inode ) {
    
    int rc = 0;
@@ -214,11 +240,15 @@ int UG_vacuum_context_restore( struct UG_vacuum_context* vctx, struct UG_inode* 
 }
 
 
-// start vacuuming data.  It will be retried indefinitely until it succeeds.
-// return 0 on successful enqueue 
-// return -ENOMEM on OOM
-// return -ENOTCONN if we're quiescing
-// NOTE: the vacuumer takes ownership of vctx if wait == false.  do not free or access it after this call.
+/**
+ * @brief Start vacuuming data (external)
+ *
+ * It will be retried indefinitely until it succeeds.
+ * @note The vacuumer takes ownership of vctx if wait == false.  Do not free or access it after this call.
+ * @retval 0 Successful enqueue 
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOTCONN Quiescing
+ */
 static int UG_vacuumer_enqueue_ex( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, bool wait ) {
    
    int rc = 0;
@@ -252,46 +282,62 @@ static int UG_vacuumer_enqueue_ex( struct UG_vacuumer* vacuumer, struct UG_vacuu
 }
 
 
-// start vacuuming data.  It will be retried indefinitely until it succeeds
-// caller is not expected to wait for the vacuum request to finish.
-// return 0 on successful enqueue 
-// return -ENOMEM on OOM
-// return -ENOTCONN if we're quiescing 
+/**
+ * @brief Start vacuuming data.
+ *
+ * Call UG_vacuumer_enqueue_ex.  It will be retried indefinitely until it succeeds
+ * Caller is not expected to wait for the vacuum request to finish.
+ * @see UG_vacuumer_enqueue_ex
+ * @retval 0 Successful enqueue 
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOTCONN Quiescing
+ */
 int UG_vacuumer_enqueue( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx ) {
    return UG_vacuumer_enqueue_ex( vacuumer, vctx, false );
 }
 
 
-// start vacuuming data.  It will be retried indefinitely until it succeeds.
-// caller is expected to wait for the vacuum request to finish.
-// return 0 on successful enqueue
-// return -ENOMEM on OOM 
-// return -ENOTCONN if we're quiescing 
+/**
+ * @brief Start vacuuming data.
+ *
+ * Call UG_vacuumer_enqueue_ex.  It will be retried indefinitely until it succeeds.
+ * Caller is expected to wait for the vacuum request to finish.
+ * @retval 0 Successful enqueue
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOTCONN Quiescing
+ */
 int UG_vacuumer_enqueue_wait( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx ) {
    return UG_vacuumer_enqueue_ex( vacuumer, vctx, true );
 }
 
 
-// wait for a vacuum context to finish.
-// return 0 on success
-// return -EINVAL if the vacuum context was not set up to be waited on 
+/**
+ * @brief Wait for a vacuum context to finish.
+ * @retval 0 Success
+ * @retval -EINVAL If the vacuum context was not set up to be waited on
+ */
 int UG_vacuum_context_wait( struct UG_vacuum_context* vctx ) {
    sem_wait( &vctx->sem );
    return 0;
 }
 
 
-// did this vacuum context indicate that we're done vacuuming?
+/**
+ * @brief Did this vacuum context indicate that we're done vacuuming?
+ */
 bool UG_vacuum_context_is_clean( struct UG_vacuum_context* vctx ) {
    return vctx->result_clean;
 }
 
 
-// get the next manifest timestamp and blocks to vacuum
-// on success, put it into the vacuum context
-// return 0 on success, or if we already have the timestamp
-// return -ENODATA if there is no manifest timestamp to be had (i.e. we're all caught up with vacuuming)
-// return -errno on error 
+/**
+ * @brief Get the next manifest timestamp and blocks to vacuum
+ *
+ * Put it into the vacuum context
+ * @retval 0 Success, or already have the timestamp
+ * @retval -ENODATA There is no manifest timestamp to be had (i.e. we're all caught up with vacuuming)
+ * @retval -errno Error
+ */
 static int UG_vacuumer_peek_vacuum_log( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, struct SG_manifest* old_write_delta ) {
    
    int rc = 0;
@@ -357,11 +403,16 @@ static int UG_vacuumer_peek_vacuum_log( struct UG_vacuumer* vacuumer, struct UG_
 }
 
 
-// get the old manifest block versions and hashes at a particular time, given the timestamp and a list of requests in *block_requests (which only has block IDs and block versions filled in)
-// return 0 on success, and populate *block_requests with versioning and (if present) hash data (*block_requests should already have been initialized and populated with block IDs)
-// return -ENOENT if we couldn't load the manifest
-// return -ENODATA if we're missing some manifest data
-// return -errno on failure
+/**
+ * @brief Get the old manifest block versions and hashes at a particular time
+ *
+ * Given the timestamp and a list of requests in *block_requests (which only has block IDs and block versions filled in)
+ * @param[out] *block_requests Populate with versioning and hash data (if present), *block_requests should already have been initialized and populated with block IDs
+ * @retval 0 Success
+ * @retval -ENOENT Couldn't load the manifest
+ * @retval -ENODATA Missing some manifest data
+ * @retval -errno Failure
+ */
 static int UG_vacuumer_get_block_data( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, struct SG_manifest* block_requests ) {
    
    int rc = 0;
@@ -447,10 +498,12 @@ static int UG_vacuumer_get_block_data( struct UG_vacuumer* vacuumer, struct UG_v
 }
 
 
-// clear the vacuum log for this write
-// return 0 on success
-// return -EINVAL if we're not done vacuuming
-// return -errno on failure to contact the MS
+/**
+ * @brief Clear the vacuum log for this write
+ * @retval 0 Success
+ * @retval -EINVAL Not done vacuuming
+ * @retval -errno Failure to contact the MS
+ */
 static int UG_vacuumer_clear_vacuum_log( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, uint64_t writer_id, int64_t old_mtime_sec, int32_t old_mtime_nsec ) {
    
    int rc = 0;
@@ -464,8 +517,10 @@ static int UG_vacuumer_clear_vacuum_log( struct UG_vacuumer* vacuumer, struct UG
 }
 
 
-// increase delay factor by exponentially backing off with random jitter
-// always succeeds
+/**
+ * @brief Increase delay factor by exponentially backing off with random jitter
+ * @return 0
+ */
 int UG_vacuumer_set_delay( struct UG_vacuum_context* vctx ) {
   
    if( vctx->delay <= 1 ) {
@@ -489,10 +544,13 @@ int UG_vacuumer_set_delay( struct UG_vacuum_context* vctx ) {
 }
 
 
-// given a write delta (as a manifest), create a DELETECHUNKS request for both the write delta and its associated blocks
-// return 0 on success, and populate *request
-// return -ENOMEM on OOM
-// return -EPERM otherwise
+/**
+ * @brief Given a write delta (as a manifest), create a DELETECHUNKS request for both the write delta and its associated blocks
+ * @param[out] *request Populate request
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -EPERM Other
+ */
 static int UG_vacuum_create_request( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx, struct SG_manifest* write_delta, SG_messages::Request* request ) {
 
    int rc = 0;
@@ -572,10 +630,12 @@ UG_vacuum_create_request_fail:
 }
 
 
-// run a single vacuum context 
-// return 0 on success
-// return negative on error
-// NOTE: this method is idempotent, and should be retried continuously until it succeeds
+/**
+ * @brief Run a single vacuum context 
+ * @note This method is idempotent, and should be retried continuously until it succeeds
+ * @retval 0 Success
+ * @retval <0 Error
+ */
 int UG_vacuum_run( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx ) {
    
    int rc = 0;
@@ -735,7 +795,9 @@ int UG_vacuum_run( struct UG_vacuumer* vacuumer, struct UG_vacuum_context* vctx 
 }
 
 
-// main vacuumer loop 
+/**
+ * @brief Main vacuumer loop
+ */
 static void* UG_vacuumer_main( void* arg ) {
    
    int rc = 0;
@@ -829,9 +891,11 @@ static void* UG_vacuumer_main( void* arg ) {
 }
 
 
-// set up a vacuumer 
-// return 0 on success
-// return -ENOMEM on OOM 
+/**
+ * @brief Set up a vacuumer 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ */ 
 int UG_vacuumer_init( struct UG_vacuumer* vacuumer, struct SG_gateway* gateway ) {
    
    int rc = 0;
@@ -856,9 +920,11 @@ int UG_vacuumer_init( struct UG_vacuumer* vacuumer, struct SG_gateway* gateway )
    return 0;
 }
 
-// start vacuuming 
-// return 0 if we started a thread 
-// return -EPERM if not
+/**
+ * @brief Start vacuuming 
+ * @retval 0 Success / started a thread 
+ * @retval -EPERM Error
+ */
 int UG_vacuumer_start( struct UG_vacuumer* vacuumer ) {
    
    int rc = 0;
@@ -881,9 +947,11 @@ int UG_vacuumer_start( struct UG_vacuumer* vacuumer ) {
 }
 
 
-// stop taking new requests
-// return 0 on success
-// return -EINVAL if the vacuumer is stopped
+/**
+ * @brief Stop taking new requests
+ * @retval 0 Success
+ * @retval -EINVAL The vacuumer is stopped
+ */
 int UG_vacuumer_quiesce( struct UG_vacuumer* vacuumer ) {
    if( !vacuumer->running ) {
       return -EINVAL;
@@ -894,8 +962,10 @@ int UG_vacuumer_quiesce( struct UG_vacuumer* vacuumer ) {
 }
 
 
-// wait for all outstanding requests to finish 
-// return 0 on success
+/**
+ * @brief Wait for all outstanding requests to finish 
+ * @retval 0 Success
+ */
 int UG_vacuumer_wait_all( struct UG_vacuumer* vacuumer ) {
 
    bool again = false;
@@ -930,12 +1000,14 @@ int UG_vacuumer_wait_all( struct UG_vacuumer* vacuumer ) {
 }
 
 
-// stop vacuuming 
-// return 0 if we stopped the thread
-// return -ESRCH if the thread isn't running (indicates a bug)
-// return -EDEADLK if we would deadlock 
-// return -EINVAL if the thread ID is invalid (this is a bug; it should never happen)
-// return -EINVAL if the vacuumer is NULL
+/**
+ * @brief Stop vacuuming 
+ * @retval 0 Stopped the thread
+ * @retval -ESRCH The thread isn't running (indicates a bug)
+ * @retval -EDEADLK Deadlock 
+ * @retval -EINVAL The thread ID is invalid (this is a bug; it should never happen)
+ * @retval -EINVAL The vacuumer is NULL
+ */
 int UG_vacuumer_stop( struct UG_vacuumer* vacuumer ) {
    
    int rc = 0;
@@ -967,9 +1039,11 @@ int UG_vacuumer_stop( struct UG_vacuumer* vacuumer ) {
 }
 
 
-// shut down a vacuumer 
-// return 0 on success
-// return -EINVAL if the vacuumer is running, or NULL
+/**
+ * @brief Shut down a vacuumer 
+ * @retval 0 Success
+ * @retval -EINVAL The vacuumer is running, or NULL
+ */
 int UG_vacuumer_shutdown( struct UG_vacuumer* vacuumer ) {
   
    if( vacuumer == NULL ) {

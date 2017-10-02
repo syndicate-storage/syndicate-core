@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/sync.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for sync.cpp related functions
+ *
+ * @see libsyndicate-ug/sync.cpp
+ */
+
 #ifndef _UG_SYNC_H_
 #define _UG_SYNC_H_
 
@@ -22,13 +32,14 @@
 #include "replication.h"
 #include "vacuumer.h"
 
+/// Sync context
 struct UG_sync_context {
    
-   struct UG_replica_context* rctx;      // replication information 
+   struct UG_replica_context* rctx;      ///< Replication information 
    
-   struct UG_vacuum_context* vctx;       // vacuum information 
+   struct UG_vacuum_context* vctx;       ///< Vacuum information 
    
-   sem_t sem;                           // ensure all calls to sync(2) happen in order
+   sem_t sem;                            ///< Ensure all calls to sync(2) happen in order
 };
 
 extern "C" {

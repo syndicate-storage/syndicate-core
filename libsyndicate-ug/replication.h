@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/replication.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for replication.cpp related functions
+ *
+ * @see libsyndicate-ug/replication.cpp
+ */
+
 #ifndef _UG_REPLICATION_H_
 #define _UG_REPLICATION_H_
 

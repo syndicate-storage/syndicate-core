@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/vacuumer.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for vacuumer.cpp related functions
+ *
+ * @see libsyndicate-ug/vacuumer.cpp
+ */
+
 #ifndef _UG_VACUUMER_H_
 #define _UG_VACUUMER_H_
 

@@ -14,59 +14,70 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/block.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for UG block.cpp
+ *
+ * @see libsyndicate-ug/block.cpp
+ */
+
 #ifndef _UG_BLOCK_H_
 #define _UG_BLOCK_H_
 
 #include <libsyndicate/libsyndicate.h>
 #include <libsyndicate/gateway.h>
 
-// dirty block--a block fetched into RAM from the cache, network, etc.
-// its RAM buffer will contain the deserialized (i.e. driver-processed) data 
+/**
+ * @brief Dirty block, a block fetched into RAM from the cache, network, etc.
+ *
+ * Its RAM buffer will contain the deserialized (i.e. driver-processed) data
+ */ 
 struct UG_dirty_block {
    
-   // block metadata
+   /// Block metadata
    struct SG_manifest_block info;
    
-   // block data, if in RAM (buf.data == NULL if not)
+   /// Block data, if in RAM (buf.data == NULL if not)
    struct SG_chunk buf;
    
-   // is the data modified? do we need to flush?
+   /// Is the data modified? do we need to flush?
    bool dirty;
    
-   // is the buf owned by this object?
+   /// Is the buf owned by this object?
    bool unshared;
 
-   // is this block managed by us, or by the cache?
+   /// Is this block managed by us, or by the cache?
    bool managed;
    
    ///// for writing ///////
    
-   // volume, file ID and version 
-   uint64_t volume_id;
-   uint64_t file_id;
-   int64_t file_version;
+   uint64_t volume_id;   ///< Volume ID
+   uint64_t file_id;     ///< File ID
+   int64_t file_version; ///< File Version 
 
-   // flushing block future, if this block is flushing 
+   /// Flushing block future, if this block is flushing 
    struct md_cache_block_future* block_fut;
    
-   // time loaded into RAM 
+   /// Time loaded into RAM 
    struct timespec load_time;
   
-   // did we flush? 
+   /// Did we flush? 
    bool flushed;
 
-   // logical write offset and length this block corresponds to 
-   uint64_t logical_write_offset;
-   uint64_t logical_write_length;
+   uint64_t logical_write_offset;  ///< Block logical write offset
+   uint64_t logical_write_length;  ///< Block length
 };
 
 
-// map block ID to dirty block to define a set of modified blocks across an inode's handles
+/// Map block ID to dirty block to define a set of modified blocks across an inode's handles
 typedef map< uint64_t, struct UG_dirty_block > UG_dirty_block_map_t;
 
 extern "C" {
 
-// init I/O hints 
+/// Init I/O hints 
 int UG_IO_hints_init( struct UG_IO_hints* io_hints, int io_type, uint64_t offset, uint64_t len );
 
 // init dirty block 

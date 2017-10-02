@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/read.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for read.cpp related functions
+ *
+ * @see libsyndicate-ug/read.cpp
+ */
+
 #ifndef _UG_READ_H_
 #define _UG_READ_H_
 

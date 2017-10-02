@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/driver.h
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief Header file for driver.cpp related functions
+ *
+ * @see libsyndicate-ug/driver.cpp
+ */
+
 #ifndef _UG_DRIVER_H_
 #define _UG_DRIVER_H_
 

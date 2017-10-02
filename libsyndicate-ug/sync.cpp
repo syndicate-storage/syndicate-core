@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/sync.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway sync related functions
+ *
+ * @see libsyndicate-ug/sync.h
+ */
+
 #include "sync.h"
 #include "consistency.h"
 #include "vacuumer.h"
@@ -22,13 +32,15 @@
 #include "inode.h"
 #include "core.h"
 
-// begin flushing an inode's in-RAM dirty blocks to disk, asynchronously.
-// fails fast, in which case some (but not all) of the blocks in dirty_blocks are written.  The caller should call UG_write_blocks_wait() on failure, before cleaning up.
-// However, this method is also idempotent--it can be called multiple times on the same dirty_blocks, and each block will flush to disk cache at most once.
-// return 0 on success 
-// return -ENOMEM on OOM 
-// return -errno on failure to write to disk
-// inode->fent must be write-locked
+/**
+ * @brief Begin flushing an inode's in-RAM dirty blocks to disk, asynchronously.
+ * @note Fails fast, in which case some (but not all) of the blocks in dirty_blocks are written.  The caller should call UG_write_blocks_wait() on failure, before cleaning up.
+ * @note This method is also idempotent--it can be called multiple times on the same dirty_blocks, and each block will flush to disk cache at most once.
+ * @attention inode->fent must be write-locked
+ * @retval 0 Success 
+ * @retval -ENOMEM Out of Memory 
+ * @retval -errno Failure to write to disk
+ */
 int UG_sync_blocks_flush_async( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
    
    int rc = 0;
@@ -93,10 +105,12 @@ int UG_sync_blocks_flush_async( struct SG_gateway* gateway, char const* fs_path,
 }
 
 
-// wait for flushing a set of blocks to finish
-// return 0 on success 
-// return -errno on failure to write to disk 
-// This method is idempotent--it can be called multiple times on the same dirty block map, and each block will flush at most once.
+/**
+ * @brief Wait for flushing a set of blocks to finish
+ * @note This method is also idempotent--it can be called multiple times on the same dirty_blocks, and each block will flush to disk cache at most once.
+ * @retval 0 Success 
+ * @retval -errno Failure to write to disk
+ */ 
 int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* inode ) {
    
    int rc = 0;
@@ -151,11 +165,14 @@ int UG_sync_blocks_flush_finish( struct SG_gateway* gateway, struct UG_inode* in
 }
 
 
-// flush all dirty blocks to disk, but ensure that they remain in RAM
-// (this is the default behavior of flushing a dirty block)
-// return 0 on success
-// loop forever until successful; doing exponential back-off until something succeeds
-// inode->fent must be write-locked
+/**
+ * @brief Flush all dirty blocks to disk, but ensure that they remain in RAM
+ * 
+ * Loop forever until successful; doing exponential back-off until something succeeds
+ * This is the default behavior of flushing a dirty block
+ * @attention inode->fent must be write-locked
+ * @retval 0 Success
+ */
 int UG_sync_blocks_flush( struct SG_gateway* gateway, char const* fs_path, struct UG_inode* inode ) {
 
    int rc = 0;
@@ -205,9 +222,12 @@ int UG_sync_blocks_flush( struct SG_gateway* gateway, char const* fs_path, struc
 }
 
 
-// set up a sync context.
-// sctx takes ownership of rctx and vctx by shallow-copying them.  The caller should stop using rctx and vctx after this method.
-// always succeeds
+/**
+ * @brief Set up a sync context.
+ *
+ * sctx takes ownership of rctx and vctx by shallow-copying them.  The caller should stop using rctx and vctx after this method.
+ * @return 0
+ */
 int UG_sync_context_init( struct UG_sync_context* sctx, struct UG_replica_context* rctx, struct UG_vacuum_context* vctx ) {
 
    memset( sctx, 0, sizeof(struct UG_sync_context) );
@@ -221,9 +241,12 @@ int UG_sync_context_init( struct UG_sync_context* sctx, struct UG_replica_contex
 }
 
 
-// free up a sync context
-// frees the internal replica context given to it earlier 
-// always succeeds 
+/**
+ * @brief Free up a sync context
+ *
+ * Frees the internal replica context given to it earlier 
+ * @return 0
+ */
 int UG_sync_context_free( struct UG_sync_context* sctx ) {
    
    UG_replica_context_free( sctx->rctx );
@@ -237,9 +260,12 @@ int UG_sync_context_free( struct UG_sync_context* sctx ) {
    return 0;
 }
 
-// indefinitely try to return dirty blocks to the inode
-// this does *NOT* affect the inode's manifest; it simply restores the inode's dirty block map
-// sleep a bit between attempts, in the hope that some memory gets freed up 
+/**
+ * @brief Indefinitely try to return dirty blocks to the inode
+ *
+ * Sleep a bit between attempts, in the hope that some memory gets freed up 
+ * @note This does *NOT* affect the inode's manifest; it simply restores the inode's dirty block map
+ */
 static int UG_sync_dirty_blocks_return( struct UG_inode* inode, UG_dirty_block_map_t* blocks ) {
    
    int rc = 0;
@@ -260,11 +286,14 @@ static int UG_sync_dirty_blocks_return( struct UG_inode* inode, UG_dirty_block_m
    return rc;
 }
 
-// merge unreplicated blocks back into the inode, but don't overwrite subsequent writes.
-// free or absorb dirty blocks; ether way clear out *blocks and their cached data.
-// this also restores the inode's manifest with the dirty block info.
-// return 0 on success
-// NOTE: the caller needs exclusive access to inode (i.e. write-lock inode->entry) 
+/**
+ * @brief Merge unreplicated blocks back into the inode, but don't overwrite subsequent writes.
+ *
+ * Free or absorb dirty blocks; ether way clear out *blocks and their cached data.
+ * This also restores the inode's manifest with the dirty block info.
+ * @attention The caller needs exclusive access to inode (i.e. write-lock inode->entry) 
+ * @retval 0 Success
+ */
 static int UG_sync_dirty_blocks_restore( struct SG_gateway* gateway, struct UG_inode* inode, int64_t old_file_version, uint64_t old_file_size, UG_dirty_block_map_t* old_dirty_blocks ) {
 
    int rc = 0;
@@ -344,9 +373,12 @@ static int UG_sync_dirty_blocks_restore( struct SG_gateway* gateway, struct UG_i
 }
 
 
-// fsync an inode.
-// flush all dirty blocks to disk, and replicate both the dirty blocks and the manifest to each RG.
-// fent must not be locked
+/**
+ * @brief fsync an inode.
+ *
+ * @attention fent must not be locked
+ * Flush all dirty blocks to disk, and replicate both the dirty blocks and the manifest to each RG.
+ */
 int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_entry* fent ) {
    
    int rc = 0;
@@ -631,7 +663,7 @@ int UG_sync_fsync_ex( struct fskit_core* core, char const* path, struct fskit_en
 }
 
 
-// fskit fsync
+/// fskit fsync
 int UG_sync_fsync( struct fskit_core* core, struct fskit_route_metadata* route_metadata, struct fskit_entry* fent ) {
    
    return UG_sync_fsync_ex( core, fskit_route_metadata_get_path( route_metadata ), fent );

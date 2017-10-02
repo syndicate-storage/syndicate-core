@@ -14,6 +14,16 @@
    limitations under the License.
 */
 
+/**
+ * @file libsyndicate-ug/client.cpp
+ * @author Jude Nelson
+ * @date 9 Mar 2016
+ *
+ * @brief User Gateway client related functions
+ *
+ * @see libsyndicate-ug/client.h
+ */
+
 #include "client.h"
 #include "consistency.h"
 #include "inode.h"
@@ -23,7 +33,7 @@
 #include "xattr.h"
 #include "replication.h"
 
-// rlock the handle 
+/// Read lock the handle 
 int UG_handle_rlock( UG_handle_t* fi ) {
    if( fi->type == UG_TYPE_FILE ) {
       return fskit_file_handle_rlock( fi->fh );
@@ -34,7 +44,7 @@ int UG_handle_rlock( UG_handle_t* fi ) {
 }
 
 
-// wlock the handle 
+/// Write lock the handle 
 int UG_handle_wlock( UG_handle_t* fi ) {
    if( fi->type == UG_TYPE_FILE ) {
       return fskit_file_handle_wlock( fi->fh );
@@ -45,7 +55,7 @@ int UG_handle_wlock( UG_handle_t* fi ) {
 }
 
 
-// unlock the handle 
+/// Unlock the handle 
 int UG_handle_unlock( UG_handle_t* fi ) {
    if( fi->type == UG_TYPE_FILE ) {
       return fskit_file_handle_unlock( fi->fh );
@@ -56,8 +66,10 @@ int UG_handle_unlock( UG_handle_t* fi ) {
 }
 
 
-// get the poiner to the inode
-// no locking occurs
+/**
+ * @brief Get the pointer to the inode
+ * @note No locking occurs
+ */
 struct UG_inode* UG_handle_inode( UG_handle_t* fi ) {
 
    if( fi->type == UG_TYPE_FILE ) {
@@ -71,14 +83,18 @@ struct UG_inode* UG_handle_inode( UG_handle_t* fi ) {
 }
 
 
-// generate and send a WRITE message to another UG.
-// write_data should be prepopuldated with the manifest, owner, mode, mtime, etc.--everything *but* the routing info (which will get overwritten)
-// return 0 on success, get back the latest inode data via *inode_out
-// return -EPERM if this gateway is anonymous
-// return -EINVAL if all data are NULL
-// return -ENOMEM on OOM 
-// return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
-// return -EREMOTEIO if there was a network-level error 
+/**
+ * @brief Generate and send a WRITE message to another UG.
+ *
+ * write_data should be prepopulated with the manifest, owner, mode, mtime, etc., everything *but* the routing info (which will get overwritten)
+ * @param[out] *inode_out Return the latest inode data
+ * @retval 0 Success
+ * @retval -EPERM This gateway is anonymous
+ * @retval -EINVAL All data is NULL
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The request should be retried (i.e. it timed out, or the remote gateway told us)
+ * @retval -EREMOTEIO There was a network-level error
+ */ 
 int UG_send_WRITE( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, struct md_entry* inode_out ) {
     
    int rc = 0;
@@ -221,9 +237,11 @@ int UG_send_WRITE( struct UG_state* state, char const* fs_path, struct SG_client
    return rc;
 }
 
-// propagate locally-updated inode metadata
-// always succeeds
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Propagate locally-updated inode metadata
+ * @attention inode->entry must be write-locked
+ * @return 0
+ */
 static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* inode_ms ) {
    
    if( inode_ms != NULL ) {
@@ -251,13 +269,15 @@ static int UG_update_propagate_local( struct UG_inode* inode, struct md_entry* i
 }
 
 
-// update, for when we're the coordinator of the file AND the file is locked
-// return 0 on success
-// return -EPERM if this gateway is anonymous
-// return -ENOMEM on OOM
-// return -EEXIST if the XATTR_CREATE flag was set but the attribute existed
-// return -ENOATTR if the XATTR_REPLACE flag was set but the attribute did not exist
-// NOTE: inode->entry must be write-locked
+/**
+ * @brief Update, for when we're the coordinator of the file AND the file is locked
+ * @attention inode->entry must be write-locked
+ * @retval 0 Success
+ * @retval -EPERM This gateway is anonymous
+ * @retval -ENOMEM Out of Memory
+ * @retval -EEXIST The XATTR_CREATE flag was set but the attribute existed
+ * @retval -ENOATTR The XATTR_REPLACE flag was set but the attribute did not exist
+ */
 int UG_update_locked( struct UG_state* ug, struct UG_inode* inode, int64_t write_nonce ) {
 
     int rc = 0;
@@ -312,12 +332,15 @@ int UG_update_locked( struct UG_state* ug, struct UG_inode* inode, int64_t write
 }
 
 
-// ask the MS to update inode metadata
-// NULL data will be ignored.
-// the associated inode must be unlocked
-// return 0 on success 
-// return -EINVAL if all data are NULL
-// return -ENOMEM on OOM
+/**
+ * @brief Ask the MS to update inode metadata
+ *
+ * NULL data will be ignored.
+ * @attention The associated inode must be unlocked
+ * @retval 0 Success 
+ * @retval -EINVAL All data is NULL
+ * @retval -ENOMEM Out of Memory
+ */
 static int UG_update_local( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
@@ -424,15 +447,18 @@ static int UG_update_local( struct UG_state* state, char const* path, struct SG_
 }
 
 
-// ask a remote gateway to update inode metadata on the MS.
-// NULL data will be ignored 
-// the associated inode must be unlocked or read-locked
-// return 0 on success 
-// return -EINVAL if all data are NULL
-// return -ENOMEM on OOM 
-// return -EAGAIN if the request should be retried (i.e. it timed out, or the remote gateway told us)
-// return -EREMOTEIO if there was a network-level error 
-// return non-zero error if the write was processed remotely, but failed remotely
+/**
+ * @brief Ask a remote gateway to update inode metadata on the MS.
+ *
+ * NULL data will be ignored 
+ * @attention The associated inode must be unlocked or read-locked
+ * @retval 0 Success 
+ * @retval -EINVAL All data is NULL
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EAGAIN The request should be retried (i.e. it timed out, or the remote gateway told us)
+ * @retval -EREMOTEIO There was a network-level error 
+ * @retval !0 The write was processed remotely, but failed remotely
+ */
 static int UG_update_remote( struct UG_state* state, char const* fs_path, struct SG_client_WRITE_data* write_data, uint64_t parent_id, int64_t write_nonce ) {
    
    int rc = 0;
@@ -459,13 +485,18 @@ static int UG_update_remote( struct UG_state* state, char const* fs_path, struct
 }
 
 
-// update inode metadata--if local, issue the call to the MS; if remote, issue the call to the coordinator or try to become the coordinator if that fails.
-// NULL data will be ignored 
-// return 0 on success
-// return -EPERM if this gateway is anonymous
-// return -EINVAL if all data are NULL
-// return -ENOMEM on OOM 
-// NOTE: inode->entry must be unlocked!
+/**
+ * @brief Update inode metadata
+ *
+ * If local, issue the call to the MS;
+ * If remote, issue the call to the coordinator or try to become the coordinator if that fails.
+ * @note NULL data will be ignored 
+ * @attention inode->entry must be unlocked!
+ * @retval 0 Success
+ * @retval -EPERM This gateway is anonymous
+ * @retval -EINVAL All data is NULL
+ * @retval -ENOMEM Out of Memory
+ */ 
 int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_data* write_data ) {
    
    int rc = 0;
@@ -516,8 +547,12 @@ int UG_update( struct UG_state* state, char const* path, struct SG_client_WRITE_
 }
 
 
-// stat(2)
-// forward to fskit, which will take care of refreshing the inode metadata
+/**
+ * @brief stat(2) implementation, refresh inode data
+ *
+ * stat(2); forward to fskit, which will take care of refreshing the inode metadata
+ * @see fskit_stat
+ */
 int UG_stat( struct UG_state* state, char const* path, struct stat *statbuf ) {
    
    int rc = 0;
@@ -535,10 +570,13 @@ int UG_stat( struct UG_state* state, char const* path, struct stat *statbuf ) {
 }
 
 
-// stat raw entry
-// get the md_entry itself
-// return 0 on success
-// return -errno on error
+/**
+ * @brief Stat raw entry
+ *
+ * Get the md_entry itself
+ * @retval 0 Success
+ * @retval -errno Error
+ */
 int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent ) {
     
    int rc = 0;
@@ -558,8 +596,11 @@ int UG_stat_raw( struct UG_state* state, char const* path, struct md_entry* ent 
 }
 
 
-// POSIX-y mkdir(2)
-// forward to fskit, which will take care of communicating with the MS
+/**
+ * @brief mkdir(2) implementation
+ * Forward to fskit, which will take care of communicating with the MS
+ * @see fskit_mkdir
+ */
 int UG_mkdir( struct UG_state* state, char const* path, mode_t mode ) {
     struct SG_gateway* gateway = UG_state_gateway( state );
    
@@ -572,7 +613,15 @@ int UG_mkdir( struct UG_state* state, char const* path, mode_t mode ) {
 }
 
 
-// more advanced mkdir, setting extra syndicate-specific fields
+/**
+ * @brief A more advanced mkdir, setting extra syndicate-specific fields
+ *
+ * Includes md_entry *ent_data
+ * @return Result of fskit_mkdir_ex
+ * @retval -EPERM Gateway user ID is anonymous
+ * @retval -EINVAL Entry type is not a directory
+ * @see fskit_mkdir_ex
+ */
 int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struct md_entry* ent_data ) {
     struct SG_gateway* gateway = UG_state_gateway( state );
    
@@ -591,8 +640,14 @@ int UG_publish_dir( struct UG_state* state, char const* path, mode_t mode, struc
 }
 
 
-// unlink(2)
-// forward to fskit, which will take care of communicating with the MS and garbage-collecting blocks
+/**
+ * @brief unlink(2) implementation
+ *
+ * Forward to fskit, which will take care of communicating with the MS and garbage-collecting blocks
+ * @return Result of fskit_unlink or error message from UG_consistency_path_ensure_fresh
+ * @retval -EPERM Gateway user ID is anonymous
+ * @see fskit_unlink
+ */
 int UG_unlink( struct UG_state* state, char const* path ) {
    
    int rc = 0;
@@ -614,8 +669,11 @@ int UG_unlink( struct UG_state* state, char const* path ) {
    return fskit_unlink( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
-// rmdir(2)
-// forward to fskit, which will take care of communiating with the MS
+/**
+ * @brief rmdir(2) implementation
+ *
+ * Forward to fskit, which will take care of communiating with the MS
+ */
 int UG_rmdir( struct UG_state* state, char const* path ) {
    
    int rc = 0;
@@ -638,16 +696,19 @@ int UG_rmdir( struct UG_state* state, char const* path ) {
 }
 
 
-// remove a whole tree recursively.
-// path can be a file or directory.
-// can be called repeatedly to recover from failure.
-// call the unlink()/rmdir() routes in fskit as well.
-// return 0 on success
-// return -EPERM if this gateway is anonymous
-// return -ENONET if the path doesn't exist
-// return -EPERM if we couldn't complete an operation
-// return -EACCES if we couldn't search a directory or unlink a path 
-// return -EREMOTEIO on network error
+/**
+ * @brief Remove a whole tree recursively.
+ *
+ * Path can be a file or directory.
+ * Can be called repeatedly to recover from failure.
+ * Call the unlink()/rmdir() routes in fskit as well.
+ * @retval 0 Success
+ * @retval -EPERM This gateway is anonymous
+ * @retval -ENONET The path doesn't exist
+ * @retval -EPERM Couldn't complete an operation
+ * @retval -EACCES Couldn't search a directory or unlink a path 
+ * @retval -EREMOTEIO Network error
+ */
 int UG_rmtree( struct UG_state* state, char const* root_path ) {
 
    int rc = 0;
@@ -859,8 +920,12 @@ UG_rmtree_cleanup:
 }
 
 
-// rename(2)
-// forward to fskit, which will take care of communicating with the MS
+/**
+ * @brief rename(2) implementation
+ *
+ * Forward to fskit, which will take care of communicating with the MS
+ * @see fskit_rename
+ */
 int UG_rename( struct UG_state* state, char const* path, char const* newpath ) {
    
    int rc = 0;
@@ -910,7 +975,10 @@ int UG_rename( struct UG_state* state, char const* path, char const* newpath ) {
 }
 
 
-// chmod(2)
+/**
+ * @brief chmod(2) implementation
+ * @see SG_client_WRITE_data_set_mode
+ */
 int UG_chmod( struct UG_state* state, char const* path, mode_t mode ) {
    
    int rc = 0;
@@ -932,7 +1000,11 @@ int UG_chmod( struct UG_state* state, char const* path, mode_t mode ) {
    return rc;
 }
 
-// chown(2)
+/**
+ * @brief chown(2) implementation
+ * 
+ * @see SG_client_WRITE_data_set_owner_id
+ */
 int UG_chown( struct UG_state* state, char const* path, uint64_t new_owner ) {
    
    int rc = 0;
@@ -957,7 +1029,11 @@ int UG_chown( struct UG_state* state, char const* path, uint64_t new_owner ) {
 }
 
 
-// utime(2)
+/**
+ * @brief utime(2) implementation
+ *
+ * @see SG_client_WRITE_data_set_mtime
+ */
 int UG_utime( struct UG_state* state, char const* path, struct utimbuf *ubuf ) {
    
    int rc = 0;
@@ -983,16 +1059,18 @@ int UG_utime( struct UG_state* state, char const* path, struct utimbuf *ubuf ) {
 }
 
 
-// try to change coordinator to the new gateway.
-// return 0 on success
-// return -EPERM if we do not have the SG_CAP_COORDINATE capability
-// return -errno on failure to resolve the path (same errors as path_resolution(7))
-// return -ENOMEM on OOM
-// return -EACCES if this gateway was not the coordinator
-// return -EREMOTEIO on remote MS error
-// return -ENODATA if no/partial data was received 
-// return -ETIMEDOUT if the request timed out
-// return -EAGAIN if we need to try again--i.e. the information we had about the inode was out-of-date 
+/**
+ * @brief Try to change coordinator to the new gateway.
+ * @retval 0 Success
+ * @retval -EPERM Do not have the SG_CAP_COORDINATE capability
+ * @retval -errno Failure to resolve the path (same errors as path_resolution(7))
+ * @retval -ENOMEM Out of Memory
+ * @retval -EACCES This gateway was not the coordinator
+ * @retval -EREMOTEIO Remote MS error
+ * @retval -ENODATA No/partial data was received 
+ * @retval -ETIMEDOUT The request timed out
+ * @retval -EAGAIN Need to try again, i.e. the information we had about the inode was out-of-date
+ */ 
 int UG_chcoord( struct UG_state* state, char const* path, uint64_t* new_coordinator_response ) {
    
    int rc = 0;
@@ -1184,10 +1262,12 @@ int UG_chcoord( struct UG_state* state, char const* path, uint64_t* new_coordina
 }
 
 
-// invalidate a cached metadata entry 
-// return 0 on success
-// return -ENOMEM on OOM
-// return -ENOENT if there is no such entry 
+/**
+ * @brief Invalidate a cached metadata entry 
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT There is no such entry
+ */ 
 int UG_invalidate( struct UG_state* state, char const* path ) {
 
    int rc = 0;
@@ -1208,11 +1288,13 @@ int UG_invalidate( struct UG_state* state, char const* path ) {
 }
 
 
-// refresh a cached metadata entry
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -ENOENT if the entry does not exist 
-// return -EREMOTEIO on failure to talk to the MS 
+/**
+ * @brief Refresh a cached metadata entry
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -ENOENT The entry does not exist 
+ * @retval -EREMOTEIO Failure to talk to the MS
+ */ 
 int UG_refresh( struct UG_state* state, char const* path ) {
 
    int rc = 0;
@@ -1223,15 +1305,18 @@ int UG_refresh( struct UG_state* state, char const* path ) {
 }
 
 
-// start vacuuming a file inode's old data (used to recover after an unclean shutdown)
-// set up and return *vctx to be a waitable vacuum context 
-// return 0 on success
-// return -EPERM if this gateway is anonymous
-// return -ENOMEM on OOM
-// return -ENOENT if there so such path
-// return -EACCES if we can't write to the file 
-// return -EISDIR if the path refers to a directory
-// return -ENOTCONN if we're quiescing requests
+/**
+ * @brief Start vacuuming a file inode's old data (used to recover after an unclean shutdown)
+ *
+ * Set up and return *vctx to be a waitable vacuum context 
+ * @retval 0 Success
+ * @retval -EPERM This gateway is anonymous
+ * @retval -ENOMEM Out of Memory
+ * @retval -ENOENT There so such path
+ * @retval -EACCES Can't write to the file 
+ * @retval -EISDIR The path refers to a directory
+ * @retval -ENOTCONN Quiescing requests
+ */
 int UG_vacuum_begin( struct UG_state* state, char const* path, struct UG_vacuum_context** ret_vctx ) {
 
    int rc = 0;
@@ -1306,8 +1391,10 @@ int UG_vacuum_begin( struct UG_state* state, char const* path, struct UG_vacuum_
 }
 
 
-// wait for an ongoing vacuum request to finish 
-// always succeeds (if it returns at all)
+/**
+ * @brief Wait for an ongoing vacuum request to finish 
+ * @return 0 (if it returns at all)
+ */
 int UG_vacuum_wait( struct UG_vacuum_context* vctx ) {
    UG_vacuum_context_wait( vctx );
    UG_vacuum_context_free( vctx );
@@ -1315,9 +1402,12 @@ int UG_vacuum_wait( struct UG_vacuum_context* vctx ) {
 }
 
 
-
-// trunc(2)
-// forward to fskit
+/**
+ * @brief trunc(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_trunc
+ */
 int UG_truncate( struct UG_state* state, char const* path, off_t newsize ) {
    
    int rc = 0;
@@ -1342,8 +1432,13 @@ int UG_truncate( struct UG_state* state, char const* path, off_t newsize ) {
    return fskit_trunc( UG_state_fs( state ), path, UG_state_owner_id( state ), UG_state_volume_id( state ), newsize );
 }
 
-// open(2)
-// forward to fskit
+/**
+ * @brief open(2) implementation
+
+ *
+ * Forward to fskit
+ * @see @fskit_open
+ */
 UG_handle_t* UG_open( struct UG_state* state, char const* path, int flags, int* rc ) {
    
    struct fskit_file_handle* fh = NULL;
@@ -1379,8 +1474,12 @@ UG_handle_t* UG_open( struct UG_state* state, char const* path, int flags, int* 
 }
 
 
-// read(2)
-// forward to fskit
+/**
+ * @brief read(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_read
+ */
 int UG_read( struct UG_state* state, char *buf, size_t size, UG_handle_t *fi ) {
    
    if( fi == NULL ) {
@@ -1419,8 +1518,12 @@ int UG_read( struct UG_state* state, char *buf, size_t size, UG_handle_t *fi ) {
 }
 
 
-// write(2)
-// forward to fskit
+/**
+ * @brief write(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_write
+ */
 int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t *fi ) {
 
    if( fi == NULL ) {
@@ -1442,14 +1545,17 @@ int UG_write( struct UG_state* state, char const* buf, size_t size, UG_handle_t 
 }
 
 
-// getblockinfo 
-// get a block's metadata directly from the manifest.
-// useful for redirecting remote requests on blocks.
-// if non-null, hash must have SG_BLOCK_HASH_LEN bytes.
-// return 0 on success.
-// return -ENOMEM on OOM
-// return -EBADF if fi is NULL or refers to a directory 
-// fi->fent must *NOT* be locked!
+/**
+ * @brief getblockinfo implementation
+ *
+ * Get a block's metadata directly from the manifest.
+ * Useful for redirecting remote requests on blocks.
+ * If non-null, hash must have SG_BLOCK_HASH_LEN bytes.
+ * @attention fi->fent must *NOT* be locked!
+ * @retval 0 Success.
+ * @retval -ENOMEM Out of Memory
+ * @retval -EBADF NULL or refers to a directory
+ */ 
 int UG_getblockinfo( struct UG_state* state, uint64_t block_id, int64_t* ret_block_version, unsigned char* ret_hash, UG_handle_t* fi ) {
 
    struct fskit_entry* fent = NULL;
@@ -1545,13 +1651,16 @@ UG_getblock_out:
 }
 
 
-// putblockinfo
-// put a block's metadata directly into the manifest.
-// useful for when the driver knows how to serve data directly.
-// hash must be a SHA256 (or must have SG_BLOCK_HASH_LEN bytes), or NULL.
-// return 0 on success
-// return -ENOMEM on OOM 
-// return -EBADF if fi is NULL or refers to a directory
+/**
+ * @brief putblockinfo implementation
+ *
+ * Put a block's metadata directly into the manifest.
+ * Useful for when the driver knows how to serve data directly.
+ * Hash must be a SHA256 (or must have SG_BLOCK_HASH_LEN bytes), or NULL.
+ * @retval 0 Success
+ * @retval -ENOMEM Out of Memory 
+ * @retval -EBADF NULL or refers to a directory
+ */
 int UG_putblockinfo( struct UG_state* state, uint64_t block_id, int64_t block_version, unsigned char* hash, UG_handle_t* fi ) {
 
    struct fskit_entry* fent = NULL;
@@ -1635,9 +1744,13 @@ UG_putblock_out:
 }
 
 
-// export a manifest--put a copy into *manifest 
-// return 0 on success, and populate *manifest
-// return -ENOMEM on OOM
+/**
+ * @brief Export a manifest
+ *
+ * Put a copy into *manifest 
+ * @retval 0 Success, and populate *manifest
+ * @retval -ENOMEM Out of Memory
+ */
 int UG_manifest_export( struct UG_state* ug, struct SG_manifest* manifest, UG_handle_t* fi ) {
 
    struct fskit_entry* fent = NULL;
@@ -1713,7 +1826,9 @@ UG_manifest_export_out:
 }
 
 
-// lseek(2)
+/**
+ * @brief lseek(2) implementation
+ */
 off_t UG_seek( UG_handle_t* fi, off_t pos, int whence ) {
    
    if( fi == NULL ) {
@@ -1745,9 +1860,12 @@ off_t UG_seek( UG_handle_t* fi, off_t pos, int whence ) {
 }
 
 
-// close(2)
-// fsync, and then close.
-// forward both to fskit.
+/**
+ * @brief close(2) implementation
+ *
+ * fsync, and then close.
+ * Forward both to fskit.
+ */
 int UG_close( struct UG_state* state, UG_handle_t *fi ) {
 
    int rc = 0;
@@ -1778,8 +1896,12 @@ int UG_close( struct UG_state* state, UG_handle_t *fi ) {
 }
 
 
-// fsync(2)
-// forward to fskit
+/**
+ * @brief fsync(2) implementation
+ *
+ * Forward to fskit
+ * @see UG_sync_fsync_ex
+ */
 int UG_fsync( struct UG_state* state, UG_handle_t *fi ) {
    
    if( fi == NULL ) {
@@ -1793,8 +1915,12 @@ int UG_fsync( struct UG_state* state, UG_handle_t *fi ) {
    return UG_sync_fsync_ex( UG_state_fs( state ), fskit_file_handle_get_path( fi->fh ), fskit_file_handle_get_entry( fi->fh ) );
 }
 
-// opendir(3)
-// forward to fskit 
+/**
+ * @brief opendir(3) implementation
+ *
+ * Forward to fskit
+ * @see fskit_opendir
+ */ 
 UG_handle_t* UG_opendir( struct UG_state* state, char const* path, int* rc ) {
 
    struct fskit_dir_handle* dh = NULL;
@@ -1821,8 +1947,11 @@ UG_handle_t* UG_opendir( struct UG_state* state, char const* path, int* rc ) {
    return sh;
 }
 
-// readdir(3)
-// return 0 on sucess, and populate ***ret_listing (will be NULL-terminated)
+/**
+ * @brief readdir(3) implementation
+ * @retval 0 on sucess, and populate ***ret_listing (will be NULL-terminated)
+ * @see fskit_readdir
+ */
 int UG_readdir( struct UG_state* state, struct md_entry*** ret_listing, size_t num_children, UG_handle_t *fi ) {
 
    size_t num_read = 0;
@@ -1921,7 +2050,10 @@ int UG_readdir( struct UG_state* state, struct md_entry*** ret_listing, size_t n
 }
 
 
-// rewindidir(3)
+/**
+ * @brief rewinddir(3) implementation
+ * @see fskit_rewinddir
+ */
 int UG_rewinddir( UG_handle_t* fi ) {
    
    if( fi == NULL ) {
@@ -1932,7 +2064,10 @@ int UG_rewinddir( UG_handle_t* fi ) {
    return 0;
 }
 
-// telldir(3)
+/**
+ * @brief telldir(3) implementation
+ * @see fskit_telldir
+ */
 off_t UG_telldir( UG_handle_t* fi ) {
    
    if( fi == NULL ) {
@@ -1942,7 +2077,10 @@ off_t UG_telldir( UG_handle_t* fi ) {
    return fskit_telldir( fi->dh );
 }
 
-// seekdir(3)
+/**
+ * @brief seekdir(3) implementation
+ * @see fskit_seekdir
+ */
 int UG_seekdir( UG_handle_t* fi, off_t loc ) {
    
    if( fi == NULL ) {
@@ -1953,7 +2091,10 @@ int UG_seekdir( UG_handle_t* fi, off_t loc ) {
    return 0;
 }
 
-// closedir(3)
+/**
+ * @brief closedir(3) implementation
+ * @see fskit_closedir
+ */
 int UG_closedir( struct UG_state* state, UG_handle_t *fi ) {
    
    int rc = 0;
@@ -1971,8 +2112,9 @@ int UG_closedir( struct UG_state* state, UG_handle_t *fi ) {
    return rc;
 }
 
-// free a dir listing 
-// always succeeds
+/**
+ * @brief Free a dir listing
+ */
 void UG_free_dir_listing( struct md_entry** listing ) {
    
    for( int i = 0; listing[i] != NULL; i++ ) {
@@ -1985,8 +2127,12 @@ void UG_free_dir_listing( struct md_entry** listing ) {
 }
 
 
-// access(2)
-// forward to fskit
+/**
+ * @brief access(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_access
+ */
 int UG_access( struct UG_state* state, char const* path, int mask ) {
    
    int rc = 0;
@@ -2005,8 +2151,12 @@ int UG_access( struct UG_state* state, char const* path, int mask ) {
 }
 
 
-// publish a file with the given metadata.
-// forward to fskit
+/**
+ * @brief Publish a file with the given metadata.
+ *
+ * Forward to fskit
+ * @see fskit_create_ex
+ */
 UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_entry* ent_data, int* ret_rc ) {
    
    UG_handle_t* sh = NULL;
@@ -2041,8 +2191,11 @@ UG_handle_t* UG_publish( struct UG_state* state, char const* path, struct md_ent
 }
 
 
-// POSIX-y creat(2):  make an empty file
-// forward to fskit 
+/**
+ * @brief creat(2) implementation:  make an empty file
+ *
+ * Forward to fskit
+ */
 UG_handle_t* UG_create( struct UG_state* state, char const* fs_path, mode_t mode, int* ret_rc ) {
 
    struct md_entry ent_data;
@@ -2088,8 +2241,12 @@ UG_handle_t* UG_create( struct UG_state* state, char const* fs_path, mode_t mode
 }
 
 
-// ftruncate(2)
-// forward to fskit
+/**
+ * @brief ftruncate(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_ftrunc
+ */
 int UG_ftruncate( struct UG_state* state, off_t length, UG_handle_t *fi ) {
    
    if( fi == NULL ) {
@@ -2099,8 +2256,12 @@ int UG_ftruncate( struct UG_state* state, off_t length, UG_handle_t *fi ) {
    return fskit_ftrunc( UG_state_fs( state ), fi->fh, length );
 }
 
-// fstat(2)
-// forward to fskit
+/**
+ * @brief fstat(2) implementation
+ *
+ * Forward to fskit
+ * @see fskit_fstat
+ */
 int UG_fstat( struct UG_state* state, struct stat *statbuf, UG_handle_t *fi ) {
    
    if( fi == NULL ) { 
@@ -2114,7 +2275,10 @@ int UG_fstat( struct UG_state* state, struct stat *statbuf, UG_handle_t *fi ) {
    return fskit_fstat( UG_state_fs( state ), fskit_file_handle_get_path( fi->fh ), fskit_file_handle_get_entry( fi->fh ), statbuf );
 }
 
-// statvfs(2)
+/**
+ * @brief statvfs(2) implementation
+ * @return 0
+ */
 int UG_statvfs( struct UG_state* state, struct statvfs* vfs ) {
    
    struct SG_gateway* gateway = UG_state_gateway(state);
@@ -2135,28 +2299,38 @@ int UG_statvfs( struct UG_state* state, struct statvfs* vfs ) {
    return 0;
 }
 
-// setxattr(2)
-// forward to xattr
+/**
+ * @brief setxattr(2) implementation
+ *
+ * Forward to xattr
+ */
 int UG_setxattr( struct UG_state* state, char const* path, char const* name, char const* value, size_t size, int flags ) {
    return UG_xattr_setxattr( UG_state_gateway( state ), path, name, value, size, flags, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
-
-// getxattr(2)
-// forward to xattr
+/**
+ * @brief getxattr(2) implementation
+ *
+ * Forward to xattr
+ */
 int UG_getxattr( struct UG_state* state, char const* path, char const* name, char *value, size_t size ) {
    return UG_xattr_getxattr( UG_state_gateway( state ), path, name, value, size, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
-// listxattr(2)
-// forward to xattr 
+/**
+ * @brief listxattr(2) implementation
+ *
+ * Forward to xattr
+ */
 int UG_listxattr( struct UG_state* state, char const* path, char *list, size_t size ) {
    return UG_xattr_listxattr( UG_state_gateway( state ), path, list, size, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
 
-
-// removexattr(2)
-// forward to xattr 
+/**
+ * @brief removexattr(2) implementation
+ *
+ * Forward to xattr
+ */
 int UG_removexattr( struct UG_state* state, char const* path, char const* name ) {
    return UG_xattr_removexattr( UG_state_gateway( state ), path, name, UG_state_owner_id( state ), UG_state_volume_id( state ) );
 }
