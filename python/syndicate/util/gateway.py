@@ -246,7 +246,7 @@ def request_to_storage_path(request):
         prefix = os.path.join(prefix, "manifest/%s.%s" % (request.manifest_mtime_sec, request.manifest_mtime_nsec))
 
     else:
-        print >> sys.stderr, "Invalid driver request type '%s'" % request.request_type
+        log_error("Invalid driver request type '%s'" % request.request_type)
         do_driver_shutdown()
 
     return prefix
@@ -339,7 +339,7 @@ def request_type(request):
         return "rename_hint"
 
     else:
-        print >> sys.stderr, "Invalid driver request type '%s'" % request.request_type
+        log_error("Invalid driver request type '%s'" % request.request_type)
         do_driver_shutdown()
 
 
@@ -569,16 +569,24 @@ def log_error(msg):
     """
     Synchronously log an error message
     """
-    print >> sys.stderr, "[Driver %s ERROR] %s" % (os.getpid(), msg)
-    sys.stderr.flush()
+    try:
+        # stderr may be bad when the gateway is not started from a console
+        print >> sys.stderr, "[Driver %s ERROR] %s" % (os.getpid(), msg)
+        sys.stderr.flush()
+    except:
+        pass
 
 
 def log_debug(msg):
     """
     Synchronously log a debug message
     """
-    print >> sys.stderr, "[Driver %s DEBUG] %s" % (os.getpid(), msg)
-    sys.stderr.flush()
+    try:
+        # stderr may be bad when the gateway is not started from a console
+        print >> sys.stderr, "[Driver %s DEBUG] %s" % (os.getpid(), msg)
+        sys.stderr.flush()
+    except:
+        pass
 
 
 driver_shutdown = None
@@ -610,7 +618,13 @@ def has_method(mod, method_name):
 # fail before startup
 def do_fail(exitrc):
     print "1"
-    sys.stderr.flush()
+
+    try:
+        # stderr may be bad when the gateway is not started from a console
+        sys.stderr.flush()
+    except:
+        pass
+
     sys.stdout.flush()
     sys.exit(exitrc)
 
@@ -640,7 +654,7 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
 
     # usage: $0 operation_mode
     if len(sys.argv) != 2:
-        print >> sys.stderr, "Usage: %s operation_mode" % sys.argv[0]
+        log_error("Usage: %s operation_mode" % sys.argv[0])
 
         # tell the parent that we failed
         do_fail(1)
@@ -648,7 +662,7 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
     usage = sys.argv[1]
 
     if usage not in operation_modes:
-        print >> sys.stderr, "Usage: %s operation_mode" % sys.argv[0]
+        log_error("Usage: %s operation_mode" % sys.argv[0])
 
         # tell the parent that we failed
         do_fail(1)
@@ -691,7 +705,6 @@ def driver_setup(operation_modes, expected_callback_names, default_callbacks={})
         CONFIG = json.loads(config_str)
     except Exception, e:
         log_error("Failed to load config '{}'".format(config_str))
-        log_error("'%s'" % config_str)
         log_error(traceback.format_exc())
 
         # tell the parent that we failed
