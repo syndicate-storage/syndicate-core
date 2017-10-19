@@ -35,6 +35,7 @@
  *
  * Borrowed from https://github.com/stevengj/nlopt/blob/master/util/qsort_r.c
  * the algorithms swap() and nlopt_qsort_r() are subject to the following copyright notice:
+
 ```
   Copyright 2007-2014 MIT
   Permission is hereby granted, free of charge, to any person obtaining
@@ -56,6 +57,7 @@
   OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
  */
 static void swap(void *a_, void *b_, size_t size)
 {

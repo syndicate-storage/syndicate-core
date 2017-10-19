@@ -39,12 +39,16 @@ clean:
 	$(MAKE) -C libsyndicate-ug clean
 	$(MAKE) -C ms clean
 	$(MAKE) -C python clean
-	if [ -f docs/Makefile ]; then cd docs && make clean; fi
+	if [ -f docs/Makefile ]; then $(MAKE) -C docs clean; fi
 
 .PHONY: docs
 docs:
-	git submodule init
-	git submodule update
+	if [ ! -f docs/Makefile ]; then git submodule init && git submodule update; fi
 	mkdir -p docs/sources/syndicate-core
 	if [ ! -d docs/sources/syndicate-core/ms ]; then cp -r `find . -maxdepth 1 ! -name "docs" | grep /` docs/sources/syndicate-core; fi
-	cd docs && make docs
+	cd docs && ./scrapedocs syndicate-core/libsyndicate syndicate-core/libsyndicate-ug
+	$(MAKE) -C docs docs
+
+.PHONY: installman
+installman:
+	$(MAKE) -C docs installman
